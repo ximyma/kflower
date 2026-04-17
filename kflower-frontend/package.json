@@ -1,0 +1,34 @@
+{
+  "name": "kflower-frontend",
+  "version": "1.0.0",
+  "description": "Kflower 企业智能管理低代码平台 - 前端",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.0",
+    "@vueuse/core": "^10.7.0",
+    "axios": "^1.6.0",
+    "echarts": "^6.0.0",
+    "element-plus": "^2.5.0",
+    "pinia": "^2.1.0",
+    "vue": "^3.4.0",
+    "vue-echarts": "^8.0.1",
+    "vue-router": "^4.2.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "sass": "^1.69.0",
+    "typescript": "^5.3.0",
+    "unplugin-auto-import": "^0.17.0",
+    "unplugin-vue-components": "^0.26.0",
+    "vite": "^5.0.0",
+    "vue-tsc": "^3.2.6"
+  }
+}
