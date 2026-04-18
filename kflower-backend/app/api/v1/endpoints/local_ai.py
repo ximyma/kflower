@@ -302,6 +302,123 @@ async def embed_configure(
     })
 
 
+# ============ 新增：Embedding 模型管理 API ============
+
+@router.get("/embed/models")
+async def embed_list_models(
+    current_user: User = Depends(get_current_user)
+):
+    """获取所有可用的嵌入模型（包括内置和自定义）"""
+    from app.core.ai_digital_base.local_services import ST_AVAILABLE, EmbeddingService
+    
+    models = embedding_service.get_all_models()
+    
+    return JSONResponse({
+        "success": True,
+        "data": {
+            "models": models,
+            "current_model": embedding_service.embedding_model,
+            "current_provider": embedding_service.embedding_provider,
+            "st_available": ST_AVAILABLE,
+            "custom_models_count": len(embedding_service.get_custom_models()),
+        }
+    })
+
+
+@router.post("/embed/models")
+async def embed_add_model(
+    model_config: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """添加自定义嵌入模型"""
+    result = embedding_service.add_custom_model(model_config)
+    return JSONResponse(result)
+
+
+@router.put("/embed/models/{model_id}")
+async def embed_update_model(
+    model_id: str,
+    model_config: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """更新自定义嵌入模型"""
+    result = embedding_service.update_custom_model(model_id, model_config)
+    if not result.get("success"):
+        return JSONResponse(result, status_code=400)
+    return JSONResponse(result)
+
+
+@router.delete("/embed/models/{model_id}")
+async def embed_delete_model(
+    model_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """删除自定义嵌入模型"""
+    result = embedding_service.delete_custom_model(model_id)
+    if not result.get("success"):
+        return JSONResponse(result, status_code=400)
+    return JSONResponse(result)
+
+
+@router.put("/embed/models/{model_id}/default")
+async def embed_set_default_model(
+    model_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """设置默认嵌入模型"""
+    result = embedding_service.set_default_model(model_id)
+    if not result.get("success"):
+        return JSONResponse(result, status_code=400)
+    return JSONResponse(result)
+
+
+@router.post("/embed/models/{model_id}/test")
+async def embed_test_model(
+    model_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """测试嵌入模型"""
+    from app.core.ai_digital_base.local_services import ST_AVAILABLE, EmbeddingService
+    
+    # 获取模型信息
+    model_info = embedding_service._get_model_info(model_id)
+    provider = model_info.get("provider", "api")
+    
+    # 临时切换到该模型进行测试
+    original_model = embedding_service.embedding_model
+    original_provider = embedding_service.embedding_provider
+    original_api_key = embedding_service.embedding_api_key
+    original_api_base = embedding_service.embedding_api_base
+    
+    try:
+        embedding_service.embedding_model = model_id
+        embedding_service.embedding_provider = provider
+        
+        if provider == "api":
+            embedding_service.embedding_api_key = model_info.get("api_key")
+            embedding_service.embedding_api_base = model_info.get("api_base", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        
+        # 执行测试
+        result = await embedding_service.embed_text("你好，这是一条测试文本。Hello, this is a test.")
+        
+        return JSONResponse({
+            "success": result.get("success", False),
+            "message": "测试成功" if result.get("success") else result.get("error", "测试失败"),
+            "data": {
+                "model": model_id,
+                "provider": provider,
+                "dimension": result.get("dimension") or (len(result.get("embedding", [])) if result.get("embedding") else 0),
+                "embedding_preview": result.get("embedding", [])[:5] if result.get("embedding") else None,
+            }
+        })
+    finally:
+        # 恢复原配置
+        embedding_service.embedding_model = original_model
+        embedding_service.embedding_provider = original_provider
+        embedding_service.embedding_api_key = original_api_key
+        embedding_service.embedding_api_base = original_api_base
+
+
 # ============= 附件处理（AI对话） =============
 
 @router.post("/process-attachment")

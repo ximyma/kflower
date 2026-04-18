@@ -28,6 +28,7 @@ class Template(Base):
     
     # 状态
     is_published = Column(Boolean, default=False)
+    is_public = Column(Boolean, default=False, comment="是否公开共享")  # False=私有, True=共享
     is_template = Column(Boolean, default=True)  # 是否为模板库模板
     
     # 组织

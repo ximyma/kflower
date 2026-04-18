@@ -18,8 +18,8 @@
         </el-form-item>
       </el-form>
       
-      <div class="tips">
-        默认账户：admin / admin123
+      <div class="register-link">
+        没有账户？<router-link to="/register">立即注册</router-link>
       </div>
     </div>
   </div>
@@ -80,5 +80,19 @@ const handleLogin = async () => {
   color: #999;
   font-size: 12px;
   margin-top: 16px;
+}
+.register-link {
+  text-align: center;
+  margin-top: 16px;
+  color: #666;
+  font-size: 14px;
+}
+.register-link a {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 500;
+}
+.register-link a:hover {
+  text-decoration: underline;
 }
 </style>

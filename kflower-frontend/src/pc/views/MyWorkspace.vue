@@ -70,7 +70,7 @@
           <div class="tab-header">
             <h3>我的模板</h3>
             <div class="tab-actions">
-              <el-button type="primary" @click="createTemplate">
+              <el-button type="primary" @click="goToTemplateDesigner">
                 <el-icon><Plus /></el-icon> 新建模板
               </el-button>
               <el-button @click="refreshTemplates">
@@ -79,68 +79,100 @@
             </div>
           </div>
 
-          <!-- 模板列表 -->
-          <el-table
-            v-loading="loadingTemplates"
-            :data="myTemplates"
-            style="width: 100%"
-            row-key="id"
-          >
-            <el-table-column prop="name" label="模板名称" min-width="200">
-              <template #default="{ row }">
-                <div class="template-name-cell">
-                  <div class="template-name">{{ row.name }}</div>
-                  <div class="template-code">编码: {{ row.code }}</div>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="category" label="分类" width="120" />
-            <el-table-column prop="fieldsCount" label="字段数" width="80" align="center">
-              <template #default="{ row }">
-                {{ getFieldsCount(row) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="ai_generated" label="AI生成" width="80" align="center">
-              <template #default="{ row }">
-                <el-tag v-if="row.ai_generated" type="success" size="small">是</el-tag>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="is_published" label="发布状态" width="100" align="center">
-              <template #default="{ row }">
-                <el-tag v-if="row.is_published" type="primary" size="small">已发布</el-tag>
-                <el-tag v-else type="info" size="small">未发布</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="created_at" label="创建时间" width="160">
-              <template #default="{ row }">
-                {{ formatDate(row.created_at) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="200" fixed="right">
-              <template #default="{ row }">
-                <el-button-group>
-                  <el-button size="small" @click="viewTemplate(row)">
-                    <el-icon><View /></el-icon>
-                  </el-button>
-                  <el-button size="small" @click="editTemplate(row)">
-                    <el-icon><Edit /></el-icon>
-                  </el-button>
-                  <el-button size="small" @click="publishTemplate(row)" v-if="!row.is_published">
-                    <el-icon><Promotion /></el-icon>
-                  </el-button>
-                  <el-button size="small" type="danger" @click="deleteTemplate(row)">
-                    <el-icon><Delete /></el-icon>
-                  </el-button>
-                </el-button-group>
-              </template>
-            </el-table-column>
-          </el-table>
-          
-          <!-- 空状态 -->
-          <el-empty v-if="!loadingTemplates && myTemplates.length === 0" description="暂无模板">
-            <el-button type="primary" @click="createTemplate">创建第一个模板</el-button>
-          </el-empty>
+          <!-- 搜索栏 -->
+          <div class="search-bar">
+            <el-input v-model="templateSearch" placeholder="搜索模板名称..." clearable style="width: 300px" @input="debounceTemplateSearch">
+              <template #prefix><el-icon><Search /></el-icon></template>
+            </el-input>
+          </div>
+
+          <!-- 视图切换 + 模板列表 -->
+          <div class="template-list-wrapper">
+            <!-- 加载状态 -->
+            <div v-if="loadingTemplates" class="loading-skeleton">
+              <el-skeleton :rows="5" animated />
+            </div>
+
+            <!-- 空状态 -->
+            <el-empty v-else-if="filteredTemplates.length === 0" description="暂无模板">
+              <el-button type="primary" @click="goToTemplateDesigner">创建第一个模板</el-button>
+            </el-empty>
+
+            <!-- 表格视图 -->
+            <div v-else class="template-table-wrapper">
+              <el-table :data="filteredTemplates" stripe style="width:100%" v-loading="loadingTemplates">
+                <el-table-column label="模板名称" min-width="200" show-overflow-tooltip>
+                  <template #default="{ row }">
+                    <div class="table-name-cell">
+                      <div class="table-icon" :style="{ background: getTemplateColor(row.name) }">
+                        <el-icon><Document /></el-icon>
+                      </div>
+                      <div>
+                        <div class="table-name-text">{{ row.name }}</div>
+                        <div class="table-code-text">{{ row.code || 'ID: ' + row.id }}</div>
+                      </div>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="发布状态" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.is_published ? 'success' : 'info'" size="small">
+                      {{ row.is_published ? '已发布' : '草稿' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="创建人" width="100" align="center">
+                  <template #default="{ row }">
+                    <span>{{ getCreatorName(row) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="共享" width="80" align="center">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.created_by === currentUserId" type="primary" size="small">私有</el-tag>
+                    <el-tag v-else type="warning" size="small">共享</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="category" label="分类" width="100" align="center" />
+                <el-table-column label="字段数" width="80" align="center">
+                  <template #default="{ row }">
+                    <span class="field-count-num">{{ getFieldsCount(row) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="模板ID" width="100" align="center">
+                  <template #default="{ row }">
+                    <span class="template-id-text">{{ row.id }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="created_at" label="创建时间" width="160" align="center">
+                  <template #default="{ row }">
+                    <span>{{ formatDate(row.created_at) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="340" fixed="right" align="center">
+                  <template #default="{ row }">
+                    <el-button size="small" type="primary" text @click="viewTemplate(row)" title="查看">
+                      <el-icon><View /></el-icon>查看
+                    </el-button>
+                    <el-button size="small" type="warning" text @click="editTemplate(row)" title="编辑">
+                      <el-icon><Edit /></el-icon>编辑
+                    </el-button>
+                    <el-button v-if="row.is_published" size="small" type="success" text @click="openFormSubmit(row)" title="填写表单">
+                      <el-icon><EditPen /></el-icon>填表
+                    </el-button>
+                    <el-button v-else size="small" type="success" text @click="publishTemplate(row)" title="发布">
+                      <el-icon><Promotion /></el-icon>发布
+                    </el-button>
+                    <el-button v-if="row.is_published" size="small" type="info" text @click="openFormList(row)" title="数据列表">
+                      <el-icon><List /></el-icon>列表
+                    </el-button>
+                    <el-button size="small" type="danger" text @click="deleteTemplate(row)" title="删除">
+                      <el-icon><Delete /></el-icon>删除
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </div>
         </div>
       </el-tab-pane>
 
@@ -156,81 +188,114 @@
             </div>
           </div>
 
-          <!-- 表单列表 -->
-          <el-table
-            v-loading="loadingForms"
-            :data="publishedForms"
-            style="width: 100%"
-            row-key="id"
-          >
-            <el-table-column prop="name" label="表单名称" min-width="200">
-              <template #default="{ row }">
-                <div class="form-name-cell">
-                  <div class="form-name">{{ row.name }}</div>
-                  <div class="form-code">编码: {{ row.code }}</div>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="category" label="分类" width="120" />
-            <el-table-column prop="fieldsCount" label="字段数" width="80" align="center">
-              <template #default="{ row }">
-                {{ getFieldsCount(row) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="访问权限" width="120">
-              <template #default="{ row }">
-                <el-tag v-if="getAccessType(row) === 'public'" type="success" size="small">公开</el-tag>
-                <el-tag v-else-if="getAccessType(row) === 'specified'" type="warning" size="small">指定用户</el-tag>
-                <el-tag v-else type="info" size="small">私有</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="数据统计" width="180">
-              <template #default="{ row }">
-                <div class="form-stats">
-                  <span>提交: {{ row.submissionCount || 0 }}</span>
-                  <el-divider direction="vertical" />
-                  <span>今日: {{ row.todaySubmissions || 0 }}</span>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column label="分享链接" min-width="250">
-              <template #default="{ row }">
-                <div v-if="getAccessType(row) === 'public' && getShareLink(row)" class="share-link">
-                  <el-input :value="getShareLink(row)" readonly size="small">
-                    <template #append>
-                      <el-button @click="copyShareLink(getShareLink(row))">
-                        <el-icon><CopyDocument /></el-icon>
-                      </el-button>
-                    </template>
-                  </el-input>
-                </div>
-                <span v-else class="no-link">无公开链接</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="300" fixed="right">
-              <template #default="{ row }">
-                <el-button-group>
-                  <el-button size="small" type="primary" @click="openFormPage(row)">
-                    <el-icon><Link /></el-icon> 访问表单
-                  </el-button>
-                  <el-button size="small" @click="manageFormData(row)">
-                    <el-icon><DataAnalysis /></el-icon> 数据管理
-                  </el-button>
-                  <el-button size="small" @click="editFormSettings(row)">
-                    <el-icon><Setting /></el-icon>
-                  </el-button>
-                </el-button-group>
-              </template>
-            </el-table-column>
-          </el-table>
+          <!-- 搜索栏 -->
+          <div class="search-bar">
+            <el-input v-model="formSearch" placeholder="搜索表单名称..." clearable style="width: 300px" @input="debounceFormSearch">
+              <template #prefix><el-icon><Search /></el-icon></template>
+            </el-input>
+          </div>
 
-          <!-- 空状态 -->
-          <el-empty v-if="!loadingForms && publishedForms.length === 0" description="暂无发布的表单">
-            <p>请先创建并发布一个模板</p>
-          </el-empty>
+          <!-- 表单列表 -->
+          <div class="form-list-wrapper">
+            <div v-if="loadingForms" class="loading-skeleton">
+              <el-skeleton :rows="5" animated />
+            </div>
+
+            <el-empty v-else-if="filteredForms.length === 0" description="暂无发布的表单">
+              <p>请先创建并发布一个模板</p>
+              <el-button type="primary" @click="goToTemplateDesigner">去创建模板</el-button>
+            </el-empty>
+
+            <!-- 表格视图 -->
+            <div v-else class="template-table-wrapper">
+              <el-table :data="filteredForms" stripe style="width:100%" v-loading="loadingForms">
+                <el-table-column label="表单名称" min-width="200" show-overflow-tooltip>
+                  <template #default="{ row }">
+                    <div class="table-name-cell">
+                      <div class="table-icon" :style="{ background: getTemplateColor(row.name) }">
+                        <el-icon><Document /></el-icon>
+                      </div>
+                      <div>
+                        <div class="table-name-text">{{ row.name }}</div>
+                        <div class="table-code-text">{{ row.code || 'ID: ' + row.id }}</div>
+                      </div>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="category" label="分类" width="100" align="center" />
+                <el-table-column label="共享" width="80" align="center">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.created_by === currentUserId" type="primary" size="small">私有</el-tag>
+                    <el-tag v-else type="warning" size="small">共享</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="数据统计" width="180" align="center">
+                  <template #default="{ row }">
+                    <div class="form-stats">
+                      <span>提交: {{ row.submissionCount || 0 }}</span>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="模板ID" width="100" align="center">
+                  <template #default="{ row }">
+                    <span class="template-id-text">{{ row.id }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="created_at" label="创建时间" width="160" align="center">
+                  <template #default="{ row }">
+                    <span>{{ formatDate(row.created_at) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="280" fixed="right" align="center">
+                  <template #default="{ row }">
+                    <el-button size="small" type="primary" text @click="openFormSubmit(row)" title="填写表单">
+                      <el-icon><EditPen /></el-icon>填表
+                    </el-button>
+                    <el-button size="small" type="success" text @click="openFormList(row)" title="数据列表">
+                      <el-icon><List /></el-icon>列表
+                    </el-button>
+                    <el-button size="small" type="warning" text @click="editTemplate(row)" title="编辑模板">
+                      <el-icon><Edit /></el-icon>编辑
+                    </el-button>
+                    <el-button size="small" type="danger" text @click="unpublishTemplate(row)" title="撤回发布">
+                      <el-icon><RefreshRight /></el-icon>撤回
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </div>
         </div>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 填写数据弹窗 -->
+    <el-dialog v-model="showDataForm" :title="'填写数据 - ' + (dataFormTemplate?.name || '')" width="700px" destroy-on-close>
+      <el-form :model="dataFormData" label-width="120px" ref="dataFormRef">
+        <template v-for="f in dataFormFields" :key="f.name">
+          <el-form-item :label="f.label + (f.required ? ' *' : '')" :required="f.required">
+            <el-input v-if="['text','email','phone','url','password'].includes(f.type)" v-model="dataFormData[f.name]" :placeholder="f.placeholder || ('请输入' + f.label)" />
+            <el-input v-else-if="f.type === 'textarea'" type="textarea" v-model="dataFormData[f.name]" :placeholder="f.placeholder || ('请输入' + f.label)" :rows="3" />
+            <el-input-number v-else-if="['number','money','percent'].includes(f.type)" v-model="dataFormData[f.name]" :min="f.min || 0" :max="f.max || 999999999" style="width:100%" />
+            <el-select v-else-if="['select','radio'].includes(f.type)" v-model="dataFormData[f.name]" placeholder="请选择" style="width:100%">
+              <el-option v-for="opt in (f.options || [])" :key="opt" :label="opt" :value="opt" />
+            </el-select>
+            <el-date-picker v-else-if="f.type === 'date'" v-model="dataFormData[f.name]" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width:100%" />
+            <el-date-picker v-else-if="f.type === 'datetime'" v-model="dataFormData[f.name]" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="选择日期时间" style="width:100%" />
+            <el-switch v-else-if="f.type === 'switch'" v-model="dataFormData[f.name]" />
+            <el-checkbox-group v-else-if="f.type === 'checkbox'" v-model="dataFormData[f.name]">
+              <el-checkbox v-for="opt in (f.options || [])" :key="opt" :label="opt">{{ opt }}</el-checkbox>
+            </el-checkbox-group>
+            <el-rate v-else-if="f.type === 'rate'" v-model="dataFormData[f.name]" />
+            <span v-else>{{ dataFormData[f.name] || '-' }}</span>
+          </el-form-item>
+        </template>
+      </el-form>
+      <template #footer>
+        <el-button @click="showDataForm = false">取消</el-button>
+        <el-button type="primary" :loading="dataFormLoading" @click="submitDataForm">提交数据</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -240,12 +305,11 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Document, Share, DataLine, Calendar,
-  Plus, Refresh, View, Edit, Promotion, Delete,
-  CopyDocument, Link, DataAnalysis, Setting 
+  Plus, Refresh, View, Edit, Promotion, Delete, Search,
+  EditPen, List, RefreshRight
 } from '@element-plus/icons-vue'
 import { templateAPI } from '../../common/api'
 import { useUserStore } from '../../common/store/user'
-import type { Template } from '../../common/types/template'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -254,14 +318,12 @@ const userStore = useUserStore()
 const activeTab = ref('templates')
 const loadingTemplates = ref(false)
 const loadingForms = ref(false)
-const myTemplates = ref<Template[]>([])
-const publishedForms = ref<Template[]>([])
-const userInfo = reactive({
-  avatar: '',
-  name: '',
-  username: '',
-  email: ''
-})
+const myTemplates = ref<any[]>([])
+const publishedForms = ref<any[]>([])
+const templateSearch = ref('')
+const formSearch = ref('')
+const templateListLoading = ref(false)
+const formListLoading = ref(false)
 
 // 统计数据
 const myTemplatesCount = computed(() => myTemplates.value.length)
@@ -269,24 +331,48 @@ const publishedFormsCount = computed(() => publishedForms.value.length)
 const totalSubmissions = ref(0)
 const todaySubmissions = ref(0)
 
-// 加载用户信息
-function loadUserInfo() {
-  const user = userStore.userInfo
-  if (user) {
-    userInfo.avatar = user.avatar || ''
-    userInfo.name = user.name || ''
-    userInfo.username = user.username || ''
-    userInfo.email = user.email || ''
-  }
+// 当前用户ID
+const currentUserId = computed(() => userStore.userInfo?.id ?? null)
+
+// 过滤后的模板列表
+const filteredTemplates = computed(() => {
+  if (!templateSearch.value) return myTemplates.value
+  const search = templateSearch.value.toLowerCase()
+  return myTemplates.value.filter(t => 
+    t.name?.toLowerCase().includes(search) || 
+    t.code?.toLowerCase().includes(search) ||
+    String(t.id).includes(search)
+  )
+})
+
+// 过滤后的表单列表
+const filteredForms = computed(() => {
+  if (!formSearch.value) return publishedForms.value
+  const search = formSearch.value.toLowerCase()
+  return publishedForms.value.filter(f => 
+    f.name?.toLowerCase().includes(search) || 
+    f.code?.toLowerCase().includes(search) ||
+    String(f.id).includes(search)
+  )
+})
+
+// 填写表单相关
+const showDataForm = ref(false)
+const dataFormTemplate = ref<any>(null)
+const dataFormFields = ref<any[]>([])
+const dataFormData = reactive<Record<string, any>>({})
+const dataFormLoading = ref(false)
+
+// 去创建模板
+function goToTemplateDesigner() {
+  router.push('/templates?create=new')
 }
 
 // 加载我的模板
 async function loadMyTemplates() {
   loadingTemplates.value = true
   try {
-    // 获取所有模板，然后过滤出自己创建的
     const res: any = await templateAPI.list()
-    // 后端返回的直接是数组 TemplateResponse[]
     if (Array.isArray(res)) {
       const userId = userStore.userInfo?.id
       if (userId) {
@@ -308,9 +394,7 @@ async function loadMyTemplates() {
 async function loadPublishedForms() {
   loadingForms.value = true
   try {
-    // 获取所有模板，然后过滤出自己创建且已发布的
     const res: any = await templateAPI.list()
-    // 后端返回的直接是数组 TemplateResponse[]
     if (Array.isArray(res)) {
       const userId = userStore.userInfo?.id
       if (userId) {
@@ -344,7 +428,7 @@ async function loadPublishedForms() {
 }
 
 // 获取字段数量
-function getFieldsCount(template: Template): number {
+function getFieldsCount(template: any): number {
   if (!template.modules) return 0
   let count = 0
   template.modules.forEach((mod: any) => {
@@ -355,54 +439,64 @@ function getFieldsCount(template: Template): number {
   return count
 }
 
-// 获取访问权限类型
-function getAccessType(template: Template): string {
-  if (!template.config || typeof template.config !== 'object') return 'private'
-  return (template.config as any).access_type || 'private'
+// 获取模板颜色
+function getTemplateColor(name: string): string {
+  const colors = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399', '#C0C4CC']
+  let hash = 0
+  for (let i = 0; i < (name || '').length; i++) {
+    hash = ((hash << 5) - hash) + name.charCodeAt(i)
+    hash = hash & hash
+  }
+  return colors[Math.abs(hash) % colors.length]
 }
 
-// 获取分享链接
-function getShareLink(template: Template): string {
-  if (!template.config || typeof template.config !== 'object') return ''
-  const config = template.config as any
-  if (config.access_type === 'public' && config.share_link) {
-    return config.share_link
-  }
-  // 如果没有配置分享链接，生成一个默认的
-  const baseUrl = window.location.origin
-  return `${baseUrl}/form/${template.id}`
+// 获取创建人名称
+function getCreatorName(row: any): string {
+  if (!row.created_by) return '—'
+  if (row.created_by === currentUserId.value) return '我'
+  return `用户${row.created_by}`
 }
 
 // 格式化日期
 function formatDate(dateString: string): string {
-  if (!dateString) return ''
+  if (!dateString) return '-'
   const date = new Date(dateString)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`
+}
+
+// 搜索防抖
+let templateSearchTimer: any = null
+function debounceTemplateSearch() {
+  clearTimeout(templateSearchTimer)
+  templateSearchTimer = setTimeout(() => {
+    // 搜索逻辑已通过 computed 实现
+  }, 300)
+}
+
+let formSearchTimer: any = null
+function debounceFormSearch() {
+  clearTimeout(formSearchTimer)
+  formSearchTimer = setTimeout(() => {
+    // 搜索逻辑已通过 computed 实现
+  }, 300)
 }
 
 // 查看模板
-function viewTemplate(template: Template) {
+function viewTemplate(template: any) {
   router.push(`/templates?view=${template.id}`)
 }
 
 // 编辑模板
-function editTemplate(template: Template) {
+function editTemplate(template: any) {
   router.push(`/templates?edit=${template.id}`)
 }
 
 // 发布模板
-async function publishTemplate(template: Template) {
+async function publishTemplate(template: any) {
   try {
     const res: any = await templateAPI.publish(template.id)
-    // 后端返回 BaseResponse，success 字段
     if (res && res.success !== false) {
-      ElMessage.success('模板发布成功')
+      ElMessage.success('模板发布成功！数据表已创建。')
       loadMyTemplates()
       loadPublishedForms()
     } else {
@@ -413,61 +507,104 @@ async function publishTemplate(template: Template) {
   }
 }
 
-// 删除模板
-async function deleteTemplate(template: Template) {
+// 撤回发布
+async function unpublishTemplate(template: any) {
   try {
     await ElMessageBox.confirm(
-      `确定要删除模板 "${template.name}" 吗？此操作将删除模板及所有相关数据`,
-      '警告',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
+      `确定要撤回模板「${template.name}」的发布吗？`,
+      '提示',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
     )
-    
-    const res: any = await templateAPI.delete(template.id)
-    // 后端返回 BaseResponse，success 字段
-    if (res && res.success !== false) {
-      ElMessage.success('模板删除成功')
-      loadMyTemplates()
-      loadPublishedForms()
-    } else {
-      ElMessage.error(res?.message || '删除失败')
-    }
+    await templateAPI.update(template.id, { is_published: false })
+    ElMessage.success('已撤回发布')
+    loadMyTemplates()
+    loadPublishedForms()
   } catch {
     // 用户取消
   }
 }
 
-// 打开表单页面
-function openFormPage(template: Template) {
-  const link = getShareLink(template)
-  window.open(link, '_blank')
+// 删除模板
+async function deleteTemplate(template: any) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除模板「${template.name}」吗？此操作将删除模板及所有相关数据`,
+      '警告',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'error' }
+    )
+    await templateAPI.delete(template.id)
+    ElMessage.success('模板删除成功')
+    loadMyTemplates()
+    loadPublishedForms()
+  } catch {
+    // 用户取消
+  }
 }
 
-// 管理表单数据
-function manageFormData(template: Template) {
-  router.push(`/form/${template.id}/data`)
-}
-
-// 编辑表单设置
-function editFormSettings(template: Template) {
-  router.push(`/templates?edit=${template.id}&tab=settings`)
-}
-
-// 创建新模板
-function createTemplate() {
-  router.push('/templates?create=new')
-}
-
-// 复制分享链接
-function copyShareLink(link: string) {
-  navigator.clipboard.writeText(link).then(() => {
-    ElMessage.success('链接已复制到剪贴板')
-  }).catch(() => {
-    ElMessage.error('复制失败')
+// 打开表单填写
+function openFormSubmit(t: any) {
+  dataFormTemplate.value = t
+  dataFormFields.value = getTemplateFields(t)
+  // 初始化表单数据
+  Object.keys(dataFormData).forEach(k => delete dataFormData[k])
+  dataFormFields.value.forEach(f => {
+    if (f.type === 'checkbox') {
+      dataFormData[f.name] = []
+    } else if (f.type === 'switch') {
+      dataFormData[f.name] = false
+    } else if (f.type === 'rate') {
+      dataFormData[f.name] = 0
+    } else {
+      dataFormData[f.name] = f.defaultValue || ''
+    }
   })
+  showDataForm.value = true
+}
+
+// 获取模板字段
+function getTemplateFields(template: any): any[] {
+  const fields: any[] = []
+  if (template.modules) {
+    template.modules.forEach((mod: any) => {
+      if (mod.fields && Array.isArray(mod.fields)) {
+        fields.push(...mod.fields)
+      }
+    })
+  }
+  return fields
+}
+
+// 提交表单数据
+async function submitDataForm() {
+  if (!dataFormTemplate.value) return
+  
+  // 验证必填字段
+  for (const f of dataFormFields.value) {
+    if (f.required) {
+      const val = dataFormData[f.name]
+      if (!val || (Array.isArray(val) && val.length === 0)) {
+        ElMessage.warning(`请填写必填字段「${f.label}」`)
+        return
+      }
+    }
+  }
+  
+  dataFormLoading.value = true
+  try {
+    await templateAPI.submitData(dataFormTemplate.value.id, { ...dataFormData })
+    ElMessage.success('数据提交成功！')
+    showDataForm.value = false
+    loadPublishedForms()
+  } catch (e: any) {
+    ElMessage.error(e.message || '提交失败')
+  } finally {
+    dataFormLoading.value = false
+  }
+}
+
+// 打开表单数据列表
+function openFormList(template: any) {
+  router.push(`/form/${template.id}/data`)
 }
 
 // 刷新
@@ -481,16 +618,8 @@ function refreshForms() {
 
 // 初始化加载
 onMounted(() => {
-  loadUserInfo()
   loadMyTemplates()
   loadPublishedForms()
-  
-  // 加载总提交统计（简化版）
-  // 这里可以调用专门的统计API，暂时用已发布表单的统计累加
-  publishedForms.value.forEach(form => {
-    totalSubmissions.value += form.submissionCount || 0
-    todaySubmissions.value += form.todaySubmissions || 0
-  })
 })
 </script>
 
@@ -576,7 +705,7 @@ onMounted(() => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     
     h3 {
       font-size: 18px;
@@ -587,59 +716,76 @@ onMounted(() => {
   }
 }
 
-.template-name-cell, .form-name-cell {
-  .template-name, .form-name {
-    font-weight: 500;
-    margin-bottom: 4px;
+.search-bar {
+  margin-bottom: 16px;
+}
+
+.template-list-wrapper,
+.form-list-wrapper {
+  min-height: 200px;
+}
+
+.loading-skeleton {
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+}
+
+.template-table-wrapper {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  
+  .table-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
   
-  .template-code, .form-code {
+  .table-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+  }
+  
+  .table-name-text {
+    font-weight: 500;
+    color: #303133;
+  }
+  
+  .table-code-text {
     font-size: 12px;
     color: #909399;
   }
-}
-
-.form-stats {
-  display: flex;
-  align-items: center;
   
-  span {
+  .field-count-num {
+    font-weight: 600;
+    color: #409EFF;
+  }
+  
+  .template-id-text {
+    font-family: monospace;
+    color: #909399;
     font-size: 12px;
-    color: #606266;
-  }
-}
-
-.share-link {
-  .el-input {
-    :deep(.el-input-group__append) {
-      padding: 0;
-    }
-  }
-}
-
-.no-link {
-  color: #c0c4cc;
-  font-size: 12px;
-}
-
-// 响应式
-@media (max-width: 768px) {
-  .user-info-card {
-    .user-header {
-      flex-direction: column;
-      text-align: center;
-      gap: 12px;
-    }
-    
-    .user-stats {
-      .stat-item {
-        .stat-number {
-          font-size: 20px;
-        }
-      }
-    }
   }
   
+  .form-stats {
+    display: flex;
+    align-items: center;
+    
+    span {
+      font-size: 12px;
+      color: #606266;
+    }
+  }
+}
+
+@media (max-width: 768px) {
   .tab-content {
     .tab-header {
       flex-direction: column;

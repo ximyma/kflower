@@ -94,6 +94,16 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
         full_name=request.full_name,
     )
     db.add(user)
+    await db.flush()  # 获取用户ID
+    
+    # 为新用户分配"普通用户"角色
+    from app.models.user import Role, UserRole
+    result = await db.execute(select(Role).where(Role.code == "user"))
+    user_role = result.scalar_one_or_none()
+    if user_role:
+        user_role_link = UserRole(user_id=user.id, role_id=user_role.id)
+        db.add(user_role_link)
+    
     await db.commit()
     await db.refresh(user)
     

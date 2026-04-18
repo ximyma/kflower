@@ -23,9 +23,9 @@ if not exist "..\kflower-data\uploads" mkdir "..\kflower-data\uploads"
 
 echo.
 echo [INFO] 启动后端服务...
-echo [INFO] 访问地址: http://localhost:8898
-echo [INFO] API文档: http://localhost:8898/docs
+echo [INFO] 访问地址: http://localhost:8788
+echo [INFO] API文档: http://localhost:8788/docs
 echo.
 
 REM 启动服务
-python -m uvicorn main:app --host 0.0.0.0 --port 8898 --reload
+python -m uvicorn main:app --host 0.0.0.0 --port 8788 --reload

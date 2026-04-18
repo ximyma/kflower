@@ -35,17 +35,30 @@ httpx>=0.26.0
 # 异步任务
 celery>=5.3.6
 
-# 文档处理
+# ============ 文档处理 ============
 pypdf>=4.0.0
 python-docx>=1.1.0
+docx2txt>=0.8  # Word 文档文本提取
 openpyxl>=3.1.0
 beautifulsoup4>=4.12.0
 lxml>=5.0.0
 
-# NLP / Rerank
-sentence-transformers>=2.6.0
-jieba>=0.42.1
+# ============ Excel/CSV 解析 ============
+pandas>=2.0.0
+xlrd>=2.0.0  # 支持 .xls 文件读取
 
-# 开发工具
+# ============ OCR 文字识别 ============
+# Tesseract OCR 引擎（需单独安装）: https://github.com/UB-Mannheim/tesseract/wiki
+pytesseract>=0.3.10
+Pillow>=10.0.0  # 图片处理
+
+# ============ 图像处理 ============
+opencv-python>=4.8.0  # cv2，用于图像预处理提高 OCR 准确率
+
+# ============ NLP / 分词 ============
+jieba>=0.42.1
+sentence-transformers>=2.6.0  # 向量嵌入和重排序
+
+# ============ 开发工具 ============
 pytest>=8.0.0
 pytest-asyncio>=0.23.0

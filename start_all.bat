@@ -10,7 +10,7 @@ echo.
 
 REM 启动后端
 echo [INFO] 启动后端服务...
-start "Kflower Backend" cmd /k "cd /d %~dp0kflower-backend && python -m uvicorn main:app --host 0.0.0.0 --port 8898 --reload"
+start "Kflower Backend" cmd /k "cd /d %~dp0kflower-backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8788 --reload"
 
 REM 等待后端启动
 timeout /t 3 /nobreak >nul
@@ -22,9 +22,9 @@ start "Kflower Frontend" cmd /k "cd /d %~dp0kflower-frontend && npm run dev"
 echo.
 echo ========================================
 echo   服务已启动！
-echo   后端: http://localhost:8898
-echo   API文档: http://localhost:8898/docs
-echo   前端: http://localhost:5111
+echo   后端: http://localhost:8788
+echo   API文档: http://localhost:8788/docs
+echo   前端: http://localhost:5123
 echo ========================================
 echo.
 echo 按任意键退出此窗口（服务将继续运行）...

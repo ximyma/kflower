@@ -154,6 +154,7 @@ class TemplateUpdate(BaseModel):
     config: Optional[Dict] = None
     modules: Optional[List[Dict]] = None
     is_published: Optional[bool] = None
+    is_public: Optional[bool] = None  # 是否公开共享
 
 
 class TemplateResponse(BaseModel):
@@ -166,7 +167,9 @@ class TemplateResponse(BaseModel):
     modules: List[Dict]
     ai_generated: bool
     is_published: bool
+    is_public: bool = False  # 是否公开共享
     created_at: datetime
+    created_by: Optional[int] = None
 
 
 # ============ 模板数据提交 ============

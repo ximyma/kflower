@@ -66,7 +66,9 @@ class QueryAgent(BaseAgent):
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]
             return json.loads(content)
-        except:
+        except json.JSONDecodeError:
+            return {"sql": f"SELECT * FROM {table}"}
+        except Exception:
             return {"sql": f"SELECT * FROM {table}"}
     
     async def _aggregate_query(
@@ -100,7 +102,9 @@ class QueryAgent(BaseAgent):
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]
             return json.loads(content)
-        except:
+        except json.JSONDecodeError:
+            return {"sql": f"SELECT {','.join(metrics)} FROM {table} GROUP BY {','.join(group_by)}"}
+        except Exception:
             return {"sql": f"SELECT {','.join(metrics)} FROM {table} GROUP BY {','.join(group_by)}"}
     
     async def _explain_result(self, query_result: Dict[str, Any]) -> Dict[str, Any]:

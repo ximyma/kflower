@@ -86,6 +86,8 @@ export const agentAPI = {
     conversation_id?: string;
     use_rag?: boolean;
     enable_tools?: boolean;
+    model?: string;
+    provider?: string;
   }, config?: AxiosRequestConfig) => api.post('/agent/chat', data, config),
   generateTemplate: (data: { description: string; category?: string }) =>
     api.post('/agent/generate-template', data),
@@ -189,6 +191,13 @@ export const systemAPI = {
   fetchAIModels: (provider: string, apiKey: string, baseUrl?: string) => 
     api.post(`/system/ai-models/${provider}`, { api_key: apiKey, base_url: baseUrl }),
   listEmbeddingModels: () => api.get('/system/embedding-models'),
+  // Ollama 连接管理
+  listOllamaConnections: () => api.get('/system/ollama-connections'),
+  testOllamaConnection: (url: string, timeout?: number) => 
+    api.post('/system/ollama-connections/test', { url, timeout: timeout || 5 }),
+  // Rerank 模型管理
+  listRerankModels: () => api.get('/system/rerank-models'),
+  testRerankModel: (modelId: string) => api.post('/system/rerank-models/test', { model_id: modelId }),
   // 别名方法
   getAIProviders: () => api.get('/system/ai-providers'),
   getAIModels: (provider: string) => api.get(`/system/ai-models/${provider}`),
@@ -208,6 +217,9 @@ export const localAIAPI = {
     form.append('file', file)
     return api.post('/local-ai/ocr/table', form, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
+  ocrStatus: () => api.get('/local-ai/ocr/status'),
+  ocrConfigure: (tesseractPath: string, lang?: string) =>
+    api.put('/local-ai/ocr/config', null, { params: { tesseract_path: tesseractPath, lang: lang || 'chi_sim+eng' } }),
   textSegment: (text: string, mode?: string) =>
     api.post('/local-ai/text/segment', { text, mode: mode || 'default' }),
   textKeywords: (text: string, topK?: number) =>
@@ -217,8 +229,39 @@ export const localAIAPI = {
   textParse: (text: string) => api.post('/local-ai/text/parse', { text }),
   embed: (text: string) => api.post('/local-ai/embed', { text }),
   embedBatch: (texts: string[]) => api.post('/local-ai/embed/batch', { texts: JSON.stringify(texts) }),
+  embedStatus: () => api.get('/local-ai/embed/status'),
   embedConfig: (params: { apiKey?: string; apiBase?: string; model?: string; provider?: string; stDevice?: string }) =>
     api.put('/local-ai/embed/config', null, { params }),
+  // ============ 新增：Embedding 模型管理 API ============
+  listEmbedModels: () => api.get('/local-ai/embed/models'),
+  addEmbedModel: (modelConfig: {
+    name?: string;
+    model?: string;
+    provider?: string;
+    dimension?: number;
+    description?: string;
+    api_key?: string;
+    api_base?: string;
+    model_path?: string;
+    device?: string;
+    batch_size?: number;
+    enabled?: boolean;
+  }) => api.post('/local-ai/embed/models', modelConfig),
+  updateEmbedModel: (modelId: string, modelConfig: {
+    name?: string;
+    provider?: string;
+    dimension?: number;
+    description?: string;
+    api_key?: string;
+    api_base?: string;
+    model_path?: string;
+    device?: string;
+    batch_size?: number;
+    enabled?: boolean;
+  }) => api.put(`/local-ai/embed/models/${modelId}`, modelConfig),
+  deleteEmbedModel: (modelId: string) => api.delete(`/local-ai/embed/models/${modelId}`),
+  setDefaultEmbedModel: (modelId: string) => api.put(`/local-ai/embed/models/${modelId}/default`, {}),
+  testEmbedModel: (modelId: string) => api.post(`/local-ai/embed/models/${modelId}/test`, {}),
   processAttachment: (file: File, operations?: string[]) => {
     const form = new FormData()
     form.append('file', file)

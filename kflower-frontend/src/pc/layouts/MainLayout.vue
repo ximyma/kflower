@@ -47,8 +47,13 @@
           <el-icon><User /></el-icon>
           <template #title>个人信息</template>
         </el-menu-item>
-        
-        <el-menu-item index="/settings">
+
+        <el-menu-item v-if="userStore.isAdmin" index="/users">
+          <el-icon><UserFilled /></el-icon>
+          <template #title>用户管理</template>
+        </el-menu-item>
+
+        <el-menu-item v-if="userStore.isAdmin" index="/settings">
           <el-icon><Setting /></el-icon>
           <template #title>系统设置</template>
         </el-menu-item>

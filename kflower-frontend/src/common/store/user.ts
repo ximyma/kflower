@@ -20,6 +20,7 @@ export const useUserStore = defineStore('user', () => {
   const loading = ref(false)
 
   const isLoggedIn = computed(() => !!token.value)
+  const isAdmin = computed(() => userInfo.value?.is_superuser === true)
 
   async function autoLogin() {
     if (!token.value) return false
@@ -79,6 +80,7 @@ export const useUserStore = defineStore('user', () => {
     userInfo,
     loading,
     isLoggedIn,
+    isAdmin,
     autoLogin,
     login,
     register,

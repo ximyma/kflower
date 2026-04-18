@@ -18,10 +18,10 @@
         <el-menu-item index="/knowledge">
           <span>知识库</span>
         </el-menu-item>
-        <el-menu-item index="/settings">
+        <el-menu-item v-if="userStore.isAdmin" index="/settings">
           <span>系统设置</span>
         </el-menu-item>
-        <el-menu-item index="/migration">
+        <el-menu-item v-if="userStore.isAdmin" index="/migration">
           <span>数据迁移</span>
         </el-menu-item>
       </el-menu>

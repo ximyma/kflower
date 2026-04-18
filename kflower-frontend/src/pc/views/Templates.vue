@@ -12,6 +12,15 @@
           <el-input v-model="searchText" placeholder="搜索模板..." clearable style="width:240px" @input="debounceSearch">
             <template #prefix><el-icon><Search /></el-icon></template>
           </el-input>
+          <!-- 视图切换按钮 -->
+          <el-button-group>
+            <el-button :type="listStyle === 'table' ? 'primary' : ''" @click="listStyle = 'table'" title="列表视图">
+              <el-icon><List /></el-icon> 列表
+            </el-button>
+            <el-button :type="listStyle === 'card' ? 'primary' : ''" @click="listStyle = 'card'" title="卡片视图">
+              <el-icon><Grid /></el-icon> 卡片
+            </el-button>
+          </el-button-group>
           <el-button @click="openJsonImport">
             <el-icon><Document /></el-icon> JSON导入
           </el-button>
@@ -48,6 +57,85 @@
         <el-button type="primary" @click="openCreateDialog">新建模板</el-button>
       </el-empty>
 
+      <!-- ===== 列表（表格）视图 ===== -->
+      <div v-else-if="listStyle === 'table'" class="template-table-wrapper">
+        <el-table :data="filteredTemplates" stripe style="width:100%" v-loading="loading">
+          <el-table-column label="模板名称" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="table-name-cell">
+                <div class="table-icon" :style="{background: getCategoryColor(row.category)}">
+                  <el-icon :size="16"><component :is="getCategoryIcon(row.category)" /></el-icon>
+                </div>
+                <div>
+                  <div class="table-name-text">{{ row.name }}</div>
+                  <div class="table-code-text">{{ row.code || '—' }}</div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="发布状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.is_published ? 'success' : 'info'" size="small">
+                {{ row.is_published ? '已发布' : '草稿' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="创建人" width="100" align="center">
+            <template #default="{ row }">
+              <span>{{ getCreatorName(row) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="共享状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.created_by === currentUserId" type="primary" size="small">私有</el-tag>
+              <el-tag v-else type="warning" size="small">共享</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="分类" width="120" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="getCategoryTagType(row.category)">
+                {{ getCategoryLabel(row.category) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="字段数" width="80" align="center" sortable sort-by="fieldCount">
+            <template #default="{ row }">
+              <span class="field-count-num">{{ countFields(row) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="模板ID" width="90" align="center">
+            <template #default="{ row }">
+              <span class="template-id-text">#{{ row.id }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="创建时间" width="160" align="center" sortable sort-by="created_at">
+            <template #default="{ row }">
+              <span>{{ formatDate(row.created_at) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="280" fixed="right" align="center">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" text @click="openDesigner(row)" title="查看/设计">
+                <el-icon><SetUp /></el-icon>查看
+              </el-button>
+              <el-button size="small" type="warning" text @click="openEditDialog(row)" title="编辑">
+                <el-icon><Edit /></el-icon>编辑
+              </el-button>
+              <el-button v-if="row.is_published" size="small" type="success" text @click="openFormSubmit(row)" title="填写表单">
+                <el-icon><EditPen /></el-icon>填表
+              </el-button>
+              <el-button v-else size="small" type="success" text @click="publishTemplate(row)" title="发布">
+                <el-icon><Promotion /></el-icon>发布
+              </el-button>
+              <el-button size="small" type="danger" text @click="deleteTemplate(row)" title="删除">
+                <el-icon><Delete /></el-icon>删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <!-- ===== 卡片视图 ===== -->
       <div v-else class="template-grid">
         <el-card v-for="t in filteredTemplates" :key="t.id" shadow="hover" class="template-card" @click="openDesigner(t)">
           <div class="card-header">
@@ -58,6 +146,8 @@
               <h4>{{ t.name }}</h4>
               <span class="card-code">{{ t.code || '无编码' }}</span>
             </div>
+            <el-tag v-if="t.is_published" type="success" size="small">已发布</el-tag>
+            <el-tag v-else type="info" size="small">草稿</el-tag>
             <el-dropdown trigger="click" @click.stop>
               <el-button text size="small"><el-icon><MoreFilled /></el-icon></el-button>
               <template #dropdown>
@@ -68,7 +158,8 @@
                   <el-dropdown-item @click.stop="openDataManager(t)"><el-icon><DataLine /></el-icon> 数据管理</el-dropdown-item>
                   <el-dropdown-item @click.stop="duplicateTemplate(t)"><el-icon><CopyDocument /></el-icon> 复制</el-dropdown-item>
                   <el-dropdown-item @click.stop="exportTemplate(t)"><el-icon><Download /></el-icon> 导出</el-dropdown-item>
-                  <el-dropdown-item @click.stop="publishTemplate(t)"><el-icon><Promotion /></el-icon> 发布</el-dropdown-item>
+                  <el-dropdown-item v-if="t.is_published" @click.stop="unpublishTemplate(t)"><el-icon><RefreshRight /></el-icon> 撤回发布</el-dropdown-item>
+                  <el-dropdown-item v-else @click.stop="publishTemplate(t)"><el-icon><Promotion /></el-icon> 发布</el-dropdown-item>
                   <el-dropdown-item divided @click.stop="deleteTemplate(t)"><el-icon><Delete /></el-icon> 删除</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -90,14 +181,14 @@
         <div class="toolbar-left">
           <el-button text @click="viewMode = 'list'"><el-icon><ArrowLeft /></el-icon> 返回</el-button>
           <el-divider direction="vertical" />
-          <el-input v-model="currentTemplate.name" placeholder="模板名称" style="width:180px" />
-          <el-input v-model="currentTemplate.code" placeholder="编码" style="width:120px" />
+          <el-input v-model="currentTemplate.name" placeholder="模板名称" style="width:200px" />
         </div>
         <div class="toolbar-center">
-          <el-select v-model="currentTemplate.category" placeholder="分类" style="width:120px">
+          <el-select v-model="currentTemplate.category" placeholder="分类" style="width:140px">
             <el-option v-for="c in categories" :key="c.value" :label="c.label" :value="c.value" />
           </el-select>
-          <el-input v-model="currentTemplate.description" placeholder="描述" style="width:200px" />
+          <el-divider direction="vertical" />
+          <el-switch v-model="currentTemplate.is_public" active-text="共享" inactive-text="私有" />
         </div>
         <div class="toolbar-right">
           <el-button @click="previewTemplate"><el-icon><View /></el-icon> 预览</el-button>
@@ -359,8 +450,8 @@
         <el-form-item label="模板名称" prop="name">
           <el-input v-model="editForm.name" placeholder="请输入模板名称" />
         </el-form-item>
-        <el-form-item label="模板编码" prop="code">
-          <el-input v-model="editForm.code" placeholder="唯一标识，如: supplier_info" />
+        <el-form-item v-if="editingTemplate" label="模板ID">
+          <el-input :model-value="editingTemplate.id" disabled />
         </el-form-item>
         <el-form-item label="模板分类">
           <el-select v-model="editForm.category" style="width:100%">
@@ -382,7 +473,7 @@
 
 
     <!-- 导入Excel/图片弹窗 -->
-    <el-dialog v-model="showImport" title="导入Excel或图片生成表单" width="900px" destroy-on-close>
+    <el-dialog v-model="showImport" title="导入Excel或图片生成表单" width="900px" destroy-on-close @open="onImportDialogOpen">
       <div class="import-container">
         <el-steps :active="importStep" finish-status="success" style="margin-bottom:24px">
           <el-step title="上传文件" />
@@ -393,11 +484,42 @@
 
         <!-- 步骤1: 上传 -->
         <div v-if="importStep === 0">
+          <!-- 依赖状态提示 -->
+          <div v-if="importDependenciesStatus" class="import-deps-status">
+            <div class="deps-title"><el-icon><InfoFilled /></el-icon> 组件状态</div>
+            <div class="deps-list">
+              <span class="dep-item" :class="importDependenciesStatus.excel?.available ? 'ok' : 'warn'">
+                <el-icon><Document /></el-icon> Excel {{ importDependenciesStatus.excel?.available ? '✓' : '✗' }}
+              </span>
+              <span class="dep-item" :class="importDependenciesStatus.jieba?.available ? 'ok' : 'warn'">
+                <el-icon><Connection /></el-icon> jieba {{ importDependenciesStatus.jieba?.available ? '✓' : '△' }}
+              </span>
+              <span class="dep-item" :class="importDependenciesStatus.ocr?.chi_sim_installed ? 'ok' : 'warn'">
+                <el-icon><Picture /></el-icon> OCR {{ importDependenciesStatus.ocr?.chi_sim_installed ? '✓' : '✗' }}
+                <el-tooltip v-if="!importDependenciesStatus.ocr?.chi_sim_installed" :content="importDependenciesStatus.ocr?.message || '请配置 Tesseract 和中文语言包'">
+                  <el-icon><Warning /></el-icon>
+                </el-tooltip>
+              </span>
+              <span class="dep-item" :class="importDependenciesStatus.cv2?.available ? 'ok' : 'warn'">
+                <el-icon><Crop /></el-icon> cv2 {{ importDependenciesStatus.cv2?.available ? '✓' : '△' }}
+              </span>
+            </div>
+            <div class="deps-tip">
+              <template v-if="importDependenciesStatus.ocr && !importDependenciesStatus.ocr.chi_sim_installed">
+                <el-tag type="warning" size="small">
+                  OCR{{ importDependenciesStatus.ocr.engine_configured ? '缺少中文语言包' : '未就绪' }}：{{ importDependenciesStatus.ocr.message || '请在系统配置中设置 Tesseract 路径' }}
+                </el-tag>
+              </template>
+              <template v-if="!importDependenciesStatus.excel?.xlrd">
+                <el-tag type="info" size="small">提示：.xls 文件建议另存为 .xlsx 格式</el-tag>
+              </template>
+            </div>
+          </div>
           <el-upload
             class="import-uploader"
             drag
             :limit="1"
-            accept=".xlsx,.xls,.csv,.png,.jpg,.jpeg,.bmp"
+            accept=".xlsx,.xls,.csv,.json,.png,.jpg,.jpeg,.bmp"
             :auto-upload="false"
             :on-change="onImportFileChange"
             ref="uploadRef"
@@ -862,17 +984,20 @@ import {
   Folder, FolderOpened, List, Connection, DataLine, Ticket, Location,
   Brush, PictureFilled, User, OfficeBuilding, Link, Message, Phone,
   Lock, Timer, Alarm, DateRange, Share, Star, Notebook, Download,
-  ArrowLeft, MoreFilled, Rank
+  ArrowLeft, MoreFilled, Rank, RefreshRight
 } from '@element-plus/icons-vue'
 import { templateAPI, userAPI } from '../../common/api'
 import { useAIStore } from '../../common/store/ai'
+import { useUserStore } from '../../common/store/user'
 
 // 路由
 const router = useRouter()
 const route = useRoute()
+const userStore = useUserStore()
 
 // 视图状态
 const viewMode = ref('list')
+const listStyle = ref('table')  // 'table' | 'card'，默认表格视图
 const searchText = ref('')
 const categoryFilter = ref('')
 const loading = ref(false)
@@ -899,13 +1024,26 @@ async function loadTemplates() {
   loading.value = true
   try {
     const res: any = await templateAPI.list({ limit: 100 })
-    templates.value = Array.isArray(res) ? res : (res.items || [])
-  } catch { templates.value = [] }
+    console.log('[loadTemplates] API 返回原始数据:', JSON.stringify(res)?.slice(0, 200))
+    if (Array.isArray(res)) {
+      templates.value = res
+    } else if (res && typeof res === 'object') {
+      // 支持 {items: []} 或 {data: []} 或 {templates: []} 格式
+      templates.value = res.items || res.data || res.templates || []
+    } else {
+      templates.value = []
+    }
+    console.log('[loadTemplates] 最终 templates.value 长度:', templates.value.length)
+  } catch (e: any) {
+    console.error('[loadTemplates] 加载失败:', e)
+    templates.value = []
+    ElMessage.error('加载模板列表失败: ' + (e?.message || e?.response?.data?.detail || '未知错误'))
+  }
   finally { loading.value = false }
 }
 
 // 当前编辑模板
-const currentTemplate = reactive({ id: null as number|null, name: '', code: '', description: '', category: '', fields: [] as any[] })
+const currentTemplate = reactive({ id: null as number|null, name: '', code: '', description: '', category: '', is_public: false, fields: [] as any[] })
 const selectedField = ref<number|null>(null)
 const dragIdx = ref<number|null>(null)
 
@@ -1086,29 +1224,92 @@ function openEditDialog(t: any) {
   editForm.name = t.name; editForm.code = t.code||''; editForm.description = t.description||''; editForm.category = t.category||'general'; editForm.is_active = t.is_active!==false
   showEditDialog.value = true
 }
+// 从编辑框进入发布预览的入口（保存后继续发布）
+function continuePublishPreview() {
+  // 从 editingTemplate（原始数据）或 currentTemplate 读取 ID
+  const src = editingTemplate.value || currentTemplate
+  ;(currentTemplate as any).id = src.id ?? null
+  currentTemplate.name = editForm.name
+  currentTemplate.code = editForm.code
+  currentTemplate.description = editForm.description
+  currentTemplate.category = editForm.category
+
+  if (!currentTemplate.fields || currentTemplate.fields.length === 0) {
+    ElMessage.warning('请先进入设计器添加表单字段后再发布')
+    showEditDialog.value = false
+    return
+  }
+
+  isPublishPreview.value = true
+  previewFields.value = currentTemplate.fields.map(f => ({...f, _value: ''}))
+  previewFields.value.forEach(f => { previewData[f.name] = f.defaultValue || '' })
+  showPreview.value = true
+  editingTemplate.value = null
+}
+
 async function confirmCreateOrUpdate() {
   if (!editForm.name.trim()) { ElMessage.warning('请输入模板名称'); return }
   if (!editForm.code.trim()) { ElMessage.warning('请输入模板编码'); return }
+
+  // 【关键】在 API 调用之前保存所有状态，不会被 API 响应覆盖
+  const fromPublish = !!(editingTemplate.value && (editingTemplate.value as any)._fromPublish)
+  const editingId = editingTemplate.value ? (editingTemplate.value as any).id : null
+  const templateId = editingId ?? (currentTemplate as any).id ?? null
+
   try {
     if (editingTemplate.value) {
-      await templateAPI.update(editingTemplate.value.id, { name:editForm.name, code:editForm.code, description:editForm.description, category:editForm.category, is_active:editForm.is_active })
-      Object.assign(editingTemplate.value, editForm)
+      // 【编辑已有模板】
+      if (!templateId) {
+        // ID 缺失时给出具体信息便于排查
+        ElMessage.error(`模板ID缺失（editingId=${editingId}, currentId=${(currentTemplate as any).id}），请刷新页面后重试`)
+        return
+      }
+      await templateAPI.update(templateId, {
+        name: editForm.name, code: editForm.code,
+        description: editForm.description, category: editForm.category,
+        is_active: editForm.is_active
+      })
+      // 同步更新列表
+      const listItem = templates.value.find(t => t.id === templateId)
+      if (listItem) Object.assign(listItem, {
+        name: editForm.name, code: editForm.code,
+        description: editForm.description, category: editForm.category,
+        is_active: editForm.is_active
+      })
+      if ((currentTemplate as any).id === templateId) {
+        currentTemplate.name = editForm.name
+        currentTemplate.code = editForm.code
+        currentTemplate.description = editForm.description
+        currentTemplate.category = editForm.category
+      }
       ElMessage.success('保存成功')
+      showEditDialog.value = false
+      // 【核心】使用调用前保存的 fromPublish，不再依赖 editingTemplate.value 上的标记
+      if (fromPublish) {
+        continuePublishPreview()
+      }
     } else {
-      const res: any = await templateAPI.create({ name:editForm.name, code:editForm.code, description:editForm.description, category:editForm.category, is_active:editForm.is_active, fields:[] })
-      templates.value.unshift(res)
+      // 【新建模板】
+      const res: any = await templateAPI.create({
+        name: editForm.name, code: editForm.code,
+        description: editForm.description, category: editForm.category,
+        is_active: editForm.is_active, modules: []
+      })
+      console.log('[confirmCreateOrUpdate] 创建返回:', res)
+      templates.value.unshift(res)  // 新模板加入工作区列表
       showEditDialog.value = false
       openDesigner(res)
       return
     }
-    showEditDialog.value = false
-  } catch { ElMessage.error('保存失败') }
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || e?.message || '未知错误'
+    console.error('[confirmCreateOrUpdate] 保存失败:', msg, e)
+    ElMessage.error('保存失败: ' + msg)
+  }
 }
-function openDesigner(t: any) {
-  currentTemplate.id = t.id; currentTemplate.name = t.name; currentTemplate.code = t.code||''
-  currentTemplate.description = t.description||''; currentTemplate.category = t.category||''
+// 从模板对象（含 modules/fields）提取并标准化字段数组，写入 currentTemplate
+function applyTemplateFields(t: any) {
   let fields: any[] = []
-  // 优先从 modules 中提取 fields
   if (t.modules && Array.isArray(t.modules)) {
     for (const mod of t.modules) {
       if (mod.fields && Array.isArray(mod.fields)) {
@@ -1116,11 +1317,17 @@ function openDesigner(t: any) {
       }
     }
   }
-  // 兼容旧格式：直接存储的 fields
-  if (fields.length === 0 && t.fields) { 
-    try { fields = typeof t.fields === 'string' ? JSON.parse(t.fields) : t.fields } catch {} 
+  if (fields.length === 0 && t.fields) {
+    try { fields = typeof t.fields === 'string' ? JSON.parse(t.fields) : t.fields } catch {}
   }
   currentTemplate.fields = fields.map(f => ({...f, _key: 'field_'+Math.random().toString(36).slice(2), optionsText: Array.isArray(f.options) ? f.options.join(',') : '' }))
+}
+
+function openDesigner(t: any) {
+  currentTemplate.id = t.id; currentTemplate.name = t.name; currentTemplate.code = t.code||''
+  currentTemplate.description = t.description||''; currentTemplate.category = t.category||''
+  currentTemplate.is_public = t.is_public || false
+  applyTemplateFields(t)
   selectedField.value = null; viewMode.value = 'design'
 }
 // 发布模板到数据库
@@ -1136,21 +1343,70 @@ const userSearchLoading = ref(false)
 
 // 设计界面点击发布 → 进入预览界面
 async function publishTemplate(template?: any) {
-  const tpl = template || currentTemplate
-  if (!tpl.name) {
-    ElMessage.warning('请输入模板名称')
+  const fromList = !!template
+  // 列表页发布：先把模板数据同步到 currentTemplate（提取 fields）
+  if (fromList) {
+    currentTemplate.id = template.id
+    currentTemplate.name = template.name
+    currentTemplate.code = template.code || ''
+    currentTemplate.description = template.description || ''
+    currentTemplate.category = template.category || ''
+    currentTemplate.is_public = template.is_public || false
+    applyTemplateFields(template)
+  }
+
+  const tpl = fromList ? currentTemplate : currentTemplate
+  const nameVal = (currentTemplate.name || '').trim()
+
+  if (!nameVal) {
+    // 名称为空，引导填写
+    if (fromList) {
+      editingTemplate.value = { ...template, _fromPublish: true }
+      editForm.name = template.name || ''
+      editForm.code = template.code || ''
+      editForm.description = template.description || ''
+      editForm.category = template.category || 'general'
+      editForm.is_active = true
+    } else {
+      editingTemplate.value = null
+      editForm.name = ''
+      editForm.code = ''
+      editForm.description = ''
+      editForm.category = 'general'
+      editForm.is_active = true
+    }
+    showEditDialog.value = true
+    ElMessage.info('请先填写模板名称后再发布')
     return
   }
-  if (!tpl.fields || tpl.fields.length === 0) {
-    ElMessage.warning('请添加表单字段')
+
+  if (!currentTemplate.fields || currentTemplate.fields.length === 0) {
+    ElMessage.warning('请先进入设计器添加表单字段后再发布')
     return
   }
-  
+
   // 进入发布预览模式
   isPublishPreview.value = true
   previewFields.value = currentTemplate.fields.map(f => ({...f, _value:''}))
   previewFields.value.forEach(f => { previewData[f.name] = f.defaultValue || '' })
   showPreview.value = true
+}
+
+// 撤回发布：将 is_published 设为 false
+async function unpublishTemplate(t: any) {
+  try {
+    await templateAPI.update(t.id, { is_published: false })
+    // 同步列表
+    const listItem = templates.value.find(x => x.id === t.id)
+    if (listItem) listItem.is_published = false
+    // 同步 currentTemplate
+    if ((currentTemplate as any).id === t.id) {
+      ;(currentTemplate as any).is_published = false
+    }
+    ElMessage.success('已撤回发布，模板恢复为草稿状态')
+  } catch (e: any) {
+    ElMessage.error('撤回失败: ' + (e?.message || ''))
+  }
 }
 
 // 预览界面点击立即发布
@@ -1277,14 +1533,19 @@ async function saveTemplate() {
   const fieldsToSave = currentTemplate.fields.map(({_key, _value, optionsText, ...rest}: any) => rest)
   try {
     if (currentTemplate.id) {
-      await templateAPI.update(currentTemplate.id, { name:currentTemplate.name, code:currentTemplate.code, description:currentTemplate.description, category:currentTemplate.category, modules:[{name:'main', label:'主表单', fields:fieldsToSave}] })
+      await templateAPI.update(currentTemplate.id, { name:currentTemplate.name, code:currentTemplate.code, description:currentTemplate.description, category:currentTemplate.category, is_public:currentTemplate.is_public, modules:[{name:'main', label:'主表单', fields:fieldsToSave}] })
       ElMessage.success('模板已更新')
     } else {
       const res: any = await templateAPI.create({ name:currentTemplate.name, code:currentTemplate.code, description:currentTemplate.description, category:currentTemplate.category, modules:[{name:'main', label:'主表单', fields:fieldsToSave}] })
+      console.log('[saveTemplate] 创建返回:', res)
       currentTemplate.id = res.id; templates.value.unshift(res)
       ElMessage.success('模板已保存')
     }
-  } catch { ElMessage.error('保存失败') }
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || e?.message || '未知错误'
+    console.error('[saveTemplate] 保存失败:', msg, e)
+    ElMessage.error('保存失败: ' + msg)
+  }
 }
 async function deleteTemplate(t: any) {
   try {
@@ -1328,6 +1589,19 @@ function countFields(t: any) {
   return 0
 }
 function formatDateShort(s: string|null) { return s ? new Date(s).toLocaleDateString('zh-CN') : '-' }
+function formatDate(s: string|null) {
+  if (!s) return '-'
+  const d = new Date(s)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+// 获取当前用户ID
+const currentUserId = computed(() => userStore.userInfo?.id ?? null)
+// 获取创建人显示名
+function getCreatorName(t: any) {
+  if (!t.created_by) return '—'
+  if (t.created_by === currentUserId.value) return '我'
+  return `用户${t.created_by}`
+}
 function getFieldTypeLabel(type: string) { return fieldTypes.find(f => f.type === type)?.label || type }
 function getFieldTypeStyle(type: string) {
   const styles: Record<string,string> = { text:'', textarea:'info', number:'warning', password:'danger', email:'success', phone:'success', url:'info', date:'primary', datetime:'primary', select:'success', radio:'info', checkbox:'warning', switch:'danger', upload:'info', image:'success' }
@@ -1373,12 +1647,40 @@ const showImport = ref(false)
 const importStep = ref(0)
 const importLoading = ref(false)
 const importFileName = ref('')
-const importData = reactive({ headers: [] as string[], rows: [] as any[], all_rows: [] as any[], total_rows: 0, total_columns: 0, sheet_names: [] as string[], current_sheet: 'Sheet1', header_row: 0 })
+const importData = reactive({
+  headers: [] as string[],
+  rows: [] as any[],
+  all_rows: [] as any[],
+  total_rows: 0,
+  total_columns: 0,
+  sheet_names: [] as string[],
+  current_sheet: 'Sheet1',
+  header_row: 0,
+  potential_headers: [] as any[],
+  detected_header_row: 0,
+  filename: ''
+})
 const importFields = ref<any[]>([])
 const importTemplateForm = reactive({ name: '', description: '', category: 'general' })
 const uploadRef = ref()
 const importHeaderRow = ref(0)
 const importSheetName = ref('')
+const importDependenciesStatus = ref<any>(null)  // 依赖状态
+
+// 获取导入依赖状态
+async function fetchImportDependenciesStatus() {
+  try {
+    const res = await (window as any).fetch('/api/v1/import/status', {
+      headers: { Authorization: 'Bearer ' + (localStorage.getItem('kflower_token') || '') }
+    })
+    const json = await res.json()
+    if (json.success) {
+      importDependenciesStatus.value = json.data
+    }
+  } catch (e) {
+    console.warn('获取导入依赖状态失败', e)
+  }
+}
 const importSelectedFields = ref<Record<number, boolean>>({})
 const importSelectAll = ref(true)
 const importSelectIndeterminate = ref(false)
@@ -1454,25 +1756,29 @@ async function doParseFile(rawFile: File, headerRow: number, sheetName: string) 
     })
     const json = await res.json()
     if (json.success) {
-      importData.headers = json.data.headers
-      importData.rows = json.data.rows
-      importData.all_rows = json.data.all_rows || [json.data.headers, ...json.data.rows]
-      importData.total_rows = json.data.total_rows
-      importData.total_columns = json.data.total_columns
-      importData.sheet_names = json.data.sheet_names || []
-      importData.current_sheet = json.data.current_sheet || 'Sheet1'
-      importData.header_row = json.data.header_row || 0
-      importFields.value = json.data.fields.map((f: any) => ({
-        ...f,
-        optionsText: Array.isArray(f.options) ? f.options.join(',') : ''
-      }))
-      // 初始化字段全选
-      importSelectedFields.value = {}
-      json.data.headers.forEach((_: any, idx: number) => { importSelectedFields.value[idx] = true })
-      importSelectAll.value = true
-      importSelectIndeterminate.value = false
+      const data = json.data || {}
+
+      // 保存原始数据和候选表头
+      importData.all_rows = data.all_rows || []
+      importData.potential_headers = data.potential_headers || []
+      importData.detected_header_row = data.detected_header_row ?? 0
+      importData.sheet_names = data.sheet_names || []
+      importData.current_sheet = data.current_sheet || 'Sheet1'
+      importData.filename = data.filename || importFileName.value
+
+      // 自动选择智能检测的最佳表头行
+      importHeaderRow.value = data.detected_header_row ?? 0
+
+      // 调用 apply-header 获取表头和字段
+      await applyHeaderRow(importHeaderRow.value)
+
       // 自动填入模板名称
-      importTemplateForm.name = importFileName.value.replace(/\.(xlsx|xls|csv|png|jpg|jpeg|bmp)$/i, '')
+      if (data.template_name) {
+        importTemplateForm.name = data.template_name
+      } else {
+        importTemplateForm.name = importFileName.value.replace(/\.(xlsx|xls|csv|png|jpg|jpeg|bmp|docx|json)$/i, '')
+      }
+
       importStep.value = 1
       ElMessage.success(json.message)
     } else {
@@ -1483,9 +1789,63 @@ async function doParseFile(rawFile: File, headerRow: number, sheetName: string) 
   }
 }
 
+// 应用选定的表头行
+async function applyHeaderRow(headerRow: number) {
+  if (!importData.all_rows || importData.all_rows.length === 0) return
+
+  try {
+    const res = await (window as any).fetch('/api/v1/import/apply-header', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + (localStorage.getItem('kflower_token') || ''),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        all_rows: importData.all_rows,
+        header_row: headerRow
+      })
+    })
+    const json = await res.json()
+    if (json.success) {
+      const data = json.data || {}
+      importData.headers = data.headers || []
+      importData.rows = data.rows || []
+      importData.total_rows = data.total_rows ?? 0
+      importData.total_columns = data.total_columns ?? 0
+      importData.header_row = data.header_row ?? 0
+
+      const fields: any[] = Array.isArray(data.fields) ? data.fields : []
+      importFields.value = fields.map((f: any) => ({
+        ...f,
+        optionsText: Array.isArray(f.options) ? f.options.join(',') : ''
+      }))
+
+      // 初始化字段全选
+      importSelectedFields.value = {}
+      importData.headers.forEach((_: any, idx: number) => { importSelectedFields.value[idx] = true })
+      importSelectAll.value = true
+      importSelectIndeterminate.value = false
+
+      if (fields.length === 0) {
+        ElMessage.warning('未能识别到有效字段，请检查表头行是否正确')
+      }
+    } else {
+      ElMessage.warning('应用表头失败: ' + (json.message || '未知错误'))
+    }
+  } catch (e: any) {
+    ElMessage.error('应用表头失败: ' + (e.message || '网络错误'))
+  }
+}
+
+// 选择表头行
+async function selectHeaderRow(rowIndex: number) {
+  importHeaderRow.value = rowIndex
+  await applyHeaderRow(rowIndex)
+}
+
 async function reparseWithHeaderRow() {
-  if (!importFileRaw.value) return
-  await doParseFile(importFileRaw.value, importHeaderRow.value, importSheetName.value)
+  // 切换表头行只需重新应用，不需要重新上传文件
+  await applyHeaderRow(importHeaderRow.value)
 }
 
 async function reparseWithSheet() {
@@ -1518,6 +1878,11 @@ function goToFieldAdjust() {
   // 过滤 importFields 只保留选中的
   importFields.value = selectedIndices.map(idx => importFields.value[idx]).filter(Boolean)
   importStep.value = 2
+}
+
+// 导入对话框打开时获取依赖状态
+function onImportDialogOpen() {
+  fetchImportDependenciesStatus()
 }
 
 async function loadSampleData(type: string) {
@@ -1707,30 +2072,39 @@ async function generateWithAI() {
   {"type":"textarea","label":"备注","name":"remark","required":false,"width":"100%","placeholder":"请输入备注"}
 ]`
 
-    // 调用 AI API
-    const response = await fetch('/api/v1/ai/chat', {
+    // 获取选中的模型信息
+    const selectedModel = aiStore.models.find(m => m.modelId === selectedModelId.value)
+    
+    // 调用 AI API - 使用 agent/chat 接口，传入系统提示词 + 用户消息
+    const response = await fetch('/api/v1/agent/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + localStorage.getItem('kflower_token')
       },
       body: JSON.stringify({
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: aiPrompt.value }
-        ],
-        temperature: 0.7,
-        model: selectedModelId.value || undefined
+        message: systemPrompt + '\n\n用户需求：' + aiPrompt.value,
+        enable_tools: false,
+        model: selectedModelId.value || undefined,
+        provider: selectedModel?.provider || undefined
       })
     })
     
-    const result = await response.json()
+    // 处理非 JSON 响应（如错误页面）
+    let result: any
+    const contentType = response.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      result = await response.json()
+    } else {
+      const text = await response.text()
+      throw new Error('服务器返回了非 JSON 响应，请检查后端日志。响应内容：' + text.slice(0, 200))
+    }
 
     // ─── 从 AI 响应中提取 JSON ───
-    if (!result.success && !result.data && !result.content) {
+    if (!result.response && !result.data && !result.content) {
       throw new Error('AI 服务返回错误：' + (result.message || result.error || JSON.stringify(result)))
     }
-    const aiContent: string = result.data?.content || result.content || result.message || ''
+    const aiContent: string = result.response || result.data?.content || result.content || ''
     console.log('AI 原始响应:', aiContent)
 
     // 去除 Markdown 代码块标记，提取 JSON 数组
@@ -2095,6 +2469,11 @@ function getTemplateFields(t: any): any[] {
   return fields
 }
 
+// 打开表单填写页（从列表操作列点击"填表"）
+function openFormSubmit(t: any) {
+  openDataForm(t)
+}
+
 function openDataForm(t: any) {
   dataFormTemplate.value = t
   dataFormFields.value = getTemplateFields(t)
@@ -2330,6 +2709,15 @@ onMounted(async () => {
 }
 .category-filter { margin-bottom: 16px; }
 .loading-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.template-table-wrapper { background: white; border-radius: 8px; padding: 16px;
+  .table-name-cell { display: flex; align-items: center; gap: 10px; }
+  .table-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
+  .table-name-text { font-weight: 500; color: #303133; }
+  .table-code-text { font-size: 12px; color: #909399; }
+  .field-count-num { font-weight: 600; color: #409EFF; }
+  .template-id-text { font-family: monospace; color: #909399; font-size: 12px; }
+  .el-table__row { cursor: pointer; &:hover > td { background-color: #f5f7fa !important; } }
+}
 .template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .template-card { cursor: pointer; transition: all 0.2s;
   &:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
@@ -2394,6 +2782,53 @@ onMounted(async () => {
 .upload-hint { font-size: 12px; color: #999; }
 .upload-examples { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
 .upload-examples .el-tag { cursor: pointer; }
+/* 导入依赖状态提示 */
+.import-deps-status {
+  background: #f5f7fa;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border: 1px solid #ebeef5;
+}
+.import-deps-status .deps-title {
+  font-size: 13px;
+  color: #606266;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.import-deps-status .deps-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.import-deps-status .dep-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.import-deps-status .dep-item.ok {
+  color: #67c23a;
+  background: #f0f9eb;
+}
+.import-deps-status .dep-item.warn {
+  color: #e6a23c;
+  background: #fdf6ec;
+}
+.import-deps-status .dep-item.error {
+  color: #f56c6c;
+  background: #fef0f0;
+}
+.import-deps-status .deps-tip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .preview-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .field-adjust-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .step-actions { display: flex; justify-content: center; gap: 12px; margin-top: 20px; }

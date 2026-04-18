@@ -30,7 +30,9 @@ class AgentService:
         conversation_id: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
         use_rag: bool = True,
-        enable_tools: bool = True
+        enable_tools: bool = True,
+        model: Optional[str] = None,
+        provider: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         智能体对话
@@ -41,6 +43,8 @@ class AgentService:
             context: 上下文信息（用户ID、租户ID等）
             use_rag: 是否使用RAG检索
             enable_tools: 是否启用工具调用
+            model: 指定模型（可选）
+            provider: 指定提供商（可选）
             
         Returns:
             对话响应
@@ -81,16 +85,16 @@ class AgentService:
                 ])
                 messages[-1]["content"] += rag_context
         
-        # 调用大模型前加载配置
-        await ai_gateway.load_config_from_db()
+        # 调用大模型前加载配置（强制重新加载以确保最新）
+        await ai_gateway.load_config_from_db(force=True)
         
         # 调用大模型
         if enable_tools:
             # 带工具调用的对话
-            response = await self._chat_with_tools(messages, context)
+            response = await self._chat_with_tools(messages, context, model, provider)
         else:
             # 普通对话
-            response = await ai_gateway.chat(messages)
+            response = await ai_gateway.chat(messages, model=model, provider=provider)
         
         # 处理响应
         if "error" in response:
@@ -116,7 +120,9 @@ class AgentService:
     async def _chat_with_tools(
         self,
         messages: List[Dict],
-        context: Dict[str, Any]
+        context: Dict[str, Any],
+        model: Optional[str] = None,
+        provider: Optional[str] = None
     ) -> Dict[str, Any]:
         """带工具调用的对话"""
         # 获取工具定义
@@ -126,7 +132,9 @@ class AgentService:
         response = await ai_gateway.chat(
             messages=messages,
             tools=tools,
-            tool_choice="auto"
+            tool_choice="auto",
+            model=model,
+            provider=provider
         )
         
         if "error" in response:
@@ -169,7 +177,7 @@ class AgentService:
             })
         
         # 第二次调用：基于工具结果生成最终回复
-        final_response = await ai_gateway.chat(messages)
+        final_response = await ai_gateway.chat(messages, model=model, provider=provider)
         
         return {
             "content": final_response.get("content", ""),
@@ -226,7 +234,9 @@ class AgentService:
             json_match = re.search(r'\{.*\}', content, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group())
-        except:
+        except json.JSONDecodeError:
+            pass
+        except Exception:
             pass
         
         return {

@@ -8,39 +8,39 @@ echo   Kflower - Starting Services...
 echo ========================================
 echo.
 
-:: Kill existing services first
+::: Kill existing services first
 echo [*] Stopping existing services...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8898 " ^| findstr "LISTENING"') do taskkill /F /PID %%a 2>nul
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5111 " ^| findstr "LISTENING"') do taskkill /F /PID %%a 2>nul
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8788 " ^| findstr "LISTENING"') do taskkill /F /PID %%a 2>nul
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5123 " ^| findstr "LISTENING"') do taskkill /F /PID %%a 2>nul
 timeout /t 1 >nul
 
-:: Start backend
-echo [*] Starting Backend (port 8898)...
-start "Kflower-Backend" cmd /c "cd /d D:\kflower\kflower-backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8898"
+::: Start backend
+echo [*] Starting Backend (port 8788)...
+start "Kflower-Backend" cmd /c "cd /d E:\kkflower\kflower-backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8788"
 echo [*] Waiting for backend to start...
 timeout /t 3 >nul
 
-:: Start frontend
-echo [*] Starting Frontend (port 5111)...
-start "Kflower-Frontend" cmd /c "cd /d D:\kflower\kflower-frontend && npm run dev"
+::: Start frontend
+echo [*] Starting Frontend (port 5123)...
+start "Kflower-Frontend" cmd /c "cd /d E:\kkflower\kflower-frontend && npm run dev"
 echo [*] Waiting for frontend to start...
 timeout /t 4 >nul
 
-:: Check status
+::: Check status
 echo.
 echo ========================================
 echo   Checking services...
 echo ========================================
-netstat -ano | findstr ":8898 .*LISTENING" >nul
+netstat -ano | findstr ":8788 .*LISTENING" >nul
 if %errorlevel%==0 (
-    echo [OK] Backend:  http://127.0.0.1:8898
+    echo [OK] Backend:  http://127.0.0.1:8788
 ) else (
     echo [FAIL] Backend failed to start
 )
 
-netstat -ano | findstr ":5111 .*LISTENING" >nul
+netstat -ano | findstr ":5123 .*LISTENING" >nul
 if %errorlevel%==0 (
-    echo [OK] Frontend: http://localhost:5111
+    echo [OK] Frontend: http://localhost:5123
 ) else (
     echo [FAIL] Frontend failed to start
 )
@@ -48,7 +48,7 @@ if %errorlevel%==0 (
 echo.
 echo ========================================
 echo   All services started!
-echo   Frontend: http://localhost:5111
+echo   Frontend: http://localhost:5123
 echo   Login:    admin / admin123
 echo ========================================
 echo.

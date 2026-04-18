@@ -64,8 +64,10 @@ class InferenceService:
             if content.endswith("```"):
                 content = content[:-3]
             return json.loads(content.strip())
-        except:
-            return {"intent": "unknown", "confidence": 0.5}
+        except json.JSONDecodeError as e:
+            return {"intent": "unknown", "confidence": 0.5, "parse_error": str(e)}
+        except Exception as e:
+            return {"intent": "unknown", "confidence": 0.5, "error": str(e)}
     
     async def generate_template(self, description: str) -> Dict[str, Any]:
         """根据描述生成模板，返回可直接创建模板的完整结构化数据"""
@@ -129,8 +131,10 @@ class InferenceService:
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0]
             return json.loads(content.strip())
+        except json.JSONDecodeError as e:
+            return {"error": f"AI 返回的 JSON 格式无效: {str(e)}", "raw_content": result.get("content", "")[:500]}
         except Exception as e:
-            return {"error": str(e), "raw_content": result["content"]}
+            return {"error": f"解析失败: {str(e)}", "raw_content": result.get("content", "")[:500]}
     
     async def suggest_fields(self, module_name: str, module_description: str) -> List[Dict]:
         """智能推荐字段"""
@@ -160,7 +164,9 @@ class InferenceService:
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0]
             return json.loads(content.strip())
-        except:
+        except json.JSONDecodeError:
+            return []
+        except Exception:
             return []
     
     async def explain_workflow(self, workflow_description: str) -> Dict[str, Any]:
@@ -189,7 +195,9 @@ class InferenceService:
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]
             return json.loads(content)
-        except:
+        except json.JSONDecodeError:
+            return {"summary": result["content"]}
+        except Exception:
             return {"summary": result["content"]}
     
     async def generate_workflow(self, description: str) -> Dict[str, Any]:
@@ -305,7 +313,9 @@ class InferenceService:
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]
             return json.loads(content)
-        except:
+        except json.JSONDecodeError:
+            return {"error": "AI 返回的 JSON 格式无效"}
+        except Exception:
             return {"error": "解析失败"}
     
     async def generate_formula(self, description: str) -> str:

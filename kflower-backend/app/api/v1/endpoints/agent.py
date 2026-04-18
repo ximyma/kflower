@@ -19,6 +19,9 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = None
     use_rag: bool = True
     enable_tools: bool = True
+    model: Optional[str] = None  # 可选：指定模型
+    provider: Optional[str] = None  # 可选：指定提供商
+    ai_type: Optional[str] = None  # 可选：AI类型，用于模块AI设置 (chatGeneral, chatTemplate, chatWorkflow等)
 
 
 class TemplateGenerateRequest(BaseModel):
@@ -42,21 +45,38 @@ async def chat(
     
     与 AI 智能体进行对话，支持工具调用和 RAG 检索增强
     """
+    from app.core.ai_digital_base.gateway import ai_gateway
+    
     context = {
         "user_id": current_user.id,
         "user_name": current_user.full_name or current_user.username,
-        "tenant_id": getattr(current_user, 'tenant_id', None)
+        "tenant_id": getattr(current_user, 'tenant_id', None),
+        "ai_type": request.ai_type,
     }
     
-    result = await agent_service.chat(
-        message=request.message,
-        conversation_id=request.conversation_id,
-        context=context,
-        use_rag=request.use_rag,
-        enable_tools=request.enable_tools
-    )
+    # 如果指定了 ai_type，从模块AI设置中获取模型
+    effective_model = request.model
+    effective_provider = request.provider
+    if request.ai_type and not request.model:
+        await ai_gateway.load_config_from_db()
+        effective_model = ai_gateway.get_module_model(request.ai_type)
     
-    return result
+    try:
+        result = await agent_service.chat(
+            message=request.message,
+            conversation_id=request.conversation_id,
+            context=context,
+            use_rag=request.use_rag,
+            enable_tools=request.enable_tools,
+            model=effective_model,
+            provider=effective_provider
+        )
+        return result
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Agent chat error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Agent service error: {str(e)}")
 
 
 @router.post("/generate-template")

@@ -223,7 +223,5 @@ def get_rag_retriever():
         _rag_retriever = RAGRetriever()
     return _rag_retriever
 
-# 为了兼容旧代码
-@property
-def rag_retriever():
-    return get_rag_retriever()
+# 导出全局实例供其他模块使用
+rag_retriever = get_rag_retriever()

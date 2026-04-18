@@ -85,6 +85,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '系统设置' }
       },
       {
+        path: 'users',
+        name: 'Users',
+        component: () => import('../../pc/views/Users.vue'),
+        meta: { title: '用户管理', requiresAdmin: true }
+      },
+      {
         path: 'migration',
         name: 'Migration',
         component: () => import('../../pc/views/Migration.vue'),
@@ -168,6 +174,13 @@ router.beforeEach(async (to, from, next) => {
       next({ name: 'Login', query: { redirect: to.fullPath } })
       return
     }
+  }
+
+  // 检查管理员权限
+  if (to.meta.requiresAdmin && !userStore.isAdmin) {
+    // 非管理员访问需要管理员权限的页面，重定向到首页
+    next({ name: 'Home' })
+    return
   }
 
   // 已登录访问登录页

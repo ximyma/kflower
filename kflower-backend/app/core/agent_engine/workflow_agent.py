@@ -94,7 +94,9 @@ class WorkflowAgent(BaseAgent):
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]
             return json.loads(content)
-        except:
+        except json.JSONDecodeError:
+            return {"error": "AI 返回的 JSON 格式无效"}
+        except Exception:
             return {"error": "解析失败"}
     
     async def _summarize_approval(self, content: str) -> Dict[str, Any]:
@@ -125,5 +127,7 @@ class WorkflowAgent(BaseAgent):
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]
             return json.loads(content)
-        except:
+        except json.JSONDecodeError:
+            return {"summary": result["content"]}
+        except Exception:
             return {"summary": result["content"]}

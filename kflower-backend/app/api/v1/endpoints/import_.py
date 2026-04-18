@@ -1,106 +1,199 @@
+# -*- coding: utf-8 -*-
 """
-API路由 - 智能导入（Excel/CSV/图片OCR）
+智能导入 API - 统一入口
+支持 Excel/CSV/Word/图片/JSON 文件解析，智能表头检测和用户自选
 """
-import re
 import json
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from typing import Optional, List
-import io
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
 from app.models.workflow import Template
-from app.schemas.schemas import BaseResponse
 from app.services.import_service import (
-    parse_excel, extract_table_from_image,
-    generate_fields_from_data, build_preview_table,
-    enhance_with_jieba, export_template_json
+    parse_file, generate_fields, build_preview,
+    get_dependencies_status, apply_header_row
 )
+
+
+class ApplyHeaderRequest(BaseModel):
+    all_rows: List[List[str]]
+    header_row: int = 0
 
 router = APIRouter(prefix="/import", tags=["智能导入"])
 
 
+@router.get("/status")
+async def get_import_status(current_user: User = Depends(get_current_user)):
+    """
+    获取智能导入功能的依赖组件状态
+    """
+    status = get_dependencies_status()
+    return JSONResponse({
+        "success": True,
+        "data": status
+    })
+
+
 @router.post("/parse")
-async def parse_file(
+async def parse_upload_file(
     file: UploadFile = File(...),
     header_row: int = Form(0),
     sheet_name: str = Form(""),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    解析上传的文件（Excel/CSV/图片），返回表头和预览数据
-    - header_row: 指定哪一行作为表头（0=第一行，默认0）
-    - sheet_name: 指定工作表名（仅Excel有效，默认第一个工作表）
+    解析文件并返回候选表头行列表
+    
+    返回数据包含：
+    - all_rows: 所有原始行数据
+    - potential_headers: 候选表头行列表（带置信度）
+    - detected_header_row: 智能检测的最佳表头行
+    - source: 数据来源类型
+    
+    前端需要：
+    1. 显示候选表头行让用户选择
+    2. 用户选择后调用 /import/apply-header 确认
     """
     try:
         contents = await file.read()
         filename = file.filename or 'unknown'
-
-        if filename.lower().endswith(('.xlsx', '.xls', '.csv')):
-            # 解析 Excel/CSV
-            result = parse_excel(
-                contents, filename,
-                header_row=header_row,
-                sheet_name=sheet_name if sheet_name else None
-            )
-            headers = result['headers']
-            rows = result['rows']
-            all_rows = result.get('all_rows', [])
-            sheet_names = result.get('sheet_names', [])
-        elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')):
-            # OCR 解析图片
-            headers, rows = extract_table_from_image(contents)
-            if not headers:
-                return JSONResponse({
-                    "success": False,
-                    "message": "未能从图片中识别到表格，请确保图片清晰、包含表格线或清晰的行列数据"
+        
+        # 解析文件，获取原始数据和候选表头
+        result = parse_file(
+            file_bytes=contents,
+            filename=filename,
+            header_row=header_row,
+            sheet_name=sheet_name if sheet_name else None
+        )
+        
+        # 获取基本信息
+        source = result.get('source', 'unknown')
+        file_type = result.get('file_type', 'unknown')
+        all_rows = result.get('all_rows', [])
+        
+        if not all_rows:
+            return JSONResponse({
+                "success": False,
+                "message": "未能解析到有效数据"
+            })
+        
+        # 获取候选表头行列表
+        potential_headers = result.get('potential_headers', [])
+        detected_row = result.get('detected_header_row', 0)
+        
+        # 如果没有候选表头，构建默认列表
+        if not potential_headers:
+            potential_headers = []
+            for idx, row in enumerate(all_rows[:10]):
+                preview = ' | '.join([c.strip() for c in row[:5] if c.strip()])
+                if not preview:
+                    preview = '(空行)'
+                potential_headers.append({
+                    'row': idx,
+                    'cells': row,
+                    'preview': preview if preview else f'第{idx + 1}行',
+                    'is_potential': idx == detected_row,
+                    'confidence': 1.0 if idx == detected_row else 0.3
                 })
-            all_rows = [headers] + rows
-            sheet_names = []
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail="不支持的文件格式，支持: .xlsx, .xls, .csv, .png, .jpg, .jpeg, .bmp"
-            )
-
-        if not headers:
-            raise HTTPException(status_code=400, detail="未能解析到有效的表头数据")
-
-        # 生成字段定义
-        fields = generate_fields_from_data(headers, rows[:50])
-
-        # 构建预览数据
-        preview = build_preview_table(headers, rows, fields)
-
+        
+        # 获取文件名
+        template_name = filename.rsplit('.', 1)[0] if filename else '未命名'
+        
         return JSONResponse({
             "success": True,
-            "message": f"成功解析 {len(rows)} 行数据",
+            "message": f"成功解析 {source} 文件，共 {len(all_rows)} 行数据",
+            "data": {
+                "all_rows": all_rows[:50],  # 限制返回行数
+                "potential_headers": potential_headers,
+                "detected_header_row": detected_row,
+                "filename": filename,
+                "template_name": template_name,
+                "source": source,
+                "file_type": file_type,
+                "sheet_names": result.get('sheet_names', []),
+                "current_sheet": result.get('current_sheet', ''),
+                "extracted_text": result.get('extracted_text', '')
+            }
+        })
+        
+    except Exception as e:
+        error_msg = str(e)
+        return JSONResponse({
+            "success": False,
+            "message": error_msg,
+            "detail": error_msg
+        }, status_code=400)
+
+
+@router.post("/apply-header")
+async def apply_selected_header(
+    body: ApplyHeaderRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    用户选择表头行后，应用表头并生成字段定义
+    
+    前端以 JSON body 调用此接口，确认表头行后生成表单字段
+    """
+    try:
+        all_rows = body.all_rows
+        header_row = body.header_row
+
+        if not all_rows:
+            return JSONResponse({
+                "success": False,
+                "message": "数据不能为空"
+            }, status_code=400)
+
+        # 将所有元素统一转为字符串（前端数据可能包含数字等类型）
+        all_rows = [[str(cell) if cell is not None else '' for cell in row] for row in all_rows]
+        
+        # 确保索引有效
+        header_row = max(0, min(header_row, len(all_rows) - 1))
+        
+        # 获取表头和数据
+        headers = all_rows[header_row]
+        rows = all_rows[header_row + 1:]
+        
+        if not headers:
+            return JSONResponse({
+                "success": False,
+                "message": "选定的表头行为空"
+            }, status_code=400)
+        
+        # 生成字段定义
+        fields = generate_fields(headers, rows[:50])
+        
+        # 构建预览
+        preview = build_preview(headers, rows, fields)
+        
+        return JSONResponse({
+            "success": True,
+            "message": f"已应用表头，共 {len(headers)} 个字段，{len(rows)} 行数据",
             "data": {
                 "headers": headers,
-                "rows": rows[:20],  # 限制预览行数
-                "all_rows": all_rows[:30],  # 所有行（含表头行），供前端选择表头行
+                "rows": rows[:20],
+                "all_rows": all_rows,
                 "total_rows": len(rows),
                 "total_columns": len(headers),
                 "fields": fields,
                 "preview": preview,
-                "filename": filename,
-                "analysis": enhance_with_jieba(headers, rows[:10]),
-                "sheet_names": sheet_names,
-                "current_sheet": sheet_name if sheet_name else (sheet_names[0] if sheet_names else 'Sheet1'),
                 "header_row": header_row
             }
         })
-
-    except HTTPException:
-        raise
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"解析失败: {str(e)}")
+        return JSONResponse({
+            "success": False,
+            "message": str(e)
+        }, status_code=400)
 
 
 @router.post("/preview")
@@ -108,20 +201,22 @@ async def preview_import(
     fields: List[dict],
     headers: List[str],
     rows: List[List[str]],
-    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    预览导入效果（根据调整后的字段定义重新生成预览）
+    预览导入效果
     """
     try:
-        preview = build_preview_table(headers, rows, fields)
+        preview = build_preview(headers, rows, fields)
         return JSONResponse({
             "success": True,
             "data": preview
         })
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse({
+            "success": False,
+            "message": str(e)
+        }, status_code=400)
 
 
 @router.post("/create-template")
@@ -131,23 +226,23 @@ async def create_template_from_import(
     category: str = Form("general"),
     fields: str = Form(...),  # JSON string
     filename: str = Form(""),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    从导入数据直接创建模板
+    从导入数据创建模板
     """
     try:
-        # 解析字段定义
         fields_list = json.loads(fields)
-
+        
         if not fields_list:
-            raise HTTPException(status_code=400, detail="字段列表不能为空")
-
-        # 生成唯一编码
+            return JSONResponse({
+                "success": False,
+                "message": "字段列表不能为空"
+            }, status_code=400)
+        
         code = f"imp_{uuid.uuid4().hex[:8]}"
-
-        # 构建 modules 配置（与现有模板格式一致）
+        
         modules = [
             {
                 "name": "main",
@@ -155,8 +250,7 @@ async def create_template_from_import(
                 "fields": fields_list
             }
         ]
-
-        # 创建模板
+        
         template = Template(
             name=name,
             code=code,
@@ -166,13 +260,14 @@ async def create_template_from_import(
             ai_generated=False,
             organization_id=current_user.organization_id,
             created_by=current_user.id,
-            is_published=True
+            is_published=False,  # 默认草稿状态
+            is_public=False
         )
-
+        
         db.add(template)
         await db.commit()
         await db.refresh(template)
-
+        
         return JSONResponse({
             "success": True,
             "message": "模板创建成功",
@@ -185,132 +280,46 @@ async def create_template_from_import(
                 "created_at": template.created_at.isoformat() if template.created_at else None
             }
         })
-
+        
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="字段数据格式错误")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"创建模板失败: {str(e)}")
-
-
-@router.post("/import-data")
-async def import_data_to_template(
-    template_id: int,
-    rows: str,  # JSON string: List[List[str]]
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    将数据行批量导入到指定模板（创建实例记录）
-    """
-    from app.models.workflow import TemplateInstance
-
-    try:
-        # 查询模板
-        result = await db.execute(
-            select(Template).where(Template.id == template_id)
-        )
-        template = result.scalar_one_or_none()
-
-        if not template:
-            raise HTTPException(status_code=404, detail="模板不存在")
-
-        # 解析数据行
-        data_rows = json.loads(rows)
-        if not data_rows:
-            raise HTTPException(status_code=400, detail="没有数据行")
-
-        # 获取字段定义
-        modules = template.modules or []
-        all_fields = []
-        for m in modules:
-            if isinstance(m, dict) and 'fields' in m:
-                all_fields.extend(m['fields'])
-
-        if not all_fields:
-            raise HTTPException(status_code=400, detail="模板中没有字段定义")
-
-        # 创建实例
-        created_count = 0
-        for row in data_rows:
-            row_data = {}
-            for i, field in enumerate(all_fields):
-                if i < len(row):
-                    row_data[field['name']] = row[i]
-                else:
-                    row_data[field['name']] = ''
-
-            instance_code = f"ins_{uuid.uuid4().hex[:8]}"
-            instance = TemplateInstance(
-                name=f"{template.name}_数据{created_count + 1}",
-                code=instance_code,
-                template_id=template_id,
-                config={"data": row_data},
-                organization_id=current_user.organization_id,
-                created_by=current_user.id
-            )
-            db.add(instance)
-            created_count += 1
-
-        await db.commit()
-
         return JSONResponse({
-            "success": True,
-            "message": f"成功导入 {created_count} 条数据",
-            "data": {
-                "template_id": template_id,
-                "template_name": template.name,
-                "imported_count": created_count
-            }
-        })
-
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="数据格式错误")
+            "success": False,
+            "message": "字段数据格式错误"
+        }, status_code=400)
     except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=f"导入失败: {str(e)}")
+        return JSONResponse({
+            "success": False,
+            "message": f"创建模板失败: {str(e)}"
+        }, status_code=500)
 
 
 @router.get("/field-types")
-async def get_field_types(
-    current_user: User = Depends(get_current_user)
-):
+async def get_field_types(current_user: User = Depends(get_current_user)):
     """
-    获取支持的字段类型列表（供前端使用）
+    获取支持的字段类型列表
     """
     return JSONResponse({
         "success": True,
         "data": [
-            {"type": "text", "label": "单行文本", "icon": "Edit", "category": "基础"},
-            {"type": "textarea", "label": "多行文本", "icon": "Document", "category": "基础"},
-            {"type": "number", "label": "数字", "icon": "Minus", "category": "基础"},
-            {"type": "money", "label": "金额", "icon": "Ticket", "category": "基础"},
-            {"type": "password", "label": "密码", "icon": "Lock", "category": "基础"},
-            {"type": "email", "label": "邮箱", "icon": "Message", "category": "基础"},
-            {"type": "phone", "label": "电话", "icon": "Phone", "category": "基础"},
-            {"type": "url", "label": "网址", "icon": "Link", "category": "基础"},
-            {"type": "date", "label": "日期", "icon": "Calendar", "category": "日期"},
-            {"type": "datetime", "label": "日期时间", "icon": "Timer", "category": "日期"},
-            {"type": "time", "label": "时间", "icon": "Alarm", "category": "日期"},
-            {"type": "daterange", "label": "日期范围", "icon": "DateRange", "category": "日期"},
-            {"type": "select", "label": "下拉选择", "icon": "ArrowDown", "category": "选择"},
-            {"type": "cascader", "label": "级联选择", "icon": "Share", "category": "选择"},
-            {"type": "radio", "label": "单选", "icon": "Pointer", "category": "选择"},
-            {"type": "checkbox", "label": "多选", "icon": "Finished", "category": "选择"},
-            {"type": "switch", "label": "开关", "icon": "Open", "category": "选择"},
-            {"type": "slider", "label": "滑块", "icon": "Operation", "category": "选择"},
-            {"type": "rate", "label": "评分", "icon": "Star", "category": "选择"},
-            {"type": "richtext", "label": "富文本", "icon": "Notebook", "category": "高级"},
-            {"type": "upload", "label": "文件上传", "icon": "Upload", "category": "高级"},
-            {"type": "image", "label": "图片上传", "icon": "Picture", "category": "高级"},
-            {"type": "signature", "label": "签名", "icon": "EditPen", "category": "高级"},
-            {"type": "divider", "label": "分隔线", "icon": "Minus", "category": "布局"},
-            {"type": "heading", "label": "标题", "icon": "Title", "category": "布局"},
-            {"type": "subform", "label": "子表单", "icon": "List", "category": "数据"},
-            {"type": "relation", "label": "关联数据", "icon": "Connection", "category": "数据"},
-            {"type": "autonum", "label": "自动编号", "icon": "Ticket", "category": "数据"},
-            {"type": "location", "label": "地图位置", "icon": "Location", "category": "特殊"},
-            {"type": "color", "label": "颜色选择", "icon": "Brush", "category": "特殊"},
-            {"type": "user", "label": "人员选择", "icon": "User", "category": "特殊"},
-            {"type": "org", "label": "部门选择", "icon": "OfficeBuilding", "category": "特殊"},
+            {"type": "text", "label": "单行文本", "category": "基础"},
+            {"type": "textarea", "label": "多行文本", "category": "基础"},
+            {"type": "number", "label": "数字", "category": "基础"},
+            {"type": "money", "label": "金额", "category": "基础"},
+            {"type": "email", "label": "邮箱", "category": "基础"},
+            {"type": "phone", "label": "电话", "category": "基础"},
+            {"type": "url", "label": "网址", "category": "基础"},
+            {"type": "date", "label": "日期", "category": "日期"},
+            {"type": "datetime", "label": "日期时间", "category": "日期"},
+            {"type": "time", "label": "时间", "category": "日期"},
+            {"type": "select", "label": "下拉选择", "category": "选择"},
+            {"type": "radio", "label": "单选", "category": "选择"},
+            {"type": "checkbox", "label": "多选", "category": "选择"},
+            {"type": "switch", "label": "开关", "category": "选择"},
+            {"type": "rate", "label": "评分", "category": "选择"},
+            {"type": "slider", "label": "滑块", "category": "选择"},
+            {"type": "upload", "label": "文件上传", "category": "高级"},
+            {"type": "image", "label": "图片上传", "category": "高级"},
+            {"type": "divider", "label": "分隔线", "category": "布局"},
+            {"type": "heading", "label": "标题", "category": "布局"},
         ]
     })

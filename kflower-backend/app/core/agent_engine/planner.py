@@ -67,8 +67,18 @@ class TaskPlanner:
                 content = content.split("```")[1].split("```")[0]
             tasks = json.loads(content)
             return tasks
-        except:
+        except json.JSONDecodeError:
             # 解析失败，返回默认任务
+            return [
+                {
+                    "task_id": "task_1",
+                    "description": user_request,
+                    "agent_type": "general_agent",
+                    "priority": 1,
+                    "dependencies": []
+                }
+            ]
+        except Exception:
             return [
                 {
                     "task_id": "task_1",
@@ -131,7 +141,9 @@ class TaskPlanner:
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]
             return json.loads(content)
-        except:
+        except json.JSONDecodeError:
+            return {"complexity": "medium", "estimated_time_minutes": 5}
+        except Exception:
             return {"complexity": "medium", "estimated_time_minutes": 5}
 
 

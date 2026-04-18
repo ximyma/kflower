@@ -57,18 +57,72 @@ class OCRService:
         self.tesseract_path = self.config.get("tesseract_path", settings.TESSERACT_PATH)
         self.default_lang = self.config.get("lang", settings.OCR_DEFAULT_LANG)
         
+        # 尝试从数据库读取配置
+        self._load_from_db()
+        
         # 如果配置了 Tesseract 路径，设置环境变量
         if self.tesseract_path:
-            import pytesseract
-            pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
+            try:
+                import pytesseract
+                pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
+            except Exception:
+                pass
+
+    def _load_from_db(self):
+        """从数据库加载配置"""
+        try:
+            from app.core.config import settings
+            db_path = settings.DATABASE_URL
+            
+            if 'sqlite' in db_path:
+                if ':///' in db_path:
+                    db_file = db_path.split(':///')[-1]
+                else:
+                    db_file = db_path.split('://')[1]
+                
+                import sqlite3
+                conn = sqlite3.connect(db_file)
+                cursor = conn.cursor()
+                
+                # 读取 OCR 配置
+                cursor.execute("SELECT value FROM system_configs WHERE `key` = 'ocr_tesseract_path' AND organization_id IS NULL")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    self.tesseract_path = row[0]
+                
+                cursor.execute("SELECT value FROM system_configs WHERE `key` = 'ocr_lang' AND organization_id IS NULL")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    self.default_lang = row[0]
+                
+                conn.close()
+        except Exception:
+            pass
 
     def configure(self, tesseract_path: str = None, lang: str = None):
         """配置 OCR"""
         if tesseract_path:
             self.tesseract_path = tesseract_path
-            pytesseract.pytesseract.tesseract_cmd = tesseract_path
+            try:
+                import pytesseract
+                pytesseract.pytesseract.tesseract_cmd = tesseract_path
+            except Exception:
+                pass
         if lang:
             self.default_lang = lang
+
+    def is_configured(self) -> bool:
+        """检查 OCR 是否已正确配置"""
+        if not TESSERACT_AVAILABLE:
+            return False
+        if not self.tesseract_path:
+            return False
+        try:
+            import pytesseract
+            version = pytesseract.get_tesseract_version()
+            return version is not None
+        except Exception:
+            return False
 
     def extract_text(self, image_data: bytes, lang: str = None) -> Dict[str, Any]:
         """
@@ -394,14 +448,302 @@ class EmbeddingService:
         self.embedding_provider = self.config.get("embedding_provider", "api")  # api/local
         self.st_device = self.config.get("st_device", "cpu")
         self._local_models: Dict[str, Any] = {}  # 缓存已加载的本地模型
+        
+        # ============ 新增：多模型配置支持 ============
+        # 用户配置的模型列表
+        self._custom_models: Dict[str, Dict[str, Any]] = {}
+        # 当前使用的模型配置
+        self._current_model_config: Dict[str, Any] = {}
+        
+        # 优先从数据库加载配置
+        if not self._load_from_db():
+            # 如果数据库没有，加载本地配置
+            self._load_custom_models()
+
+    def _load_from_db(self) -> bool:
+        """从数据库加载嵌入模型配置"""
+        try:
+            from app.core.config import settings
+            db_path = settings.DATABASE_URL
+            
+            if 'sqlite' in db_path:
+                if ':///' in db_path:
+                    db_file = db_path.split(':///')[-1]
+                else:
+                    db_file = db_path.split('://')[1]
+                
+                import sqlite3
+                conn = sqlite3.connect(db_file)
+                cursor = conn.cursor()
+                
+                # 读取嵌入模型配置
+                cursor.execute("SELECT value FROM system_configs WHERE `key` = 'embedding_model' AND organization_id IS NULL")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    self.embedding_model = row[0]
+                
+                cursor.execute("SELECT value FROM system_configs WHERE `key` = 'embedding_api_key' AND organization_id IS NULL")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    self.embedding_api_key = row[0]
+                
+                cursor.execute("SELECT value FROM system_configs WHERE `key` = 'embedding_api_base' AND organization_id IS NULL")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    self.embedding_api_base = row[0]
+                
+                cursor.execute("SELECT value FROM system_configs WHERE `key` = 'embedding_provider' AND organization_id IS NULL")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    self.embedding_provider = row[0]
+                
+                cursor.execute("SELECT value FROM system_configs WHERE `key` = 'embedding_custom_models' AND organization_id IS NULL")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    try:
+                        import json
+                        custom_models = json.loads(row[0])
+                        if isinstance(custom_models, dict):
+                            self._custom_models = custom_models
+                    except:
+                        pass
+                
+                conn.close()
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _save_to_db(self) -> bool:
+        """保存嵌入模型配置到数据库"""
+        try:
+            from app.core.config import settings
+            db_path = settings.DATABASE_URL
+            
+            if 'sqlite' in db_path:
+                if ':///' in db_path:
+                    db_file = db_path.split(':///')[-1]
+                else:
+                    db_file = db_path.split('://')[1]
+                
+                import sqlite3
+                conn = sqlite3.connect(db_file)
+                cursor = conn.cursor()
+                
+                configs = [
+                    ('embedding_model', self.embedding_model),
+                    ('embedding_api_key', self.embedding_api_key or ''),
+                    ('embedding_api_base', self.embedding_api_base),
+                    ('embedding_provider', self.embedding_provider),
+                ]
+                
+                for key, value in configs:
+                    cursor.execute(
+                        "INSERT OR REPLACE INTO system_configs (`key`, value, organization_id) VALUES (?, ?, NULL)",
+                        (key, value)
+                    )
+                
+                # 保存自定义模型列表
+                import json
+                cursor.execute(
+                    "INSERT OR REPLACE INTO system_configs (`key`, value, organization_id, value_type) VALUES (?, ?, NULL, 'json')",
+                    ('embedding_custom_models', json.dumps(self._custom_models, ensure_ascii=False))
+                )
+                
+                conn.commit()
+                conn.close()
+                return True
+        except Exception:
+            pass
+        return False
+    
+    def _load_custom_models(self):
+        """从配置文件加载自定义模型列表"""
+        import os
+        config_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        config_file = os.path.join(config_dir, "embedding_models.json")
+        try:
+            if os.path.exists(config_file):
+                with open(config_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self._custom_models = data.get("models", {})
+                    # 设置当前模型
+                    default_model = data.get("default_model")
+                    if default_model and default_model in self._custom_models:
+                        self._current_model_config = self._custom_models[default_model]
+                        self.embedding_model = default_model
+                        self.embedding_api_key = self._current_model_config.get("api_key")
+                        self.embedding_api_base = self._current_model_config.get("api_base", self.embedding_api_base)
+                        self.embedding_provider = self._current_model_config.get("provider", "api")
+                        self.st_device = self._current_model_config.get("device", "cpu")
+        except Exception as e:
+            print(f"加载 embedding 模型配置失败: {e}")
+    
+    def _save_custom_models(self):
+        """保存自定义模型列表到配置文件和数据库"""
+        import os
+        config_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        config_file = os.path.join(config_dir, "embedding_models.json")
+        try:
+            default_model = self.embedding_model if self.embedding_model in self._custom_models else None
+            data = {
+                "models": self._custom_models,
+                "default_model": default_model
+            }
+            with open(config_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            # 同时保存到数据库
+            self._save_to_db()
+            return True
+        except Exception as e:
+            print(f"保存 embedding 模型配置失败: {e}")
+            return False
 
     @staticmethod
     def get_supported_models() -> Dict[str, Dict[str, Any]]:
         """获取所有支持的嵌入模型列表"""
         return EmbeddingService.SUPPORTED_MODELS.copy()
+    
+    def get_custom_models(self) -> Dict[str, Dict[str, Any]]:
+        """获取用户自定义的模型列表"""
+        return self._custom_models.copy()
+    
+    def get_all_models(self) -> List[Dict[str, Any]]:
+        """获取所有可用的模型（包括内置和自定义）"""
+        all_models = []
+        
+        # 内置模型
+        for name, info in self.SUPPORTED_MODELS.items():
+            model_item = {
+                "id": name,
+                "name": name,
+                "model": name,
+                "provider": info.get("provider", "api"),
+                "dimension": info.get("dimension", 1536),
+                "description": info.get("description", ""),
+                "is_builtin": True,
+                "available": True,
+                "is_default": name == self.embedding_model
+            }
+            all_models.append(model_item)
+        
+        # 自定义模型
+        for model_id, cfg in self._custom_models.items():
+            # 避免重复
+            if model_id not in self.SUPPORTED_MODELS:
+                all_models.append({
+                    "id": model_id,
+                    "name": cfg.get("name", model_id),
+                    "model": cfg.get("model", model_id),
+                    "provider": cfg.get("provider", "api"),
+                    "dimension": cfg.get("dimension", 1536),
+                    "description": cfg.get("description", ""),
+                    "api_key": cfg.get("api_key"),
+                    "api_base": cfg.get("api_base", ""),
+                    "model_path": cfg.get("model_path", ""),
+                    "device": cfg.get("device", "cpu"),
+                    "is_builtin": False,
+                    "available": True,
+                    "is_default": model_id == self.embedding_model
+                })
+        
+        return all_models
+    
+    def add_custom_model(self, model_config: Dict[str, Any]) -> Dict[str, Any]:
+        """添加自定义模型"""
+        model_id = model_config.get("model") or model_config.get("model_id")
+        if not model_id:
+            return {"success": False, "error": "模型ID不能为空"}
+        
+        # 保存到自定义模型列表
+        self._custom_models[model_id] = {
+            "name": model_config.get("name", model_id),
+            "model": model_id,
+            "provider": model_config.get("provider", "api"),
+            "dimension": model_config.get("dimension", 1536),
+            "description": model_config.get("description", ""),
+            "api_key": model_config.get("api_key", ""),
+            "api_base": model_config.get("api_base", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            "model_path": model_config.get("model_path", ""),
+            "device": model_config.get("device", "cpu"),
+            "batch_size": model_config.get("batch_size", 32),
+            "enabled": model_config.get("enabled", True)
+        }
+        
+        self._save_custom_models()
+        return {"success": True, "message": f"模型 {model_id} 已添加", "model_id": model_id}
+    
+    def update_custom_model(self, model_id: str, model_config: Dict[str, Any]) -> Dict[str, Any]:
+        """更新自定义模型"""
+        if model_id not in self._custom_models:
+            return {"success": False, "error": f"模型 {model_id} 不存在"}
+        
+        # 更新配置
+        self._custom_models[model_id].update({
+            "name": model_config.get("name", self._custom_models[model_id].get("name")),
+            "model": model_id,
+            "provider": model_config.get("provider", self._custom_models[model_id].get("provider")),
+            "dimension": model_config.get("dimension", self._custom_models[model_id].get("dimension")),
+            "description": model_config.get("description", self._custom_models[model_id].get("description", "")),
+            "api_key": model_config.get("api_key", self._custom_models[model_id].get("api_key", "")),
+            "api_base": model_config.get("api_base", self._custom_models[model_id].get("api_base", "")),
+            "model_path": model_config.get("model_path", self._custom_models[model_id].get("model_path", "")),
+            "device": model_config.get("device", self._custom_models[model_id].get("device", "cpu")),
+            "batch_size": model_config.get("batch_size", self._custom_models[model_id].get("batch_size", 32)),
+            "enabled": model_config.get("enabled", self._custom_models[model_id].get("enabled", True))
+        })
+        
+        self._save_custom_models()
+        return {"success": True, "message": f"模型 {model_id} 已更新"}
+    
+    def delete_custom_model(self, model_id: str) -> Dict[str, Any]:
+        """删除自定义模型"""
+        if model_id not in self._custom_models:
+            return {"success": False, "error": f"模型 {model_id} 不存在"}
+        
+        del self._custom_models[model_id]
+        
+        # 如果删除的是当前模型，重置为默认
+        if self.embedding_model == model_id:
+            self.embedding_model = "text-embedding-v2"
+            self.embedding_provider = "api"
+            self.embedding_api_key = None
+            self.embedding_api_base = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        
+        self._save_custom_models()
+        return {"success": True, "message": f"模型 {model_id} 已删除"}
+    
+    def set_default_model(self, model_id: str) -> Dict[str, Any]:
+        """设置默认模型"""
+        # 检查是否是内置模型
+        if model_id in self.SUPPORTED_MODELS:
+            info = self.SUPPORTED_MODELS[model_id]
+            self.embedding_model = model_id
+            self.embedding_provider = info.get("provider", "api")
+            self._current_model_config = {}
+            self._save_custom_models()
+            return {"success": True, "message": f"默认模型已设置为 {model_id}"}
+        
+        # 检查是否是自定义模型
+        if model_id in self._custom_models:
+            cfg = self._custom_models[model_id]
+            self.embedding_model = model_id
+            self.embedding_api_key = cfg.get("api_key")
+            self.embedding_api_base = cfg.get("api_base", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+            self.embedding_provider = cfg.get("provider", "api")
+            self.st_device = cfg.get("device", "cpu")
+            self._current_model_config = cfg
+            self._save_custom_models()
+            return {"success": True, "message": f"默认模型已设置为 {model_id}"}
+        
+        return {"success": False, "error": f"模型 {model_id} 不存在"}
 
     def _get_model_info(self, model_name: str) -> Dict[str, Any]:
         """获取模型信息"""
+        # 先检查自定义模型
+        if model_name in self._custom_models:
+            return self._custom_models[model_name]
+        # 再检查内置模型
         return self.SUPPORTED_MODELS.get(model_name, {"provider": "api", "dimension": 1536, "description": model_name})
 
     def _get_provider(self, model_name: str = None) -> str:

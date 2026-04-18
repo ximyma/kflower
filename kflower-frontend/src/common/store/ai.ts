@@ -107,7 +107,7 @@ export const useAIStore = defineStore('ai', () => {
   }
 
   // 发送消息 - 使用用户配置的超时时间
-  async function sendMessage(content: string) {
+  async function sendMessage(content: string, modelId?: string) {
     if (!content.trim() || loading.value) return
 
     messages.value.push({
@@ -119,6 +119,8 @@ export const useAIStore = defineStore('ai', () => {
     loading.value = true
     const userTimeout = getUserTimeout()
     let errorDetail = ''
+    // 使用传入的模型或当前选中的模型
+    const modelToUse = modelId || currentModel.value?.modelId
 
     try {
       let res: any
@@ -130,7 +132,8 @@ export const useAIStore = defineStore('ai', () => {
           message: content.trim(),
           conversation_id: conversationId.value || undefined,
           use_rag: true,
-          enable_tools: true
+          enable_tools: true,
+          model: modelToUse
         }, { timeout: userTimeout })
       } catch (agentError: any) {
         console.log('Agent API failed, falling back to AI API:', agentError)

@@ -76,5 +76,7 @@ class TemplateAgent(BaseAgent):
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0]
             return json.loads(content)
-        except:
+        except json.JSONDecodeError:
+            return {"suggestions": result["content"]}
+        except Exception:
             return {"suggestions": result["content"]}

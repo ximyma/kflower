@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Dict, Any, List
 import json
+import os
+import logging
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -14,6 +16,8 @@ from app.models.ai import SystemConfig as SystemConfigModel
 from app.schemas.schemas import BaseResponse, SystemConfigUpdate
 from app.core.ai_digital_base.local_services import embedding_service, get_embedding_service
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/system", tags=["系统"])
 
@@ -191,12 +195,175 @@ async def list_ai_providers(
 ):
     """列出所有支持的 AI 提供商"""
     from app.core.ai_digital_base.model_manager import ai_model_manager
+    from app.core.ai_digital_base.gateway import ai_gateway
+    
+    # 先加载配置
+    await ai_gateway.load_config_from_db(db)
     
     providers = ai_model_manager.get_all_providers()
+    
+    # 添加动态 Ollama 连接作为独立提供商
+    ollama_connections = ai_gateway.list_ollama_connections()
+    for conn in ollama_connections:
+        providers.append({
+            "id": conn["id"],
+            "name": f"Ollama - {conn['name']}",
+            "description": f"本地 Ollama ({conn['url']})",
+            "default_base_url": conn["url"],
+            "no_api_key": True,
+            "is_dynamic_connection": True,
+        })
     
     return BaseResponse(data={
         "providers": providers
     })
+
+
+@router.get("/ollama-connections", response_model=BaseResponse)
+async def list_ollama_connections(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取所有配置的 Ollama 连接"""
+    from app.core.ai_digital_base.gateway import ai_gateway
+    
+    await ai_gateway.load_config_from_db(db)
+    connections = ai_gateway.list_ollama_connections()
+    
+    return BaseResponse(data={
+        "connections": connections
+    })
+
+
+@router.post("/ollama-connections/test", response_model=BaseResponse)
+async def test_ollama_connection(
+    request: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """测试 Ollama 连接"""
+    url = request.get("url", "http://localhost:11434")
+    timeout = request.get("timeout", 5)
+    
+    try:
+        import httpx
+        import asyncio
+        
+        async def check_connection():
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(f"{url.rstrip('/')}/api/tags")
+                if response.status_code == 200:
+                    data = response.json()
+                    models = [m.get("name", "") for m in data.get("models", [])]
+                    return True, models
+                return False, []
+        
+        is_connected, models = asyncio.run(check_connection())
+        
+        if is_connected:
+            return BaseResponse(
+                success=True,
+                message=f"连接成功，发现 {len(models)} 个模型",
+                data={"connected": True, "models": models}
+            )
+        else:
+            return BaseResponse(success=False, message="连接失败，请检查 Ollama 服务是否启动")
+    except Exception as e:
+        return BaseResponse(success=False, message=f"连接失败: {str(e)}")
+
+
+@router.get("/rerank-models", response_model=BaseResponse)
+async def list_rerank_models(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取所有可用的 Rerank 模型（包括系统配置的模型）"""
+    from app.core.ai_digital_base.local_services import ST_AVAILABLE
+    
+    # 系统预设的 Rerank 模型
+    preset_models = [
+        {"id": "BAAI/bge-reranker-v2-m3", "name": "BGE Reranker v2 m3", "provider": "local", "description": "多语言重排模型，精度高"},
+        {"id": "BAAI/bge-reranker-large", "name": "BGE Reranker Large", "provider": "local", "description": "大型重排模型（需要下载）"},
+        {"id": "BAAI/bge-reranker-base", "name": "BGE Reranker Base", "provider": "local", "description": "基础重排模型"},
+        {"id": "cohere/rerank-english-v3.0", "name": "Cohere Rerank English", "provider": "api", "description": "英文重排，Cohere API"},
+        {"id": "cohere/rerank-multilingual-v3.0", "name": "Cohere Rerank Multilingual", "provider": "api", "description": "多语言重排，Cohere API"},
+    ]
+    
+    # 从数据库加载自定义的 Rerank 模型
+    custom_models = []
+    try:
+        result = await db.execute(
+            select(SystemConfigModel).where(
+                SystemConfigModel.key == "rerank_models",
+                SystemConfigModel.organization_id == None
+            )
+        )
+        config = result.scalar_one_or_none()
+        if config and config.value:
+            custom = json.loads(config.value) if isinstance(config.value, str) else config.value
+            for m in (custom if isinstance(custom, list) else []):
+                if isinstance(m, dict):
+                    custom_models.append({
+                        "id": m.get("model") or m.get("name"),
+                        "name": m.get("name") or m.get("model"),
+                        "provider": m.get("provider", "api"),
+                        "description": f"自定义模型，API: {m.get('apiUrl', 'N/A')}",
+                        "is_custom": True,
+                    })
+    except Exception as e:
+        logger.warning(f"加载自定义 rerank 模型失败: {e}")
+    
+    # 检查本地模型是否可用
+    st_available = ST_AVAILABLE
+    
+    return BaseResponse(data={
+        "models": preset_models + custom_models,
+        "st_available": st_available,
+        "st_model_path": os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "bge-reranker-v2-m3") if st_available else None,
+    })
+
+
+@router.post("/rerank-models/test", response_model=BaseResponse)
+async def test_rerank_model(
+    request: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """测试 Rerank 模型"""
+    model_id = request.get("model_id")
+    
+    if not model_id:
+        return BaseResponse(success=False, message="请指定模型ID")
+    
+    try:
+        from sentence_transformers import CrossEncoder
+        import os
+        
+        # 确定模型路径
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        local_path = os.path.join(project_root, "bge-reranker-v2-m3")
+        
+        # 检查是否使用本地模型
+        if "bge-reranker-v2-m3" in model_id and os.path.exists(local_path):
+            model_path = local_path
+        else:
+            model_path = model_id
+        
+        # 尝试加载模型
+        logger.info(f"测试加载 Rerank 模型: {model_path}")
+        ce = CrossEncoder(model_path, max_length=512)
+        
+        # 执行简单测试
+        pairs = [("什么是人工智能？", "人工智能是研究如何让机器像人类一样思考和学习的科学。")]
+        scores = ce.predict(pairs)
+        
+        return BaseResponse(
+            success=True,
+            message=f"模型 {model_id} 测试成功",
+            data={"model": model_id, "test_score": float(scores[0])}
+        )
+    except ImportError:
+        return BaseResponse(success=False, message="sentence-transformers 未安装，无法测试本地 Rerank 模型")
+    except Exception as e:
+        return BaseResponse(success=False, message=f"测试失败: {str(e)}")
 
 
 @router.get("/ai-models/{provider}", response_model=BaseResponse)
@@ -216,6 +383,15 @@ async def list_ai_models(
     provider_config = ai_gateway.providers.get(provider, {})
     api_key = provider_config.get("api_key")
     base_url = provider_config.get("base_url")
+    
+    # 如果是 Ollama，检查是否有动态连接的 Ollama
+    if provider == "ollama":
+        ollama_connections = ai_gateway.list_ollama_connections()
+        if ollama_connections:
+            # 返回第一个连接的配置作为默认
+            first_conn = ollama_connections[0]
+            api_key = "ollama"
+            base_url = first_conn.get("url", "http://localhost:11434")
     
     # 如果没有配置，返回默认模型列表
     if not api_key:
@@ -287,25 +463,14 @@ async def fetch_ai_models_with_key(
 async def list_embedding_models(
     current_user: User = Depends(get_current_user)
 ):
-    """获取所有支持的嵌入模型列表"""
+    """获取所有支持的嵌入模型列表（包括内置和自定义）"""
     from app.core.ai_digital_base.local_services import EmbeddingService, ST_AVAILABLE
 
-    models = EmbeddingService.get_supported_models()
-
-    # 构建返回数据，标记本地模型是否可用
-    model_list = []
-    for name, info in models.items():
-        model_item = {
-            "name": name,
-            "provider": info["provider"],
-            "dimension": info["dimension"],
-            "description": info["description"],
-            "available": True if info["provider"] == "api" else ST_AVAILABLE
-        }
-        model_list.append(model_item)
+    # 获取所有模型（内置 + 自定义）
+    all_models = get_embedding_service().get_all_models()
 
     return BaseResponse(data={
-        "models": model_list,
+        "models": all_models,
         "st_available": ST_AVAILABLE,
         "current_model": get_embedding_service().embedding_model if hasattr(get_embedding_service(), 'embedding_model') else None,
         "current_provider": get_embedding_service().embedding_provider if hasattr(get_embedding_service(), 'embedding_provider') else None,

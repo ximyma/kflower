@@ -1,5 +1,13 @@
 ﻿<template>
   <div class="system-settings">
+    <!-- 隐藏的OCR测试文件输入 -->
+    <input
+      ref="ocrTestInput"
+      type="file"
+      accept="image/*"
+      style="display:none"
+      @change="onOCRTestFileSelected"
+    />
     <el-tabs v-model="activeTab" class="settings-tabs">
       <!-- 基本设置 -->
       <el-tab-pane label="基本设置" name="basic">
@@ -321,8 +329,9 @@
                   <el-tag :type="row.isDefault ? 'success' : 'info'" size="small">{{ row.isDefault ? '是' : '否' }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="160">
+              <el-table-column label="操作" width="200">
                 <template #default="{ row }">
+                  <el-button size="small" text type="success" @click="testRerankModel(row)">测试</el-button>
                   <el-button size="small" text type="primary" @click="setDefaultRerankModel(row)">设为默认</el-button>
                   <el-button size="small" text type="danger" @click="deleteRerankModel(row)">删除</el-button>
                 </template>
@@ -551,6 +560,26 @@ async function loadConfiguredModels() {
     if (config.ai_models) {
       try { models.push(...(typeof config.ai_models === 'string' ? JSON.parse(config.ai_models) : config.ai_models)) } catch {}
     }
+    
+    // 加载 OCR 配置
+    if (config.ocr_tesseract_path) {
+      ocrConfig.tesseractPath = config.ocr_tesseract_path
+    }
+    if (config.ocr_lang) {
+      ocrConfig.lang = config.ocr_lang
+    }
+    
+    // 加载嵌入模型配置
+    if (config.embedding_api_key) {
+      embedConfig.apiKey = config.embedding_api_key
+    }
+    if (config.embedding_api_base) {
+      embedConfig.apiBase = config.embedding_api_base
+    }
+    if (config.embedding_model) {
+      embedConfig.model = config.embedding_model
+    }
+    
     if (!models.length && config.ai_api_key) {
       models.push({ id: 'default', provider: config.ai_provider || 'siliconflow', modelId: config.ai_model || '',
         modelName: config.ai_model || '', apiKey: config.ai_api_key, baseUrl: config.ai_base_url || '',
@@ -699,16 +728,60 @@ function getProviderName(id: string) {
 async function saveOCRConfig() {
   savingOCR.value = true
   try {
+    // 保存到系统配置
     await systemAPI.saveConfig({ ocr_tesseract_path: ocrConfig.tesseractPath, ocr_lang: ocrConfig.lang })
+    // 同时调用后端API保存并刷新配置
+    await localAIAPI.ocrConfigure(ocrConfig.tesseractPath, ocrConfig.lang)
     ElMessage.success('OCR 配置已保存')
   } catch (e: any) { ElMessage.error(e.message || '保存失败') }
   finally { savingOCR.value = false }
 }
 
-async function testOCR() {
+// OCR测试用的隐藏文件上传
+const ocrTestInput = ref<HTMLInputElement|null>(null)
+function triggerOCRTest() {
+  ocrTestInput.value?.click()
+}
+async function onOCRTestFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  
   testingOCR.value = true
-  ElMessage.info('请上传图片测试 OCR 识别（功能已就绪）')
-  testingOCR.value = false
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('lang', ocrConfig.lang)
+    
+    const res = await (window as any).fetch('/api/v1/local-ai/ocr/text', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + (localStorage.getItem('kflower_token') || '') },
+      body: formData
+    })
+    const json = await res.json()
+    
+    if (json.success) {
+      ElMessage.success('OCR 识别成功！')
+      // 显示识别结果
+      const preview = json.data.text?.substring(0, 200) + (json.data.text?.length > 200 ? '...' : '')
+      ElMessageBox.alert(`识别结果：\n${preview || '(无文字)'}\n\n置信度：${(json.data.confidence * 100).toFixed(1)}%`, 'OCR 识别结果', {
+        confirmButtonText: '确定',
+        customClass: 'ocr-result-dialog'
+      })
+    } else {
+      ElMessage.error('OCR 识别失败：' + (json.message || json.detail || '未知错误'))
+    }
+  } catch (e: any) {
+    ElMessage.error('OCR 测试失败：' + (e.message || '请检查 Tesseract 路径配置是否正确'))
+  } finally {
+    testingOCR.value = false
+    input.value = ''
+  }
+}
+
+async function testOCR() {
+  // 触发文件选择
+  triggerOCRTest()
 }
 
 async function loadEmbedConfig() {
@@ -795,12 +868,25 @@ async function saveModuleAI() {
 // 加载已配置的 Embed 模型
 async function loadConfiguredEmbedModels() {
   try {
-    const res: any = await systemAPI.getConfig()
-    const config = res.data || {}
-    if (config.embedding_models) {
-      configuredEmbedModels.value = typeof config.embedding_models === 'string' 
-        ? JSON.parse(config.embedding_models) 
-        : config.embedding_models
+    // 使用新的 API 获取模型列表
+    const res: any = await localAIAPI.listEmbedModels()
+    if (res && res.success !== false && res.data?.models) {
+      configuredEmbedModels.value = res.data.models.map((m: any) => ({
+        ...m,
+        id: m.model || m.name,
+        modelId: m.model,
+        isDefault: m.is_default || m.isDefault,
+      }))
+      embedSTAvailable.value = res.data.st_available || false
+    } else {
+      // 回退到旧的加载方式
+      const configRes: any = await systemAPI.getConfig()
+      const config = configRes.data || {}
+      if (config.embedding_models) {
+        configuredEmbedModels.value = typeof config.embedding_models === 'string' 
+          ? JSON.parse(config.embedding_models) 
+          : config.embedding_models
+      }
     }
   } catch { /* ignore */ }
 }
@@ -815,7 +901,55 @@ async function loadConfiguredRerankModels() {
         ? JSON.parse(config.rerank_models) 
         : config.rerank_models
     }
+    // 同时获取后端提供的预设 Rerank 模型列表
+    await loadRerankModelOptions()
   } catch { /* ignore */ }
+}
+
+// 加载 Rerank 模型选项（从后端获取）
+async function loadRerankModelOptions() {
+  try {
+    const res: any = await systemAPI.listRerankModels()
+    if (res && res.success !== false && res.data?.models) {
+      // 更新预设模型列表（添加到表单选项）
+      const presets = res.data.models.map((m: any) => ({
+        value: m.id,
+        label: m.name || m.id,
+        desc: m.description || `${m.provider} 模型`,
+        provider: m.provider,
+        is_preset: !m.is_custom,
+      }))
+      // 合并到现有选项（避免重复）
+      for (const preset of presets) {
+        if (!rerankModelOptions.value.find(o => o.value === preset.value)) {
+          rerankModelOptions.value.push(preset)
+        }
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+// 测试 Rerank 模型
+async function testRerankModel(row?: any) {
+  const modelId = row?.modelId || row?.model || configuredRerankModels.value[0]?.modelId
+  if (!modelId) {
+    ElMessage.warning('请先添加 Rerank 模型')
+    return
+  }
+  
+  const loading = ElMessage({ message: '正在测试 Rerank 模型...', duration: 0 })
+  try {
+    const res: any = await systemAPI.testRerankModel(modelId)
+    loading.close()
+    if (res && res.success !== false) {
+      ElMessage.success(`Rerank 模型测试成功！${res.message || ''}`)
+    } else {
+      ElMessage.error(res?.message || '测试失败')
+    }
+  } catch (e: any) {
+    loading.close()
+    ElMessage.error('测试失败：' + (e.message || '请检查模型配置'))
+  }
 }
 
 // 添加 Embed 模型
@@ -824,33 +958,65 @@ async function addEmbedModel() {
     ElMessage.warning('请输入模型ID')
     return
   }
-  const model = { ...embedModelForm, id: Date.now() }
-  configuredEmbedModels.value.push(model)
-  await systemAPI.saveConfig({ embedding_models: JSON.stringify(configuredEmbedModels.value) })
-  ElMessage.success('嵌入模型已添加')
-  showAddEmbedModel.value = false
-  resetEmbedForm()
+  if (embedModelForm.provider === 'api' && !embedModelForm.apiKey) {
+    ElMessage.warning('API 模型需要填写 API Key')
+    return
+  }
+  
+  try {
+    const modelConfig = {
+      name: embedModelForm.name,
+      model: embedModelForm.modelId,
+      provider: embedModelForm.provider,
+      dimension: embedModelForm.dimension,
+      api_key: embedModelForm.apiKey,
+      api_base: embedModelForm.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      description: ''
+    }
+    
+    const res: any = await localAIAPI.addEmbedModel(modelConfig)
+    if (res && res.success !== false) {
+      ElMessage.success('嵌入模型已添加')
+      showAddEmbedModel.value = false
+      resetEmbedForm()
+      await loadConfiguredEmbedModels()
+    } else {
+      ElMessage.error(res?.message || '添加失败')
+    }
+  } catch (e: any) {
+    ElMessage.error('添加失败: ' + e.message)
+  }
 }
 
 // 删除 Embed 模型
 async function deleteEmbedModel(row: any) {
   try {
-    await ElMessageBox.confirm(`确定删除模型 "${row.name || row.modelId}" 吗？`, '确认删除', { type: 'warning' })
-    configuredEmbedModels.value = configuredEmbedModels.value.filter(m => m.id !== row.id)
-    await systemAPI.saveConfig({ embedding_models: JSON.stringify(configuredEmbedModels.value) })
-    ElMessage.success('模型已删除')
+    await ElMessageBox.confirm(`确定删除模型 "${row.name || row.modelId || row.model}" 吗？`, '确认删除', { type: 'warning' })
+    const modelId = row.model || row.modelId || row.name
+    const res: any = await localAIAPI.deleteEmbedModel(modelId)
+    if (res && res.success !== false) {
+      ElMessage.success('模型已删除')
+      await loadConfiguredEmbedModels()
+    } else {
+      ElMessage.error(res?.message || '删除失败')
+    }
   } catch { /* cancel */ }
 }
 
 // 设为默认 Embed 模型
 async function setDefaultEmbedModel(row: any) {
-  configuredEmbedModels.value.forEach(m => m.isDefault = false)
-  const idx = configuredEmbedModels.value.findIndex(m => m.id === row.id)
-  if (idx > -1) {
-    configuredEmbedModels.value[idx].isDefault = true
+  try {
+    const modelId = row.model || row.modelId || row.name
+    const res: any = await localAIAPI.setDefaultEmbedModel(modelId)
+    if (res && res.success !== false) {
+      ElMessage.success('已设为默认模型')
+      await loadConfiguredEmbedModels()
+    } else {
+      ElMessage.error(res?.message || '设置失败')
+    }
+  } catch (e: any) {
+    ElMessage.error('设置失败: ' + e.message)
   }
-  await systemAPI.saveConfig({ embedding_models: JSON.stringify(configuredEmbedModels.value) })
-  ElMessage.success('已设为默认模型')
 }
 
 // 添加 Rerank 模型
