@@ -28,7 +28,7 @@
             <template #header>
               <div class="workflow-header">
                 <div class="wf-icon" :style="{ background: getWorkflowColor(wf.name) }">
-                  <el-icon :size="24"><Flow /></el-icon>
+                  <el-icon :size="24"><Operation /></el-icon>
                 </div>
                 <div class="wf-info">
                   <h3>{{ wf.name }}</h3>
@@ -41,7 +41,7 @@
             </template>
             <p class="wf-desc">{{ wf.description || '暂无描述' }}</p>
             <div class="wf-meta">
-              <span><el-icon><Node /></el-icon> {{ wf.node_count || 0 }} 个节点</span>
+              <span><el-icon><List /></el-icon> {{ wf.node_count || 0 }} 个节点</span>
               <span><el-icon><Timer /></el-icon> {{ formatDate(wf.created_at) }}</span>
             </div>
             <div class="wf-actions">
@@ -188,7 +188,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Search, Flow, Node, Timer, CircleCheck } from '@element-plus/icons-vue'
+import { Plus, Search, Timer, CircleCheck, Operation } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus'
 import { workflowAPI, dashboardAPI } from '../../common/api'
 

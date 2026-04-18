@@ -165,6 +165,9 @@
                     <el-button v-if="row.is_published" size="small" type="info" text @click="openFormList(row)" title="数据列表">
                       <el-icon><List /></el-icon>列表
                     </el-button>
+                    <el-button size="small" text @click="openPermissionDialog(row, 'template')" title="权限设置">
+                      <el-icon><Key /></el-icon>权限
+                    </el-button>
                     <el-button size="small" type="danger" text @click="deleteTemplate(row)" title="删除">
                       <el-icon><Delete /></el-icon>删除
                     </el-button>
@@ -257,6 +260,9 @@
                     <el-button size="small" type="warning" text @click="editTemplate(row)" title="编辑模板">
                       <el-icon><Edit /></el-icon>编辑
                     </el-button>
+                    <el-button size="small" text @click="openPermissionDialog(row, 'form')" title="权限设置">
+                      <el-icon><Key /></el-icon>权限
+                    </el-button>
                     <el-button size="small" type="danger" text @click="unpublishTemplate(row)" title="撤回发布">
                       <el-icon><RefreshRight /></el-icon>撤回
                     </el-button>
@@ -296,6 +302,31 @@
         <el-button type="primary" :loading="dataFormLoading" @click="submitDataForm">提交数据</el-button>
       </template>
     </el-dialog>
+
+    <!-- 权限设置弹窗 -->
+    <el-dialog v-model="showPermissionDialog" :title="'权限设置 - ' + (permTemplate?.name || '')" width="550px">
+      <el-form label-width="90px">
+        <el-form-item label="模板名称">
+          <span style="font-weight:500">{{ permTemplate?.name }}</span>
+        </el-form-item>
+        <el-form-item label="访问权限">
+          <el-radio-group v-model="permForm.is_public">
+            <el-radio :label="false">私有（仅自己可见）</el-radio>
+            <el-radio :label="true">公开（所有用户可见）</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="说明">
+          <div style="color:#909399;font-size:12px;line-height:1.6">
+            <p>• <strong>私有</strong>：只有创建者可以看到和使用</p>
+            <p>• <strong>公开</strong>：组织内所有用户都可以看到和使用</p>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPermissionDialog = false">取消</el-button>
+        <el-button type="primary" :loading="permLoading" @click="savePermission">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -306,7 +337,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Document, Share, DataLine, Calendar,
   Plus, Refresh, View, Edit, Promotion, Delete, Search,
-  EditPen, List, RefreshRight
+  EditPen, List, RefreshRight, Key
 } from '@element-plus/icons-vue'
 import { templateAPI } from '../../common/api'
 import { useUserStore } from '../../common/store/user'
@@ -362,6 +393,12 @@ const dataFormTemplate = ref<any>(null)
 const dataFormFields = ref<any[]>([])
 const dataFormData = reactive<Record<string, any>>({})
 const dataFormLoading = ref(false)
+
+// 权限设置相关
+const showPermissionDialog = ref(false)
+const permTemplate = ref<any>(null)
+const permForm = reactive({ is_public: false })
+const permLoading = ref(false)
 
 // 去创建模板
 function goToTemplateDesigner() {
@@ -599,6 +636,30 @@ async function submitDataForm() {
     ElMessage.error(e.message || '提交失败')
   } finally {
     dataFormLoading.value = false
+  }
+}
+
+// 打开权限设置弹窗
+function openPermissionDialog(row: any, type: 'template' | 'form') {
+  permTemplate.value = row
+  permForm.is_public = row.is_public ?? false
+  showPermissionDialog.value = true
+}
+
+// 保存权限设置
+async function savePermission() {
+  if (!permTemplate.value) return
+  permLoading.value = true
+  try {
+    await templateAPI.update(permTemplate.value.id, { is_public: permForm.is_public })
+    ElMessage.success('权限保存成功')
+    showPermissionDialog.value = false
+    loadMyTemplates()
+    loadPublishedForms()
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败')
+  } finally {
+    permLoading.value = false
   }
 }
 

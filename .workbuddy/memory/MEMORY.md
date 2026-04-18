@@ -22,3 +22,5 @@
 - 在路由中添加 `/users` 路由，仅管理员可见（`requiresAdmin: true`）
 - 修改 MainLayout，侧边栏中「系统设置」和「用户管理」菜单仅在 `isAdmin=true` 时显示
 - 路由守卫增加管理员权限检查
+- **修复表单导出 422 错误**：`modules` 和 `config` 字段在数据库中是 JSON 字符串，后端 API 需解析后才能使用
+- **修复模板设计器发布按钮**：将 `@click="publishTemplate"` 改为 `@click="publishTemplate(currentTemplate)"`，与设计列表保持一致，进入发布预览流程

@@ -698,13 +698,13 @@ async function loadData() {
       search: searchKeyword.value || undefined
     })
 
-    // 后端返回的是数组
+    // 后端返回的是数组（字段数据已平铺到顶层，key = 字段 label）
     if (Array.isArray(res)) {
       tableData.value = res.map((item: any) => ({
         id: item.id,
         created_at: item.created_at,
         updated_at: item.updated_at,
-        ...(item.config?.data || {})
+        ...item   // 动态字段直接在顶层，key = 字段 label
       }))
       total.value = res.length || 0
     }
@@ -865,31 +865,35 @@ async function exportExcel() {
     
     const wsData = []
 
-    // 表头
+    // 表头：优先用后端返回的 label，没有则用 displayFields 的 label
+    const fieldHeaderMap: Record<string, string> = {}
+    if (res.fields && Array.isArray(res.fields)) {
+      res.fields.forEach((f: any) => { fieldHeaderMap[f.name] = f.label || f.name })
+    }
     const headers = ['序号']
     displayFields.value.forEach(field => {
       if (!field.hidden) {
-        headers.push(field.label)
+        headers.push(fieldHeaderMap[field.name] || field.label)
       }
     })
     headers.push('提交时间', '最后更新')
     wsData.push(headers)
 
-    // 数据行（使用后端返回的完整数据）
+    // 数据行（键 = field.name，与后端一致）
     res.data.forEach((row: any, index: number) => {
       const rowData = [index + 1]
       displayFields.value.forEach(field => {
         if (!field.hidden) {
-          const value = row[field.get('label')] || row[field.name]
+          const value = row[field.name]
           if (Array.isArray(value)) {
             rowData.push(value.join(', '))
           } else {
-            rowData.push(value || '')
+            rowData.push(value ?? '')
           }
         }
       })
-      rowData.push(row._created_at ? formatDateTime(row._created_at) : '', 
-                   row._updated_at ? formatDateTime(row._updated_at) : '')
+      rowData.push(row.created_at ? formatDateTime(row.created_at) : '',
+                   row.updated_at ? formatDateTime(row.updated_at) : '')
       wsData.push(rowData)
     })
 

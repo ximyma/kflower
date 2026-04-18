@@ -193,7 +193,7 @@
         <div class="toolbar-right">
           <el-button @click="previewTemplate"><el-icon><View /></el-icon> 预览</el-button>
           <el-button @click="saveTemplate"><el-icon><Select /></el-icon> 保存</el-button>
-          <el-button type="success" @click="publishTemplate" :loading="publishing"><el-icon><Promotion /></el-icon> 发布</el-button>
+          <el-button type="success" @click="publishTemplate(currentTemplate)" :loading="publishing"><el-icon><Promotion /></el-icon> 发布</el-button>
         </div>
       </div>
 

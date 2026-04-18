@@ -1,7 +1,9 @@
 ﻿"""
 API路由 - 模板管理
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+import json
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete as sa_delete, String
 from typing import List, Optional, Dict, Any
@@ -314,7 +316,8 @@ async def submit_template_data(
         safe_name = name_to_safe.get(field_name, field_name)
         columns.append(f'"{safe_name}"')
         placeholders.append(f':{safe_name}')
-        values[safe_name] = value
+        # list/array 类型序列化为 JSON 字符串存入 SQLite
+        values[safe_name] = json.dumps(value, ensure_ascii=False) if isinstance(value, (list, dict)) else value
     
     insert_sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
     
@@ -339,7 +342,7 @@ async def submit_template_data(
     )
 
 
-@router.get("/{template_id}/data", response_model=List[TemplateDataResponse])
+@router.get("/{template_id}/data")
 async def get_template_data_list(
     template_id: int,
     skip: int = Query(0, ge=0),
@@ -350,6 +353,7 @@ async def get_template_data_list(
 ):
     """查询模板提交的数据列表 - 从动态表读取"""
     from sqlalchemy import text
+    import json
     
     # 验证模板存在
     result = await db.execute(select(Template).where(Template.id == template_id))
@@ -360,7 +364,18 @@ async def get_template_data_list(
     # 获取表名
     config = template.config or {}
     table_name = config.get('table_name', f'form_data_{template_id}')
-    
+
+    # 获取字段定义（与 export_template_data 一致）
+    modules_raw = template.modules
+    if isinstance(modules_raw, str):
+        modules_list = json.loads(modules_raw) if modules_raw else []
+    else:
+        modules_list = modules_raw or []
+    all_fields = []
+    for mod in modules_list:
+        if isinstance(mod, dict) and 'fields' in mod:
+            all_fields.extend(mod['fields'])
+
     # 构建查询
     count_sql = f"SELECT COUNT(*) FROM {table_name}"
     if search:
@@ -391,21 +406,29 @@ async def get_template_data_list(
         result = await db.execute(text(data_sql), params)
         rows = result.fetchall()
         
-        # 获取列名
-        columns = result.keys()
-        
-        return [
-            {
-                "id": row._mapping.get("id"),
-                "template_id": row._mapping.get("template_id"),
-                "name": f"{template.name}_数据_{row._mapping.get('id')}",
-                "config": {"data": {k: row._mapping.get(k) for k in columns if k not in ['id', 'template_id', 'created_by', 'created_at', 'updated_at']}, "table_name": table_name},
-                "created_by": row._mapping.get("created_by"),
-                "created_at": row._mapping.get("created_at"),
-                "updated_at": row._mapping.get("updated_at")
+        # 构建导出数据（键 = field.name，与数据库列名一致）
+        export_rows = []
+        for row in rows:
+            mapping = row._mapping
+            row_data = {
+                "id": mapping.get("id"),
+                "template_id": mapping.get("template_id"),
+                "name": f"{template.name}_数据_{mapping.get('id')}",
+                "created_by": mapping.get("created_by"),
+                "created_at": mapping.get("created_at"),
+                "updated_at": mapping.get("updated_at"),
             }
-            for row in rows
-        ]
+            # 动态字段：键 = field.name（与 submit/export 一致）
+            for field in all_fields:
+                if isinstance(field, dict):
+                    field_name = field.get('name', '')
+                    safe_name = ''.join(c if c.isalnum() or c == '_' else '_' for c in field_name)
+                    if safe_name and safe_name[0].isdigit():
+                        safe_name = 'f_' + safe_name
+                    row_data[field_name] = mapping.get(safe_name, '')
+            export_rows.append(row_data)
+
+        return export_rows
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"查询数据失败: {str(e)}")
 
@@ -523,7 +546,8 @@ async def update_template_data(
     for field_name, value in data.items():
         safe_name = name_to_safe.get(field_name, field_name)
         set_clauses.append(f'"{safe_name}" = :{safe_name}')
-        values[safe_name] = value
+        # list/array 类型序列化为 JSON 字符串
+        values[safe_name] = json.dumps(value, ensure_ascii=False) if isinstance(value, (list, dict)) else value
     
     set_clauses.append("updated_at = CURRENT_TIMESTAMP")
     
@@ -787,6 +811,15 @@ async def publish_template(
 
 # ============ 导入导出功能 ============
 
+def _format_val(v):
+    """将 datetime 等对象格式化为 JSON 可序列化的字符串"""
+    if v is None:
+        return ''
+    if hasattr(v, 'isoformat'):
+        return v.isoformat()
+    return v
+
+
 @router.get("/{template_id}/data/export", response_model=None)
 async def export_template_data(
     template_id: int,
@@ -838,20 +871,30 @@ async def export_template_data(
     for row in rows:
         row_dict = dict(zip(columns, row))
         export_row = {
-            "_id": row_dict.get('id'),
-            "_created_at": row_dict.get('created_at'),
-            "_updated_at": row_dict.get('updated_at'),
+            "id": row_dict.get('id'),
+            "created_at": _format_val(row_dict.get('created_at')),
+            "updated_at": _format_val(row_dict.get('updated_at')),
         }
-        # 只导出模板定义的字段
+        # 只导出模板定义的字段，键 = field.name（与数据库列名一致）
         for field in all_fields:
             if isinstance(field, dict):
                 field_name = field.get('name', '')
-                export_row[field.get('label', field_name)] = row_dict.get(field_name, '')
+                # 构造实际的数据库列名（与 submit 时一致）
+                safe_name = ''.join(c if c.isalnum() or c == '_' else '_' for c in field_name)
+                if safe_name and safe_name[0].isdigit():
+                    safe_name = 'f_' + safe_name
+                export_row[field_name] = _format_val(row_dict.get(safe_name))
         export_data.append(export_row)
-    
+
+    # 返回 fields 列表供前端做表头映射
+    fields_meta = [
+        {"name": f.get('name', ''), "label": f.get('label', '')}
+        for f in all_fields if isinstance(f, dict)
+    ]
+
     return {
         "template_name": template.name,
-        "fields": [{"name": f.get('name'), "label": f.get('label')} for f in all_fields if isinstance(f, dict)],
+        "fields": fields_meta,
         "data": export_data,
         "total": len(export_data)
     }
@@ -935,8 +978,8 @@ async def import_template_data(
                     safe_name = 'f_' + safe_name
                 columns.append(f'"{safe_name}"')
                 placeholders.append(f':{safe_name}')
-                values[safe_name] = value
-            
+                values[safe_name] = json.dumps(value, ensure_ascii=False) if isinstance(value, (list, dict)) else value
+
             insert_sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
             await db.execute(text(insert_sql), values)
             imported_count += 1
@@ -951,4 +994,50 @@ async def import_template_data(
         "imported": imported_count,
         "total": len(request.data),
         "errors": errors[:10]  # 最多返回10个错误
+    }
+
+
+@router.post("/{template_id}/upload")
+async def upload_file_to_template(
+    template_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """上传文件到模板（存入模板 config 的 upload 字段）"""
+    import os
+    from app.core.config import settings
+
+    # 验证模板存在
+    result = await db.execute(select(Template).where(Template.id == template_id))
+    template = result.scalar_one_or_none()
+    if not template:
+        raise HTTPException(status_code=404, detail="模板不存在")
+
+    if not template.is_published:
+        raise HTTPException(status_code=400, detail="模板未发布，无法上传文件")
+
+    # 保存文件
+    ext = os.path.splitext(file.filename or '')[1] or '.bin'
+    file_id = f"{template_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}"
+    upload_dir = os.path.join(settings.UPLOAD_DIR, "template_files")
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, file_id)
+
+    try:
+        contents = await file.read()
+        with open(file_path, 'wb') as f:
+            f.write(contents)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"文件保存失败: {str(e)}")
+
+    # 返回访问路径
+    file_url = f"/files/template_files/{file_id}"
+
+    return {
+        "success": True,
+        "message": "文件上传成功",
+        "file_id": file_id,
+        "filename": file.filename,
+        "url": file_url
     }

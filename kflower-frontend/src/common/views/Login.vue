@@ -34,7 +34,7 @@ import { ElMessage } from 'element-plus'
 const router = useRouter()
 const userStore = useUserStore()
 const loading = ref(false)
-const form = ref({ username: 'admin', password: 'admin123' })
+const form = ref({ username: 'admin', password: '123456' })
 
 const handleLogin = async () => {
   loading.value = true
