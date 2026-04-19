@@ -43,6 +43,11 @@
           <template #title>我的工作区</template>
         </el-menu-item>
         
+        <el-menu-item index="/my-apps">
+          <el-icon><FolderOpened /></el-icon>
+          <template #title>我的应用</template>
+        </el-menu-item>
+        
         <el-menu-item index="/profile">
           <el-icon><User /></el-icon>
           <template #title>个人信息</template>
@@ -114,7 +119,7 @@ import { useUserStore } from '../../common/store/user'
 import { ElMessageBox } from 'element-plus'
 import {
   HomeFilled, Document, Connection, DataAnalysis,
-  Files, Setting, MagicStick, Fold, Expand, UserFilled, User, Folder
+  Files, Setting, MagicStick, Fold, Expand, UserFilled, User, Folder, FolderOpened
 } from '@element-plus/icons-vue'
 
 const route = useRoute()

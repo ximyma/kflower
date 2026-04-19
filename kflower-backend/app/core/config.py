@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     HOST: str = "0.0.0.0"
-    PORT: int = 8898
+    PORT: int = 8878
     
     # 数据库配置 - 使用绝对路径
     DATABASE_URL: str = f"sqlite+aiosqlite:///{PROJECT_ROOT}/kflower-data/kflower.db"

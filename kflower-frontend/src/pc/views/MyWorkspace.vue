@@ -273,6 +273,74 @@
           </div>
         </div>
       </el-tab-pane>
+
+      <!-- 我的应用 -->
+      <el-tab-pane label="我的应用" name="apps">
+        <div class="tab-content">
+          <div class="tab-header">
+            <h3>我的应用</h3>
+            <div class="tab-actions">
+              <el-button type="primary" @click="goToMyAppsPage">
+                <el-icon><Plus /></el-icon> 新建应用
+              </el-button>
+              <el-button @click="refreshApps">
+                <el-icon><Refresh /></el-icon> 刷新
+              </el-button>
+            </div>
+          </div>
+
+          <!-- 应用列表 -->
+          <div class="app-list-wrapper">
+            <div v-if="loadingApps" class="loading-skeleton">
+              <el-skeleton :rows="5" animated />
+            </div>
+
+            <el-empty v-else-if="myApps.length === 0" description="暂无应用">
+              <p>创建一个应用来组织您的表单和菜单</p>
+              <el-button type="primary" @click="goToMyAppsPage">去创建应用</el-button>
+            </el-empty>
+
+            <div v-else class="template-table-wrapper">
+              <el-table :data="myApps" stripe style="width:100%" v-loading="loadingApps">
+                <el-table-column label="应用名称" min-width="200" show-overflow-tooltip>
+                  <template #default="{ row }">
+                    <div class="table-name-cell">
+                      <div class="table-icon" :style="{ background: getTemplateColor(row.name) }">
+                        <el-icon><Document /></el-icon>
+                      </div>
+                      <div>
+                        <div class="table-name-text">{{ row.name }}</div>
+                        <div class="table-code-text">{{ row.code || 'ID: ' + row.id }}</div>
+                      </div>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+                <el-table-column label="状态" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.is_published" type="success" size="small">已发布</el-tag>
+                    <el-tag v-else type="info" size="small">草稿</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="created_at" label="创建时间" width="180" align="center" />
+                <el-table-column label="操作" width="280" fixed="right" align="center">
+                  <template #default="{ row }">
+                    <el-button size="small" type="warning" text @click="designApp(row)" title="设计">
+                      <el-icon><Edit /></el-icon>设计
+                    </el-button>
+                    <el-button v-if="row.is_published" size="small" type="success" text @click="openApp(row)" title="打开应用">
+                      <el-icon><View /></el-icon>打开
+                    </el-button>
+                    <el-button size="small" type="danger" text @click="deleteApp(row)" title="删除">
+                      <el-icon><Delete /></el-icon>删除
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </div>
+        </div>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- 填写数据弹窗 -->
@@ -340,6 +408,7 @@ import {
   EditPen, List, RefreshRight, Key
 } from '@element-plus/icons-vue'
 import { templateAPI } from '../../common/api'
+import { appAPI } from '../../common/api/myApps'
 import { useUserStore } from '../../common/store/user'
 
 const router = useRouter()
@@ -349,8 +418,10 @@ const userStore = useUserStore()
 const activeTab = ref('templates')
 const loadingTemplates = ref(false)
 const loadingForms = ref(false)
+const loadingApps = ref(false)
 const myTemplates = ref<any[]>([])
 const publishedForms = ref<any[]>([])
+const myApps = ref<any[]>([])
 const templateSearch = ref('')
 const formSearch = ref('')
 const templateListLoading = ref(false)
@@ -677,10 +748,58 @@ function refreshForms() {
   loadPublishedForms()
 }
 
+// ========== 应用相关方法 ==========
+async function loadMyApps() {
+  loadingApps.value = true
+  try {
+    const res = await appAPI.list()
+    myApps.value = res || []
+  } catch (error: any) {
+    ElMessage.error('加载应用列表失败：' + (error.message || '未知错误'))
+  } finally {
+    loadingApps.value = false
+  }
+}
+
+function refreshApps() {
+  loadMyApps()
+}
+
+function goToMyAppsPage() {
+  router.push('/my-apps')
+}
+
+function designApp(app: any) {
+  router.push(`/app-designer/${app.id}`)
+}
+
+function openApp(app: any) {
+  // 打开应用（跳转到应用容器页）
+  router.push(`/app/${app.id}`)
+}
+
+async function deleteApp(app: any) {
+  try {
+    await ElMessageBox.confirm(`确定要删除应用"${app.name}"吗？`, '确认删除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await appAPI.delete(app.id)
+    ElMessage.success('应用已删除')
+    loadMyApps()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除失败：' + (error.message || '未知错误'))
+    }
+  }
+}
+
 // 初始化加载
 onMounted(() => {
   loadMyTemplates()
   loadPublishedForms()
+  loadMyApps()
 })
 </script>
 

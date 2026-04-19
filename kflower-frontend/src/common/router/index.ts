@@ -91,6 +91,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '用户管理', requiresAdmin: true }
       },
       {
+        path: 'my-apps',
+        name: 'MyApps',
+        component: () => import('../../pc/views/MyApps.vue'),
+        meta: { title: '我的应用' }
+      },
+      {
+        path: 'app-designer/:appId',
+        name: 'AppDesigner',
+        component: () => import('../../pc/views/AppDesigner.vue'),
+        meta: { title: '应用设计', hideInMenu: true }
+      },
+      {
         path: 'migration',
         name: 'Migration',
         component: () => import('../../pc/views/Migration.vue'),
@@ -107,6 +119,33 @@ const routes: RouteRecordRaw[] = [
         name: 'FormData',
         component: () => import('../../pc/views/FormData.vue'),
         meta: { title: '数据管理' }
+      }
+    ]
+  },
+
+  // 应用容器路由
+  {
+    path: '/app/:appId',
+    component: () => import('../../pc/views/AppLayout.vue'),
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: 'form/:templateId',
+        name: 'AppFormList',
+        component: () => import('../../pc/views/FormListPage.vue'),
+        meta: { title: '数据列表' }
+      },
+      {
+        path: 'form/:templateId/edit',
+        name: 'AppFormEdit',
+        component: () => import('../../pc/views/FormEditPage.vue'),
+        meta: { title: '新增数据', hideInMenu: true }
+      },
+      {
+        path: 'form/:templateId/edit/:dataId',
+        name: 'AppFormEditDetail',
+        component: () => import('../../pc/views/FormEditPage.vue'),
+        meta: { title: '编辑数据', hideInMenu: true }
       }
     ]
   },

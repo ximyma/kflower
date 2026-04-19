@@ -1640,6 +1640,10 @@ onMounted(async () => {
   if (aiStore.models.length > 0) {
     selectedModelId.value = aiStore.currentModel?.modelId || aiStore.models[0].modelId
   }
+  // 从外部直接打开 AI 设计对话框（来自应用设计器的"新建模板"）
+  if (route.query.mode === 'ai') {
+    showAIHelper.value = true
+  }
 })
 
 // 导入相关

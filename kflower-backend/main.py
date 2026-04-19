@@ -13,6 +13,7 @@ from app.api.v1 import api_router
 import app.models.user  # noqa: F401
 import app.models.workflow  # noqa: F401
 import app.models.ai  # noqa: F401
+import app.modules.my_apps.models  # noqa: F401
 
 
 @asynccontextmanager

@@ -24,3 +24,19 @@
 - 路由守卫增加管理员权限检查
 - **修复表单导出 422 错误**：`modules` 和 `config` 字段在数据库中是 JSON 字符串，后端 API 需解析后才能使用
 - **修复模板设计器发布按钮**：将 `@click="publishTemplate"` 改为 `@click="publishTemplate(currentTemplate)"`，与设计列表保持一致，进入发布预览流程
+- **完成"我的应用"模块核心开发**：
+  - 后端：models.py (4 个模型), schemas.py, service.py, endpoints.py，完整 API 接口
+  - 前端：MyApps.vue(应用列表), AppDesigner.vue(应用设计器), AppLayout.vue(应用容器), FormListPage.vue(通用列表), FormEditPage.vue(通用表单)
+  - 路由：/my-apps, /app-designer/:appId, /app/:appId/form/:templateId，动态路由配置
+  - 集成：主导航栏添加"我的应用"入口
+  - 功能：应用 CRUD、可视化菜单设计、表单关系、插件系统基础架构
+  - 测试：创建数据库迁移脚本和 API 测试脚本
+  - 文档：创建完整的开发总结报告
+
+**2026-04-19**
+- **优化应用设计器**：创建 AppDesigner.vue，实现三栏布局的可视化设计器
+  - 左侧：可用模板列表（支持搜索）
+  - 中间：菜单树管理（支持编辑、删除、父子关系）
+  - 右侧：属性面板（应用属性和菜单属性）
+  - 分离"设计"和"信息"编辑功能
+  - 支持快速从模板添加菜单
