@@ -56,7 +56,7 @@ async def get_app(
     return app
 
 
-@router.put("/{app_id}", response_model=ApplicationResponse)
+@router.put("/{app_id}")
 async def update_app(
     app_id: int,
     data: ApplicationUpdate,
@@ -64,10 +64,37 @@ async def update_app(
     current_user: User = Depends(get_current_user)
 ):
     """更新应用"""
-    app = await my_apps_service.get_app(db, app_id, current_user)
+    from sqlalchemy import select
+    from app.modules.my_apps.models import Application
+    result = await db.execute(
+        select(Application).where(Application.id == app_id, Application.created_by == current_user.id)
+    )
+    app = result.scalar_one_or_none()
     if not app:
         raise HTTPException(status_code=404, detail="应用不存在")
-    return await my_apps_service.update_app(db, app, data)
+    
+    # 直接更新，返回简化响应避免序列化问题
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(app, key, value)
+    await db.commit()
+    await db.refresh(app)
+    
+    return {
+        "id": app.id,
+        "code": app.code,
+        "name": app.name,
+        "description": app.description,
+        "icon": app.icon,
+        "theme": app.theme,
+        "config": app.config,
+        "is_published": app.is_published,
+        "is_public": app.is_public,
+        "created_by": app.created_by,
+        "organization_id": app.organization_id,
+        "created_at": app.created_at,
+        "updated_at": app.updated_at,
+    }
 
 
 @router.delete("/{app_id}")
@@ -77,10 +104,12 @@ async def delete_app(
     current_user: User = Depends(get_current_user)
 ):
     """删除应用"""
+    # 先验证应用存在且属于当前用户
     app = await my_apps_service.get_app(db, app_id, current_user)
     if not app:
         raise HTTPException(status_code=404, detail="应用不存在")
-    await my_apps_service.delete_app(db, app)
+    # delete_app 需要 ORM 对象，重新查询
+    await my_apps_service.delete_app(db, app_id)
     return {"message": "删除成功"}
 
 

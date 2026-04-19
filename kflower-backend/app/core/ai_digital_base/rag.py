@@ -1,6 +1,7 @@
-﻿"""
+"""
 AI数字底座 - RAG检索模块
 基于向量数据库的检索增强生成
+统一使用 local_services.EmbeddingService 进行向量化
 """
 from typing import List, Dict, Optional, Any
 import json
@@ -8,55 +9,44 @@ from app.core.ai_digital_base.gateway import ai_gateway
 from app.core.config import settings
 
 
-class EmbeddingService:
+class RAGEmbeddingAdapter:
     """
-    向量化服务
-    将文本转换为向量，支持多种embedding模型
+    向量化服务适配器
+    统一使用 local_services 的 EmbeddingService，避免重复配置
     """
     
     def __init__(self):
-        self.embedding_client = None
-        self._init_client()
+        self._embedding_service = None
     
-    def _init_client(self):
-        """初始化embedding客户端"""
-        try:
-            from openai import AsyncOpenAI
-            self.embedding_client = AsyncOpenAI(
-                api_key=settings.SILICONFLOW_API_KEY or "dummy",
-                base_url=settings.EMBEDDING_API_BASE,
-            )
-        except Exception as e:
-            print(f"Embedding client init error: {e}")
+    def _get_service(self):
+        """懒加载 embedding_service"""
+        if self._embedding_service is None:
+            from app.core.ai_digital_base.local_services import get_embedding_service
+            self._embedding_service = get_embedding_service()
+        return self._embedding_service
     
     async def embed_text(self, text: str) -> Optional[List[float]]:
         """将文本转换为向量"""
-        if not self.embedding_client:
-            return None
-        
         try:
-            response = await self.embedding_client.embeddings.create(
-                model=settings.EMBEDDING_MODEL,
-                input=text
-            )
-            return response.data[0].embedding
+            service = self._get_service()
+            result = await service.embed_text(text)
+            if result and result.get("success"):
+                return result.get("embedding")
+            return None
         except Exception as e:
-            print(f"Embedding error: {e}")
+            print(f"RAG Embedding error: {e}")
             return None
     
     async def embed_texts(self, texts: List[str]) -> List[Optional[List[float]]]:
         """批量将文本转换为向量"""
-        if not self.embedding_client:
-            return [None] * len(texts)
-        
         try:
-            response = await self.embedding_client.embeddings.create(
-                model=settings.EMBEDDING_MODEL,
-                input=texts
-            )
-            return [item.embedding for item in response.data]
+            service = self._get_service()
+            result = await service.embed_batch(texts)
+            if result and result.get("success"):
+                return result.get("embeddings", [None] * len(texts))
+            return [None] * len(texts)
         except Exception as e:
-            print(f"Batch embedding error: {e}")
+            print(f"RAG Batch embedding error: {e}")
             return [None] * len(texts)
 
 
@@ -67,7 +57,7 @@ class RAGRetriever:
     """
     
     def __init__(self):
-        self.embedding_service = EmbeddingService()
+        self.embedding_service = RAGEmbeddingAdapter()
         self.local_vectors: List[Dict[str, Any]] = []
         self.qdrant_client = None
         self._init_qdrant()
@@ -223,5 +213,10 @@ def get_rag_retriever():
         _rag_retriever = RAGRetriever()
     return _rag_retriever
 
-# 导出全局实例供其他模块使用
-rag_retriever = get_rag_retriever()
+# 兼容旧代码的属性访问
+class _LazyRAGRetriever:
+    """延迟加载的RAG检索器代理"""
+    def __getattr__(self, name):
+        return getattr(get_rag_retriever(), name)
+
+rag_retriever = _LazyRAGRetriever()

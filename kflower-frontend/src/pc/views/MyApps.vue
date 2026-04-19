@@ -2,9 +2,14 @@
   <div class="apps-container">
     <div class="page-header">
       <h2>我的应用</h2>
-      <el-button type="primary" @click="showCreateDialog = true">
-        <el-icon><Plus /></el-icon> 新建应用
-      </el-button>
+      <div class="header-actions">
+        <el-button @click="goToAIDesigner">
+          <el-icon><MagicStick /></el-icon> AI设计助手
+        </el-button>
+        <el-button type="primary" @click="showCreateDialog = true">
+          <el-icon><Plus /></el-icon> 新建应用
+        </el-button>
+      </div>
     </div>
 
     <!-- 应用列表 -->
@@ -80,7 +85,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, View, Edit, Promotion, Delete, SetUp } from '@element-plus/icons-vue'
+import { Plus, View, Edit, Promotion, Delete, SetUp, MagicStick } from '@element-plus/icons-vue'
 import appAPI from '@/common/api/myApps'
 
 const router = useRouter()
@@ -130,6 +135,11 @@ function editAppInfo(app: any) {
 // 进入应用设计器
 function designApp(app: any) {
   router.push(`/app-designer/${app.id}`)
+}
+
+// 进入AI设计助手
+function goToAIDesigner() {
+  router.push('/ai-app-designer')
 }
 
 // 保存应用
@@ -216,6 +226,11 @@ onMounted(() => {
   h2 {
     margin: 0;
     font-size: 24px;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 12px;
   }
 }
 

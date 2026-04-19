@@ -13,6 +13,9 @@
         <el-button @click="$router.push('/workflows')">
           <el-icon><Grid /></el-icon> 新建流程
         </el-button>
+        <el-button type="success" @click="$router.push('/ai-app-designer')">
+          <el-icon><Box /></el-icon> 新建应用
+        </el-button>
       </div>
     </div>
 
@@ -169,7 +172,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Plus, Grid, MagicStick, Promotion, Menu, Bell, Clock, CircleCheck,
-  Document, Folder, ChatDotRound, DataLine, Setting, User, FolderOpened
+  Document, Folder, ChatDotRound, DataLine, Setting, User, FolderOpened, Box
 } from '@element-plus/icons-vue'
 import { dashboardAPI } from '../../common/api'
 import { useAIStore } from '../../common/store/ai'
@@ -212,10 +215,10 @@ const suggestions = [
 const quickEntries = [
   { title: '模板设计', icon: 'Document', path: '/templates', color: '#409EFF' },
   { title: '流程审批', icon: 'Grid', path: '/workflows', color: '#67C23A' },
+  { title: '我的应用', icon: 'Box', path: '/my-apps', color: '#9C27B0' },
   { title: '知识库', icon: 'FolderOpened', path: '/knowledge', color: '#E6A23C' },
   { title: '决策分析', icon: 'DataLine', path: '/analytics', color: '#909399' },
-  { title: '系统配置', icon: 'Setting', path: '/settings', color: '#F56C6C' },
-  { title: '用户管理', icon: 'User', path: '/users', color: '#9C27B0' }
+  { title: '系统配置', icon: 'Setting', path: '/settings', color: '#F56C6C' }
 ]
 
 function formatTime(timeStr: string) {

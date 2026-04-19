@@ -209,7 +209,7 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download, Upload, Switch, Document } from '@element-plus/icons-vue'
-import { testConnection, executeMigration, generateScript } from '../../api/migration'
+import { testConnection, executeMigration, generateScript } from '../../common/api/migration'
 
 interface DBConfig {
   db_type: string

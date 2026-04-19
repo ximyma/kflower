@@ -19,6 +19,8 @@ from app.schemas.schemas import (
     TemplateDataSubmit, TemplateDataUpdate, TemplateDataResponse, TemplateStatsResponse
 )
 from pydantic import BaseModel as PydanticBaseModel
+from app.modules.my_apps.plugin_executor import plugin_executor, PluginContext
+from app.modules.my_apps.models import AppPlugin
 
 router = APIRouter(prefix="/templates", tags=["模板管理"])
 
@@ -27,6 +29,7 @@ router = APIRouter(prefix="/templates", tags=["模板管理"])
 async def list_templates(
     category: Optional[str] = None,
     search: Optional[str] = None,
+    is_published: Optional[bool] = None,
     skip: int = 0,
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
@@ -47,6 +50,9 @@ async def list_templates(
             (Template.name.contains(search)) | 
             (Template.description.contains(search))
         )
+    
+    if is_published is not None:
+        query = query.where(Template.is_published == is_published)
     
     query = query.offset(skip).limit(limit)
     result = await db.execute(query)
@@ -321,11 +327,75 @@ async def submit_template_data(
     
     insert_sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
     
+    # ===== 插件触发：before_save =====
+    # 获取 app_id（从模板配置中）
+    app_id = None
+    template_config = template.config or {}
+    if isinstance(template_config, dict):
+        app_id = template_config.get('app_id')
+    
+    if app_id:
+        try:
+            # 构建上下文
+            context = PluginContext(
+                data=data,
+                old_data=None,
+                db=db,
+                user_id=current_user.id,
+                template_id=template_id,
+                event='before_save',
+                app_id=app_id
+            )
+            # 查询并执行 before_save 插件
+            plugins_result = await db.execute(
+                select(AppPlugin).where(
+                    AppPlugin.app_id == app_id,
+                    AppPlugin.trigger_event == 'before_save',
+                    AppPlugin.is_enabled == True
+                )
+            )
+            plugins = plugins_result.scalars().all()
+            for plugin in plugins:
+                if not plugin.target_template_id or plugin.target_template_id == template_id:
+                    result = await plugin_executor.execute(plugin.script_code, context, timeout=5)
+                    if not result['success']:
+                        # 记录错误但不阻止保存
+                        pass
+        except Exception as e:
+            # 插件执行失败不影响主流程
+            pass
+    
     try:
         await db.execute(text(insert_sql), values)
         await db.commit()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存数据失败: {str(e)}")
+    
+    # ===== 插件触发：after_save =====
+    if app_id:
+        try:
+            context = PluginContext(
+                data=data,
+                old_data=None,
+                db=db,
+                user_id=current_user.id,
+                template_id=template_id,
+                event='after_save',
+                app_id=app_id
+            )
+            plugins_result = await db.execute(
+                select(AppPlugin).where(
+                    AppPlugin.app_id == app_id,
+                    AppPlugin.trigger_event == 'after_save',
+                    AppPlugin.is_enabled == True
+                )
+            )
+            plugins = plugins_result.scalars().all()
+            for plugin in plugins:
+                if not plugin.target_template_id or plugin.target_template_id == template_id:
+                    await plugin_executor.execute(plugin.script_code, context, timeout=5)
+        except Exception as e:
+            pass
     
     # 获取刚插入的ID
     result = await db.execute(text(f"SELECT last_insert_rowid()"))
@@ -553,9 +623,68 @@ async def update_template_data(
     
     update_sql = f"UPDATE {table_name} SET {', '.join(set_clauses)} WHERE id = :id AND template_id = :template_id"
     
+    # ===== 插件触发：before_update =====
+    app_id = None
+    template_config = template.config or {}
+    if isinstance(template_config, dict):
+        app_id = template_config.get('app_id')
+    
+    if app_id:
+        try:
+            context = PluginContext(
+                data=data,
+                old_data=None,
+                db=db,
+                user_id=current_user.id,
+                template_id=template_id,
+                event='before_update',
+                app_id=app_id
+            )
+            plugins_result = await db.execute(
+                select(AppPlugin).where(
+                    AppPlugin.app_id == app_id,
+                    AppPlugin.trigger_event == 'before_update',
+                    AppPlugin.is_enabled == True
+                )
+            )
+            plugins = plugins_result.scalars().all()
+            for plugin in plugins:
+                if not plugin.target_template_id or plugin.target_template_id == template_id:
+                    result = await plugin_executor.execute(plugin.script_code, context, timeout=5)
+                    if not result['success']:
+                        pass
+        except Exception as e:
+            pass
+    
     try:
         result = await db.execute(text(update_sql), values)
         await db.commit()
+        
+        # ===== 插件触发：after_update =====
+        if app_id:
+            try:
+                context = PluginContext(
+                    data=data,
+                    old_data=None,
+                    db=db,
+                    user_id=current_user.id,
+                    template_id=template_id,
+                    event='after_save',
+                    app_id=app_id
+                )
+                plugins_result = await db.execute(
+                    select(AppPlugin).where(
+                        AppPlugin.app_id == app_id,
+                        AppPlugin.trigger_event == 'after_save',
+                        AppPlugin.is_enabled == True
+                    )
+                )
+                plugins = plugins_result.scalars().all()
+                for plugin in plugins:
+                    if not plugin.target_template_id or plugin.target_template_id == template_id:
+                        await plugin_executor.execute(plugin.script_code, context, timeout=5)
+            except Exception as e:
+                pass
         
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="数据不存在")
@@ -604,10 +733,69 @@ async def delete_template_data(
     config = template.config or {}
     table_name = config.get('table_name', f'form_data_{template_id}')
     
+    # ===== 插件触发：before_delete =====
+    app_id = None
+    template_config = template.config or {}
+    if isinstance(template_config, dict):
+        app_id = template_config.get('app_id')
+    
+    if app_id:
+        try:
+            context = PluginContext(
+                data={"id": data_id},
+                old_data=None,
+                db=db,
+                user_id=current_user.id,
+                template_id=template_id,
+                event='before_delete',
+                app_id=app_id
+            )
+            plugins_result = await db.execute(
+                select(AppPlugin).where(
+                    AppPlugin.app_id == app_id,
+                    AppPlugin.trigger_event == 'before_delete',
+                    AppPlugin.is_enabled == True
+                )
+            )
+            plugins = plugins_result.scalars().all()
+            for plugin in plugins:
+                if not plugin.target_template_id or plugin.target_template_id == template_id:
+                    result = await plugin_executor.execute(plugin.script_code, context, timeout=5)
+                    if not result['success']:
+                        pass
+        except Exception as e:
+            pass
+    
     try:
         delete_sql = f"DELETE FROM {table_name} WHERE id = :id AND template_id = :template_id"
         result = await db.execute(text(delete_sql), {"id": data_id, "template_id": template_id})
         await db.commit()
+        
+        # ===== 插件触发：after_delete =====
+        if app_id:
+            try:
+                context = PluginContext(
+                    data={"id": data_id},
+                    old_data=None,
+                    db=db,
+                    user_id=current_user.id,
+                    template_id=template_id,
+                    event='after_delete',
+                    app_id=app_id
+                )
+                plugins_result = await db.execute(
+                    select(AppPlugin).where(
+                        AppPlugin.app_id == app_id,
+                        AppPlugin.trigger_event == 'after_delete',
+                        AppPlugin.is_enabled == True
+                    )
+                )
+                plugins = plugins_result.scalars().all()
+                for plugin in plugins:
+                    if not plugin.target_template_id or plugin.target_template_id == template_id:
+                        await plugin_executor.execute(plugin.script_code, context, timeout=5)
+            except Exception as e:
+                pass
         
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="数据不存在")

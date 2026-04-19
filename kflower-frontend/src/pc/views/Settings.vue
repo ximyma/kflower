@@ -1,20 +1,117 @@
 <template>
   <div class="settings-page">
-    <!-- 隐藏的OCR测试文件输入 -->
-    <input
-      ref="ocrTestInput"
-      type="file"
-      accept="image/*"
-      style="display:none"
-      @change="onOCRTestFileSelected"
-    />
     <div class="page-header">
       <h2>系统设置</h2>
     </div>
 
     <el-tabs v-model="activeTab" class="settings-tabs">
-      <!-- AI模型管理 -->
-      <el-tab-pane label="AI模型管理" name="ai-models">
+      <!-- AI配置（统一入口） -->
+      <el-tab-pane label="AI配置" name="ai-models">
+        <!-- AI配置状态总览 -->
+        <el-card class="status-overview-card">
+          <template #header>
+            <div class="card-header">
+              <span>🤖 AI 配置状态</span>
+              <el-button size="small" @click="refreshConfigStatus" :loading="loadingConfigStatus">
+                <el-icon><Refresh /></el-icon> 刷新
+              </el-button>
+            </div>
+          </template>
+
+          <!-- 正在加载 -->
+          <div v-if="loadingConfigStatus && !aiConfigStatus" class="loading-state">
+            <el-skeleton animated />
+          </div>
+
+          <!-- 状态概览行 -->
+          <div v-else-if="aiConfigStatus" class="status-overview-row">
+            <!-- 对话模型 -->
+            <div class="status-card" :class="{ ready: aiConfigStatus.chat?.available, warn: !aiConfigStatus.chat?.available }">
+              <div class="status-icon">
+                <el-icon size="32" :color="aiConfigStatus.chat?.available ? '#67c23a' : '#e6a23c'">
+                  <ChatDotRound v-if="aiConfigStatus.chat?.available" />
+                  <WarningFilled v-else />
+                </el-icon>
+              </div>
+              <div class="status-info">
+                <div class="status-title">对话模型</div>
+                <div class="status-desc">{{ aiConfigStatus.chat?.available ? (aiConfigStatus.chat.default_model?.name || aiConfigStatus.chat.default_model?.id || '已配置') : '未配置' }}</div>
+                <div class="status-provider" v-if="aiConfigStatus.chat?.current_provider">
+                  {{ aiConfigStatus.chat.current_provider }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Embedding模型 -->
+            <div class="status-card" :class="{ ready: aiConfigStatus.embedding?.available, warn: !aiConfigStatus.embedding?.available }">
+              <div class="status-icon">
+                <el-icon size="32" :color="aiConfigStatus.embedding?.available ? '#67c23a' : '#909399'">
+                  <Connection v-if="aiConfigStatus.embedding?.available" />
+                  <CircleCloseFilled v-else-if="!aiConfigStatus.embedding?.st_available" />
+                  <WarningFilled v-else />
+                </el-icon>
+              </div>
+              <div class="status-info">
+                <div class="status-title">Embedding</div>
+                <div class="status-desc">
+                  {{ aiConfigStatus.embedding?.available
+                    ? (aiConfigStatus.embedding.current_model || '未知')
+                    : aiConfigStatus.embedding?.st_available
+                      ? 'API未配置'
+                      : 'sentence-transformers未安装' }}
+                </div>
+                <div class="status-provider" v-if="aiConfigStatus.embedding?.current_provider">
+                  {{ aiConfigStatus.embedding.current_provider }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Rerank模型 -->
+            <div class="status-card" :class="{ ready: aiConfigStatus.rerank?.available }">
+              <div class="status-icon">
+                <el-icon size="32" :color="aiConfigStatus.rerank?.available ? '#67c23a' : '#909399'">
+                  <Filter v-if="aiConfigStatus.rerank?.available" />
+                  <CircleCloseFilled v-else />
+                </el-icon>
+              </div>
+              <div class="status-info">
+                <div class="status-title">Rerank</div>
+                <div class="status-desc">{{ aiConfigStatus.rerank?.available ? '已配置' : '未配置' }}</div>
+              </div>
+            </div>
+
+            <!-- OCR -->
+            <div class="status-card" :class="{ ready: aiConfigStatus.ocr?.available }">
+              <div class="status-icon">
+                <el-icon size="32" :color="aiConfigStatus.ocr?.available ? '#67c23a' : '#909399'">
+                  <Picture v-if="aiConfigStatus.ocr?.available" />
+                  <CircleCloseFilled v-else />
+                </el-icon>
+              </div>
+              <div class="status-info">
+                <div class="status-title">OCR</div>
+                <div class="status-desc">{{ aiConfigStatus.ocr?.available ? '已安装' : '未安装' }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 警告信息 -->
+          <el-alert
+            v-if="aiConfigStatus?.warnings?.length"
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-top:12px"
+          >
+            <template #title>
+              <span>⚠️ 以下配置项需要完善：</span>
+            </template>
+            <template #default>
+              <div v-for="(w, i) in aiConfigStatus.warnings" :key="i" style="margin-top:4px">{{ w }}</div>
+            </template>
+          </el-alert>
+        </el-card>
+
         <el-card>
           <template #header>
             <div class="card-header">
@@ -298,52 +395,6 @@
         </el-card>
       </el-tab-pane>
       
-      <!-- 本地工具 -->
-      <el-tab-pane label="本地工具" name="tools">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>本地 AI 工具配置</span>
-              <el-button type="primary" size="small" @click="openAddToolDialog">
-                <el-icon><Plus /></el-icon> 添加工具
-              </el-button>
-            </div>
-          </template>
-          
-          <el-table :data="localTools" style="width:100%" v-loading="loadingTools">
-            <el-table-column prop="name" label="工具名称" width="180">
-              <template #default="{ row }">
-                <span class="font-medium">{{ row.name }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="type" label="类型" width="140">
-              <template #default="{ row }">
-                <el-tag size="small" type="info">{{ row.type }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="description" label="描述" min-width="200" />
-            <el-table-column prop="apiUrl" label="API地址" min-width="220">
-              <template #default="{ row }">
-                <span class="text-mono" v-if="row.apiUrl">{{ row.apiUrl }}</span>
-                <span class="text-muted" v-else>-</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="enabled" label="启用" width="100">
-              <template #default="{ row }">
-                <el-switch v-model="row.enabled" @change="toggleTool(row)" />
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
-              <template #default="{ row }">
-                <el-button type="primary" size="small" link @click="editTool(row)">编辑</el-button>
-                <el-button type="primary" size="small" link @click="testTool(row)">测试</el-button>
-                <el-button type="danger" size="small" link @click="deleteTool(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-tab-pane>
-      
       <!-- 基本配置 -->
       <el-tab-pane label="基本配置" name="basic">
         <el-card>
@@ -595,7 +646,27 @@
           <el-input v-model="rerankForm.name" placeholder="如: BGE Reranker" />
         </el-form-item>
         <el-form-item label="模型 ID" required>
-          <el-input v-model="rerankForm.model" placeholder="如: BAAI/bge-reranker-v2-m3" />
+          <el-select
+            v-model="rerankForm.model"
+            filterable
+            allow-create
+            placeholder="选择或输入 Rerank 模型 ID"
+            style="width:100%"
+            :reserve-keyword="false"
+          >
+            <el-option-group label="SiliconFlow (推荐)">
+              <el-option value="BAAI/bge-reranker-v2-m3" label="BAAI/bge-reranker-v2-m3" description="BGE 多语言重排序模型" />
+              <el-option value="BAAI/bge-reranker-base" label="BAAI/bge-reranker-base" description="BGE 基础重排序模型" />
+            </el-option-group>
+            <el-option-group label="Cohere">
+              <el-option value="rerank-multilingual-v2.0" label="rerank-multilingual-v2.0" description="Cohere 多语言重排序" />
+              <el-option value="rerank-english-v2.0" label="rerank-english-v2.0" description="Cohere 英文重排序" />
+            </el-option-group>
+            <el-option-group label="本地模型">
+              <el-option value="Xorbits/neural-searcher" label="Xorbits/neural-searcher" description="本地神经搜索模型" />
+            </el-option-group>
+          </el-select>
+          <div class="form-tip">可直接输入自定义模型 ID，支持 HuggingFace 模型名称</div>
         </el-form-item>
         <el-form-item label="服务商">
           <el-select v-model="rerankForm.provider" style="width:100%">
@@ -649,6 +720,7 @@
               <el-option value="BAAI/bge-m3" label="BAAI/bge-m3" description="BGE多语言模型 1024维" />
               <el-option value="BAAI/bge-large-zh-v1.5" label="BAAI/bge-large-zh-v1.5" description="BGE大型中文模型 1024维" />
               <el-option value="BAAI/bge-base-zh-v1.5" label="BAAI/bge-base-zh-v1.5" description="BGE基础中文模型 768维" />
+              <el-option value="sentence-transformers/all-mpnet-base-v2" label="all-mpnet-base-v2" description="MPNet高质量英文模型 768维" />
               <el-option value="all-MiniLM-L6-v2" label="all-MiniLM-L6-v2" description="轻量级英文模型 384维" />
               <el-option value="shibing624/text2vec-base-chinese" label="text2vec-base-chinese" description="中文向量化模型 768维" />
             </el-option-group>
@@ -702,61 +774,18 @@
         </el-button>
       </template>
     </el-dialog>
-
-    <!-- 添加/编辑工具对话框 -->
-    <el-dialog v-model="showToolDialog" :title="editingTool ? '编辑工具' : '添加工具'" width="600px">
-      <el-form :model="toolForm" label-width="130px">
-        <el-form-item label="工具名称" required>
-          <el-input v-model="toolForm.name" placeholder="如: OCR 文字识别" />
-        </el-form-item>
-        <el-form-item label="工具类型" required>
-          <el-select v-model="toolForm.type" style="width:100%">
-            <el-option label="OCR 文字识别" value="ocr" />
-            <el-option label="文本解析" value="text_parser" />
-            <el-option label="Embedding 向量" value="embedding" />
-            <el-option label="语音识别 (ASR)" value="asr" />
-            <el-option label="语音合成 (TTS)" value="tts" />
-            <el-option label="图片识别" value="image_recognition" />
-            <el-option label="文档解析" value="document_parser" />
-            <el-option label="自定义 API" value="custom_api" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="toolForm.description" type="textarea" :rows="2" placeholder="工具功能描述" />
-        </el-form-item>
-        <el-form-item label="API 地址" v-if="toolForm.type === 'custom_api'">
-          <el-input v-model="toolForm.apiUrl" placeholder="http://localhost:xxxx/api" />
-        </el-form-item>
-        <el-form-item label="API Key" v-if="toolForm.type === 'custom_api'">
-          <el-input v-model="toolForm.apiKey" type="password" show-password placeholder="API Key" />
-        </el-form-item>
-        <el-form-item label="模型路径" v-if="toolForm.type === 'ocr'">
-          <el-input v-model="toolForm.modelPath" placeholder="Tesseract 路径（可选）" />
-        </el-form-item>
-        <el-form-item label="超时时间(秒)">
-          <el-input-number v-model="toolForm.timeout" :min="5" :max="300" style="width:100%" />
-        </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="toolForm.enabled" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showToolDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveTool" :loading="savingTool">
-          {{ editingTool ? '保存' : '添加' }}
-        </el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { Refresh, Cpu, Monitor, Folder, CircleCheck, CircleClose, Document, Files, Setting, Plus } from '@element-plus/icons-vue'
+import { Refresh, Cpu, Monitor, Folder, CircleCheck, CircleClose, Document, Files, Setting, Plus, ChatDotRound, Connection, Filter, Picture, CircleCloseFilled, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { systemAPI, localAIAPI } from '../../common/api'
 
 const activeTab = ref('ai-models')
+const aiConfigStatus = ref<any>(null)
+const loadingConfigStatus = ref(false)
 
 // AI模型管理
 const aiModels = ref<any[]>([])
@@ -888,24 +917,6 @@ const embeddingForm = reactive({
   enabled: true
 })
 
-// 本地工具配置
-const localTools = ref<any[]>([])
-const loadingTools = ref(false)
-const showToolDialog = ref(false)
-const editingTool = ref<any>(null)
-const savingTool = ref(false)
-
-const toolForm = reactive({
-  name: '',
-  type: 'ocr',
-  description: '',
-  apiUrl: '',
-  apiKey: '',
-  modelPath: '',
-  timeout: 30,
-  enabled: true
-})
-
 // 基本配置
 const basicConfig = reactive({
   appName: 'Kflower 企业智能管理低代码平台',
@@ -942,6 +953,24 @@ function isLocalProvider(provider: string) {
 }
 
 // 加载AI模型列表
+async function loadAIConfigStatus() {
+  loadingConfigStatus.value = true
+  try {
+    const res: any = await systemAPI.getAIConfigStatus()
+    if (res?.data) {
+      aiConfigStatus.value = res.data
+    }
+  } catch (e: any) {
+    console.error('加载AI配置状态失败:', e)
+  } finally {
+    loadingConfigStatus.value = false
+  }
+}
+
+function refreshConfigStatus() {
+  loadAIConfigStatus()
+}
+
 async function loadAiModels() {
   loadingModels.value = true
   try {
@@ -1107,17 +1136,6 @@ async function loadLocalModels() {
       // 加载Rerank配置
       if (data.rerank_models) {
         rerankModels.value = typeof data.rerank_models === 'string' ? JSON.parse(data.rerank_models) : data.rerank_models
-      }
-      // 加载工具配置
-      if (data.local_tools) {
-        localTools.value = typeof data.local_tools === 'string' ? JSON.parse(data.local_tools) : data.local_tools
-      } else {
-        // 默认工具
-        localTools.value = [
-          { name: 'OCR 文字识别', type: 'ocr', description: '从图片中提取文字，支持中文、英文、表格', enabled: true },
-          { name: '文本解析', type: 'text_parser', description: '文本分词、关键词提取、摘要生成', enabled: true },
-          { name: 'Embedding 向量', type: 'embedding', description: '文本向量化处理', enabled: true }
-        ]
       }
     }
   } catch (e) {
@@ -1533,95 +1551,6 @@ async function testCurrentEmbedding() {
   }
 }
 
-// ===== 工具管理 =====
-
-function openAddToolDialog() {
-  editingTool.value = null
-  Object.assign(toolForm, {
-    name: '',
-    type: 'ocr',
-    description: '',
-    apiUrl: '',
-    apiKey: '',
-    modelPath: '',
-    timeout: 30,
-    enabled: true
-  })
-  showToolDialog.value = true
-}
-
-function editTool(row: any) {
-  editingTool.value = row
-  Object.assign(toolForm, {
-    name: row.name || '',
-    type: row.type || 'ocr',
-    description: row.description || '',
-    apiUrl: row.apiUrl || '',
-    apiKey: row.apiKey || '',
-    modelPath: row.modelPath || '',
-    timeout: row.timeout || 30,
-    enabled: row.enabled !== false
-  })
-  showToolDialog.value = true
-}
-
-async function saveTool() {
-  if (!toolForm.name.trim() || !toolForm.type) {
-    ElMessage.warning('请填写工具名称和类型')
-    return
-  }
-  
-  savingTool.value = true
-  try {
-    const toolData = {
-      id: editingTool.value?.id || Date.now(),
-      name: toolForm.name,
-      type: toolForm.type,
-      description: toolForm.description,
-      apiUrl: toolForm.apiUrl,
-      apiKey: toolForm.apiKey,
-      modelPath: toolForm.modelPath,
-      timeout: toolForm.timeout,
-      enabled: toolForm.enabled
-    }
-    
-    if (editingTool.value) {
-      const idx = localTools.value.findIndex(t => t.id === editingTool.value.id)
-      if (idx > -1) localTools.value[idx] = toolData
-    } else {
-      localTools.value.push(toolData)
-    }
-    
-    await systemAPI.saveConfig({ local_tools: JSON.stringify(localTools.value) })
-    
-    // 如果是OCR工具，同时保存Tesseract配置到数据库
-    if (toolForm.type === 'ocr' && toolForm.modelPath) {
-      try {
-        await systemAPI.saveConfig({ ocr_tesseract_path: toolForm.modelPath, ocr_lang: 'chi_sim+eng' })
-        await localAIAPI.ocrConfigure(toolForm.modelPath, 'chi_sim+eng')
-      } catch (e) {
-        console.warn('OCR配置保存到服务失败', e)
-      }
-    }
-    
-    ElMessage.success(editingTool.value ? '已更新' : '已添加')
-    showToolDialog.value = false
-  } catch (e: any) {
-    ElMessage.error('保存失败: ' + e.message)
-  } finally {
-    savingTool.value = false
-  }
-}
-
-async function deleteTool(row: any) {
-  try {
-    await ElMessageBox.confirm(`确定删除工具 "${row.name}" 吗？`, '确认删除', { type: 'warning' })
-    localTools.value = localTools.value.filter(t => t.id !== row.id)
-    await systemAPI.saveConfig({ local_tools: JSON.stringify(localTools.value) })
-    ElMessage.success('已删除')
-  } catch (e) {}
-}
-
 // 加载Embedding模型
 async function loadEmbeddingModels() {
   loadingEmbedding.value = true
@@ -1679,103 +1608,6 @@ async function saveEmbeddingConfig() {
   }
 }
 
-// 切换工具启用状态
-async function toggleTool(row: any) {
-  try {
-    await systemAPI.saveConfig({ local_tools: JSON.stringify(localTools.value) })
-    ElMessage.success(row.enabled ? '工具已启用' : '工具已禁用')
-  } catch (e) {}
-}
-
-// 测试工具
-const ocrTestInput = ref<HTMLInputElement|null>(null)
-const testingOCRRow = ref<any>(null)
-
-function triggerOCRTest(row: any) {
-  testingOCRRow.value = row
-  ocrTestInput.value?.click()
-}
-
-async function onOCRTestFileSelected(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file || !testingOCRRow.value) return
-  
-  const loading = ElMessage({ message: 'OCR 识别中...', duration: 0 })
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('lang', 'chi_sim+eng')
-    
-    const res = await (window as any).fetch('/api/v1/local-ai/ocr/text', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + (localStorage.getItem('kflower_token') || '') },
-      body: formData
-    })
-    const json = await res.json()
-    loading.close()
-    
-    if (json.success) {
-      ElMessage.success('OCR 识别成功！')
-      const preview = json.data.text?.substring(0, 200) + (json.data.text?.length > 200 ? '...' : '')
-      ElMessageBox.alert(`识别结果：\n${preview || '(无文字)'}\n\n置信度：${(json.data.confidence * 100).toFixed(1)}%`, 'OCR 识别结果', {
-        confirmButtonText: '确定',
-      })
-    } else {
-      ElMessage.error('OCR 识别失败：' + (json.message || json.detail || '未知错误'))
-    }
-  } catch (e: any) {
-    loading.close()
-    ElMessage.error('OCR 测试失败：' + (e.message || '请检查 Tesseract 路径配置是否正确'))
-  } finally {
-    testingOCRRow.value = null
-    input.value = ''
-  }
-}
-
-async function testTool(row: any) {
-  const typeLower = (row.type || '').toLowerCase()
-  if (typeLower === 'ocr') {
-    // 触发文件选择
-    triggerOCRTest(row)
-  } else if (typeLower === 'embedding') {
-    try {
-      const res: any = await localAIAPI.embed('测试文本')
-      if (res && res.success !== false) {
-        ElMessage.success(`Embedding 生成成功，向量维度: ${res.data?.embedding?.length || 0}`)
-      }
-    } catch (e) {
-      ElMessage.error('Embedding 服务不可用')
-    }
-  } else if (typeLower === 'text_parser' || typeLower === '文本解析') {
-    try {
-      const res: any = await localAIAPI.textKeywords('这是一个测试文本')
-      if (res && res.success !== false) {
-        ElMessage.success('文本解析成功')
-      }
-    } catch (e) {
-      ElMessage.error('文本解析服务不可用')
-    }
-  } else if (typeLower === 'custom_api' || typeLower === '自定义api') {
-    if (row.apiUrl) {
-      try {
-        const res = await fetch(row.apiUrl)
-        if (res.ok) {
-          ElMessage.success('API 连接成功')
-        } else {
-          ElMessage.error('API 连接失败')
-        }
-      } catch (e) {
-        ElMessage.error('无法连接到 API')
-      }
-    } else {
-      ElMessage.warning('请先配置 API 地址')
-    }
-  } else {
-    ElMessage.info(`测试 ${row.name} 功能`)
-  }
-}
-
 // 加载系统配置
 async function loadSettings() {
   try {
@@ -1822,17 +1654,17 @@ function handleProviderChange() {
   modelForm.modelId = ''
 }
 
-onMounted(() => {
-  loadAiModels()
-  loadLocalModels()
-  loadEmbeddingModels()
-  loadSettings()
-  loadHealth()
-  // 加载工具配置
-  loadLocalModels() // 工具配置在localModels中一起加载
-  // 加载真实的 Ollama 连接和 Rerank 模型
-  loadOllamaConnections()
-  loadRerankModels()
+onMounted(async () => {
+  await Promise.all([
+    loadAiModels(),
+    loadLocalModels(),
+    loadEmbeddingModels(),
+    loadSettings(),
+    loadHealth(),
+    loadOllamaConnections(),
+    loadRerankModels(),
+    loadAIConfigStatus()
+  ])
 })
 </script>
 
@@ -1858,6 +1690,71 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.status-overview-card {
+  margin-bottom: 16px;
+}
+
+.loading-state {
+  padding: 20px 0;
+}
+
+.status-overview-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.status-card {
+  flex: 1;
+  min-width: 160px;
+  max-width: 220px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-light);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  transition: all 0.3s;
+
+  &.ready {
+    background: var(--el-color-success-light-9);
+    border-color: var(--el-color-success-light-5);
+  }
+
+  &.warn {
+    background: var(--el-color-warning-light-9);
+    border-color: var(--el-color-warning-light-5);
+  }
+
+  .status-icon {
+    flex-shrink: 0;
+  }
+
+  .status-info {
+    .status-title {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--el-text-color-primary);
+    }
+
+    .status-desc {
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
+      margin-top: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status-provider {
+      font-size: 11px;
+      color: var(--el-text-color-placeholder);
+      margin-top: 2px;
+    }
+  }
 }
 
 .ai-test-section {

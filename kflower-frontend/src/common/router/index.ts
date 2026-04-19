@@ -97,9 +97,15 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '我的应用' }
       },
       {
+        path: 'ai-app-designer',
+        name: 'AIAppDesigner',
+        component: () => import('../../pc/views/my-apps/AIAppDesigner.vue'),
+        meta: { title: 'AI设计助手', hideInMenu: true }
+      },
+      {
         path: 'app-designer/:appId',
         name: 'AppDesigner',
-        component: () => import('../../pc/views/AppDesigner.vue'),
+        component: () => import('../../pc/views/my-apps/AppDesigner.vue'),
         meta: { title: '应用设计', hideInMenu: true }
       },
       {

@@ -24,3 +24,12 @@ api_router.include_router(agent.router)
 api_router.include_router(import_.router)
 api_router.include_router(local_ai.router)
 api_router.include_router(apps_router)  # 我的应用模块
+
+# 我的应用模块扩展路由
+from app.modules.my_apps import endpoints_plugins
+from app.modules.my_apps import endpoints_dashboard
+from app.modules.my_apps import endpoints_permissions
+
+api_router.include_router(endpoints_plugins.router)  # 插件管理
+api_router.include_router(endpoints_dashboard.router)  # 仪表盘
+api_router.include_router(endpoints_permissions.router)  # 权限管理

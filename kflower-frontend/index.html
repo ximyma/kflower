@@ -6,9 +6,65 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#409EFF" />
     <title>Kflower - 企业智能管理低代码平台</title>
+    
+    <!-- 本地静态资源（CDN 加速） -->
+    <link rel="stylesheet" href="/lib/element-plus/index.css" />
+    <script src="/lib/vue/vue.global.prod.js"></script>
+    <script src="/lib/vue-router/vue-router.global.prod.js"></script>
+    <script src="/lib/pinia/pinia.iife.prod.js"></script>
+    <script src="/lib/element-plus/index.full.min.js"></script>
+    <script src="/lib/element-plus-icons/index.iife.min.js"></script>
+    <script src="/lib/echarts/echarts.min.js"></script>
+    <script src="/lib/axios/axios.min.js"></script>
+    <script src="/lib/xlsx/xlsx.full.min.js"></script>
+    
+    <style>
+      /* 加载时显示加载动画 */
+      #app-loading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #1a1a2e;
+        z-index: 9999;
+      }
+      #app-loading .spinner {
+        width: 50px;
+        height: 50px;
+        border: 3px solid #409EFF;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body>
+    <!-- 加载动画，应用挂载后移除 -->
+    <div id="app-loading">
+      <div class="spinner"></div>
+    </div>
+    
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
+    
+    <script>
+      // 应用挂载后移除加载动画
+      const observer = new MutationObserver(() => {
+        const app = document.getElementById('app');
+        if (app && app.children.length > 0) {
+          const loading = document.getElementById('app-loading');
+          if (loading) loading.remove();
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.getElementById('app'), { childList: true });
+    </script>
   </body>
 </html>

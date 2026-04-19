@@ -54,6 +54,30 @@ export const appAPI = {
     request.put(`/apps/plugins/${pluginId}`, data),
   
   deletePlugin: (pluginId: number) => request.delete(`/apps/plugins/${pluginId}`),
+  
+  // ============ 插件管理（独立端点） ============
+  getSnippets: () => request.get('/plugins/snippets'),
+  listPluginsNew: (appId: number) => request.get(`/plugins/app/${appId}`),
+  addPluginNew: (appId: number, data: any) => request.post(`/plugins/app/${appId}`, data),
+  getPlugin: (pluginId: number) => request.get(`/plugins/${pluginId}`),
+  updatePluginNew: (pluginId: number, data: any) => request.put(`/plugins/${pluginId}`, data),
+  deletePluginNew: (pluginId: number) => request.delete(`/plugins/${pluginId}`),
+  testPlugin: (pluginId: number, mockData?: any) => request.post(`/plugins/${pluginId}/test`, mockData),
+  
+  // ============ 仪表盘 ============
+  getDashboard: (appId: number) => request.get(`/apps/${appId}/dashboard`),
+  saveDashboard: (appId: number, config: any) => request.put(`/apps/${appId}/dashboard`, config),
+  getWidgetData: (widgetConfig: any) => request.post('/apps/dashboard/widget/data', widgetConfig),
+  
+  // ============ 权限 ============
+  getPermissions: (appId: number) => request.get(`/permissions/app/${appId}`),
+  savePermissions: (appId: number, config: any) => request.put(`/permissions/app/${appId}`, config),
+  getAuditLogs: (params?: any) => request.get('/permissions/audit-logs', { params }),
+  exportAuditLogs: (params?: any) => request.get('/permissions/audit-logs/export', { params }),
+  
+  // ============ AI设计助手 ============
+  generateAIDesign: (data: { app_id: number; prompt: string }) => request.post('/ai-design/generate', data),
+  applyAIDesign: (appId: number, design: any) => request.post(`/ai-design/apply/${appId}`, design),
 }
 
 export default appAPI

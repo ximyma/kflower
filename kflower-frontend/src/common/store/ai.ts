@@ -1,9 +1,9 @@
-﻿/**
- * AI对话状态管理 - 修复版
- * 改进错误处理和超时控制
+/**
+ * AI对话状态管理 - 配置状态增强版
+ * 改进错误处理、超时控制和配置状态管理
  */
 import { defineStore } from 'pinia'
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { aiAPI, agentAPI, templateAPI, workflowAPI, systemAPI } from '../api'
 import { ElMessage } from 'element-plus'
 
@@ -28,13 +28,40 @@ interface Model {
   params?: any
 }
 
+// AI配置状态
+interface AIConfigStatus {
+  ready: boolean
+  chat: {
+    available: boolean
+    models: Model[]
+    current_provider: string
+    default_model: Model | null
+  }
+  embedding: {
+    available: boolean
+    models: any[]
+    current_model: string | null
+    current_provider: string | null
+    st_available: boolean
+    api_key_configured: boolean
+  }
+  rerank: {
+    available: boolean
+    models: any[]
+  }
+  ocr: {
+    available: boolean
+  }
+  warnings: string[]
+}
+
 export const useAIStore = defineStore('ai', () => {
   const messages = ref<Message[]>([])
   const conversationId = ref<string | null>(null)
   const loading = ref(false)
   const aiType = ref<'general' | 'template' | 'workflow' | 'analytics'>('general')
   const showChat = ref(false)
-  
+
   const models = ref<Model[]>([])
   const currentModel = ref<Model | null>(null)
   const moduleAISettings = ref<Record<string, string>>({
@@ -46,19 +73,22 @@ export const useAIStore = defineStore('ai', () => {
     processingModel: ''
   })
 
+  // AI配置状态（新增）
+  const configStatus = ref<AIConfigStatus | null>(null)
+
   // 加载模型配置
   async function loadModels() {
     try {
       const res: any = await systemAPI.getConfig()
       const config = res.data || {}
-      
+
       if (config.ai_models) {
         try {
           const modelList = typeof config.ai_models === 'string' ? JSON.parse(config.ai_models) : config.ai_models
           models.value = Array.isArray(modelList) ? modelList : []
         } catch {}
       }
-      
+
       if (config.module_ai_settings) {
         try {
           const settings = typeof config.module_ai_settings === 'string' ? JSON.parse(config.module_ai_settings) : config.module_ai_settings
@@ -67,13 +97,52 @@ export const useAIStore = defineStore('ai', () => {
           }
         } catch {}
       }
-      
+
       if (models.value.length > 0) {
         currentModel.value = models.value.find(m => m.isDefault) || models.value[0]
       }
     } catch (e) {
       console.error('加载模型配置失败', e)
     }
+  }
+
+  // 加载AI配置状态（新增）
+  async function loadConfigStatus() {
+    try {
+      const res: any = await systemAPI.getAIConfigStatus()
+      if (res.data) {
+        configStatus.value = res.data
+      }
+    } catch (e) {
+      console.error('加载AI配置状态失败', e)
+      configStatus.value = null
+    }
+  }
+
+  // 检查AI是否已配置（新增便捷方法）
+  function isAIConfigured(): boolean {
+    return configStatus.value?.ready ?? false
+  }
+
+  // 获取当前使用的模型描述（新增）
+  function getCurrentModelDesc(): string {
+    if (!configStatus.value) return '未加载'
+    const chat = configStatus.value.chat
+    if (!chat.available) return '未配置'
+    const model = chat.default_model
+    if (!model) return '未选择'
+    return `${model.name || model.id} (${model.provider})`
+  }
+
+  // 获取Embedding模型描述（新增）
+  function getEmbeddingDesc(): string {
+    if (!configStatus.value) return '未加载'
+    const embed = configStatus.value.embedding
+    if (!embed.st_available && !embed.api_key_configured) {
+      return 'sentence-transformers未安装，API Key未配置'
+    }
+    if (!embed.available) return 'Embedding未配置'
+    return `${embed.current_model || '未知'} (${embed.current_provider || '未知'})`
   }
 
   function setModel(modelId: string) {
@@ -110,6 +179,16 @@ export const useAIStore = defineStore('ai', () => {
   async function sendMessage(content: string, modelId?: string) {
     if (!content.trim() || loading.value) return
 
+    // 检查AI是否已配置
+    if (!isAIConfigured()) {
+      messages.value.push({
+        role: 'assistant',
+        content: '⚠️ AI 尚未配置或配置无效，请先在「系统设置 → AI配置」中完成配置后再试。',
+        timestamp: new Date().toISOString()
+      })
+      return
+    }
+
     messages.value.push({
       role: 'user',
       content: content.trim(),
@@ -119,14 +198,12 @@ export const useAIStore = defineStore('ai', () => {
     loading.value = true
     const userTimeout = getUserTimeout()
     let errorDetail = ''
-    // 使用传入的模型或当前选中的模型
     const modelToUse = modelId || currentModel.value?.modelId
 
     try {
       let res: any
       let usedFallback = false
-      
-      // 首先尝试 agent API（使用用户配置的超时）
+
       try {
         res = await agentAPI.chat({
           message: content.trim(),
@@ -139,8 +216,7 @@ export const useAIStore = defineStore('ai', () => {
         console.log('Agent API failed, falling back to AI API:', agentError)
         usedFallback = true
         errorDetail = agentError.message || ''
-        
-        // 回退到基础 AI 对话
+
         try {
           res = await aiAPI.chat({
             message: content.trim(),
@@ -148,20 +224,16 @@ export const useAIStore = defineStore('ai', () => {
             ai_type: aiType.value
           }, { timeout: userTimeout })
         } catch (fallbackError: any) {
-          // 两个都失败，抛出原始错误
           throw agentError
         }
       }
 
-      // 设置对话ID
       if (!conversationId.value && res.conversation_id) {
         conversationId.value = res.conversation_id
       }
 
-      // 提取响应内容 - 处理多种可能的字段名
       let responseContent = res.response || res.message || res.content
-      
-      // 如果响应为空，显示错误信息
+
       if (!responseContent || responseContent.trim() === '') {
         if (res.error) {
           responseContent = `AI 服务错误：${res.error}`
@@ -191,10 +263,10 @@ export const useAIStore = defineStore('ai', () => {
       messages.value.push(assistantMsg)
     } catch (e: any) {
       console.error('AI chat error:', e)
-      
+
       const timeoutSec = Math.round(userTimeout / 1000)
       let errorMsg = '抱歉，AI 服务暂时不可用'
-      
+
       if (e.code === 'ECONNABORTED' || e.name === 'AbortError' || e.message?.includes('timeout')) {
         errorMsg = `AI 响应超时（${timeoutSec}秒），请尝试简化问题或增加超时时间`
       } else if (e.response?.status === 504) {
@@ -214,7 +286,7 @@ export const useAIStore = defineStore('ai', () => {
           errorMsg = `服务错误：${e.message}`
         }
       }
-      
+
       messages.value.push({
         role: 'assistant',
         content: errorMsg,
@@ -225,7 +297,6 @@ export const useAIStore = defineStore('ai', () => {
     }
   }
 
-  // 从AI对话创建模板
   async function createTemplateFromChat(templateData: any): Promise<boolean> {
     try {
       const res: any = await templateAPI.create(templateData)
@@ -238,7 +309,6 @@ export const useAIStore = defineStore('ai', () => {
     }
   }
 
-  // 从AI对话创建工作流
   async function createWorkflowFromChat(workflowData: any): Promise<boolean> {
     try {
       const res: any = await workflowAPI.create(workflowData)
@@ -273,9 +343,15 @@ export const useAIStore = defineStore('ai', () => {
     models,
     currentModel,
     moduleAISettings,
+    configStatus,
     loadModels,
+    loadConfigStatus,
+    isAIConfigured,
+    getCurrentModelDesc,
+    getEmbeddingDesc,
     setModel,
     getModuleModel,
+    getUserTimeout,
     sendMessage,
     createTemplateFromChat,
     createWorkflowFromChat,

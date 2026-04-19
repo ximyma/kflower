@@ -139,8 +139,39 @@ class MyAppsService:
         return app
 
     @staticmethod
-    async def delete_app(db: AsyncSession, app: Application):
+    async def delete_app(db: AsyncSession, app_id: int):
         """删除应用（级联删除菜单、关系、插件）"""
+        # 先查询 ORM 对象
+        query = select(Application).where(Application.id == app_id)
+        result = await db.execute(query)
+        app = result.scalar_one_or_none()
+        if not app:
+            raise HTTPException(status_code=404, detail="应用不存在")
+        
+        # 级联删除相关数据
+        # 删除菜单
+        menu_query = select(AppMenu).where(AppMenu.app_id == app_id)
+        menu_result = await db.execute(menu_query)
+        menus = menu_result.scalars().all()
+        for menu in menus:
+            await db.delete(menu)
+        
+        # 删除关系
+        rel_query = select(FormRelation).where(FormRelation.app_id == app_id)
+        rel_result = await db.execute(rel_query)
+        relations = rel_result.scalars().all()
+        for rel in relations:
+            await db.delete(rel)
+        
+        # 删除插件
+        plugin_query = select(AppPlugin).where(AppPlugin.app_id == app_id)
+        plugin_query = select(AppPlugin).where(AppPlugin.app_id == app_id)
+        plugin_result = await db.execute(plugin_query)
+        plugins = plugin_result.scalars().all()
+        for plugin in plugins:
+            await db.delete(plugin)
+        
+        # 删除应用
         await db.delete(app)
         await db.commit()
 

@@ -202,6 +202,8 @@ export const systemAPI = {
   getAIProviders: () => api.get('/system/ai-providers'),
   getAIModels: (provider: string) => api.get(`/system/ai-models/${provider}`),
   getEmbeddingModels: () => api.get('/system/embedding-models'),
+  // AI配置状态总览
+  getAIConfigStatus: () => api.get('/system/ai-config-status'),
 }
 
 // 本地AI服务
@@ -258,10 +260,10 @@ export const localAIAPI = {
     device?: string;
     batch_size?: number;
     enabled?: boolean;
-  }) => api.put(`/local-ai/embed/models/${modelId}`, modelConfig),
-  deleteEmbedModel: (modelId: string) => api.delete(`/local-ai/embed/models/${modelId}`),
-  setDefaultEmbedModel: (modelId: string) => api.put(`/local-ai/embed/models/${modelId}/default`, {}),
-  testEmbedModel: (modelId: string) => api.post(`/local-ai/embed/models/${modelId}/test`, {}),
+  }) => api.put(`/local-ai/embed/models/${encodeURIComponent(modelId)}`, modelConfig),
+  deleteEmbedModel: (modelId: string) => api.delete(`/local-ai/embed/models/${encodeURIComponent(modelId)}`),
+  setDefaultEmbedModel: (modelId: string) => api.put(`/local-ai/embed/models/${encodeURIComponent(modelId)}/default`, {}),
+  testEmbedModel: (modelId: string) => api.post(`/local-ai/embed/models/${encodeURIComponent(modelId)}/test`, {}),
   processAttachment: (file: File, operations?: string[]) => {
     const form = new FormData()
     form.append('file', file)

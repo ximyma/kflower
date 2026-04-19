@@ -48,6 +48,9 @@ class Role(Base):
     # 权限列表 (JSON格式存储权限ID)
     permissions = Column(JSON, default=list)
     
+    # 数据权限规则
+    data_permission_rules = Column(JSON, default=list)
+    
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

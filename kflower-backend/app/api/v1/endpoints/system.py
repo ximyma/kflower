@@ -477,6 +477,138 @@ async def list_embedding_models(
     })
 
 
+@router.get("/ai-config-status", response_model=BaseResponse)
+async def get_ai_config_status(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取AI配置状态总览
+    用于前端判断哪些功能可用、哪些需要配置
+    """
+    from app.core.ai_digital_base.local_services import get_embedding_service, ST_AVAILABLE
+    from app.core.ai_digital_base.gateway import ai_gateway
+    
+    # 1. 对话模型状态
+    chat_models = []
+    try:
+        config = await _get_ai_models_config()
+        for m in config:
+            chat_models.append({
+                "id": m.get("modelId"),
+                "name": m.get("modelName") or m.get("modelId"),
+                "provider": m.get("provider"),
+                "configured": bool(m.get("apiKey") or m.get("provider") == "ollama"),
+                "isDefault": m.get("isDefault", False),
+            })
+    except Exception as e:
+        logger.error(f"Failed to get chat models: {e}")
+    
+    # 如果没有配置模型，尝试从gateway获取
+    if not chat_models:
+        for p_name, p_cfg in ai_gateway.providers.items():
+            if p_cfg.get("api_key") and p_cfg.get("model"):
+                chat_models.append({
+                    "id": p_cfg.get("model"),
+                    "name": p_cfg.get("model"),
+                    "provider": p_name,
+                    "configured": True,
+                    "isDefault": p_name == ai_gateway.current_provider,
+                })
+    
+    chat_available = any(m["configured"] for m in chat_models)
+    
+    # 2. Embedding模型状态
+    embed_svc = get_embedding_service()
+    embed_models = embed_svc.get_all_models()
+    embed_current = embed_svc.embedding_model
+    embed_provider = embed_svc.embedding_provider
+    embed_available = False
+    
+    # 检查当前embedding模型是否真正可用
+    if embed_provider == "local" and ST_AVAILABLE:
+        embed_available = True
+    elif embed_provider == "api" and embed_svc.embedding_api_key:
+        embed_available = True
+    
+    # 3. Rerank模型状态（检查配置）
+    rerank_available = False
+    rerank_models = []
+    try:
+        from sqlalchemy import select as sql_select
+        from app.models.ai import SystemConfig
+        from app.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                sql_select(SystemConfig).where(SystemConfig.key == "rerank_models")
+            )
+            cfg = result.scalar_one_or_none()
+            if cfg and cfg.value:
+                rerank_models = json.loads(cfg.value)
+                rerank_available = any(m.get("enabled") for m in rerank_models)
+    except Exception:
+        pass
+    
+    # 4. OCR状态
+    ocr_available = False
+    try:
+        import pytesseract
+        pytesseract.get_tesseract_version()
+        ocr_available = True
+    except Exception:
+        pass
+    
+    return BaseResponse(data={
+        # 对话模型
+        "chat": {
+            "available": chat_available,
+            "models": chat_models,
+            "current_provider": ai_gateway.current_provider,
+            "default_model": next((m for m in chat_models if m.get("isDefault")), chat_models[0] if chat_models else None),
+        },
+        # Embedding模型
+        "embedding": {
+            "available": embed_available,
+            "models": embed_models,
+            "current_model": embed_current,
+            "current_provider": embed_provider,
+            "st_available": ST_AVAILABLE,
+            "api_key_configured": bool(embed_svc.embedding_api_key),
+        },
+        # Rerank模型
+        "rerank": {
+            "available": rerank_available,
+            "models": rerank_models,
+        },
+        # OCR
+        "ocr": {
+            "available": ocr_available,
+        },
+        # 总体状态
+        "ready": chat_available,  # 至少对话模型可用就算就绪
+        "warnings": [
+            "未配置对话模型" if not chat_available else None,
+            "未配置Embedding模型，RAG知识库功能不可用" if not embed_available else None,
+            "sentence-transformers未安装，无法使用本地Embedding模型" if not ST_AVAILABLE else None,
+        ] if not chat_available or not embed_available or not ST_AVAILABLE else [],
+    })
+
+
+async def _get_ai_models_config():
+    """从数据库获取AI模型配置"""
+    from sqlalchemy import select as sql_select
+    from app.models.ai import SystemConfig
+    from app.core.database import AsyncSessionLocal
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            sql_select(SystemConfig).where(SystemConfig.key == "ai_models")
+        )
+        cfg = result.scalar_one_or_none()
+        if cfg and cfg.value:
+            return json.loads(cfg.value)
+    return []
+
+
 @router.get("/health", response_model=BaseResponse)
 async def health_check():
     """系统健康检查"""
