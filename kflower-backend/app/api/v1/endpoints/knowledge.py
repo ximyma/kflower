@@ -259,11 +259,8 @@ async def upload_document(
     await db.commit()
     await db.refresh(doc)
 
-    # TODO: 使用Celery异步解析文档
-    try:
-        await _parse_document(doc.id, db)
-    except Exception as e:
-        logger.warning(f"自动解析文档失败(可后续手动解析): {e}")
+    # 上传不自动解析，避免阻塞请求（用户可手动或批量解析）
+    # 解析会加载embedding模型，耗时较长
 
     return DocumentUploadResponse(
         id=doc.id,
@@ -323,32 +320,13 @@ async def upload_documents_batch(
 
     await db.commit()
 
-    # TODO: 使用Celery异步批量解析
-    # 同步解析每个文档
-    parse_errors = []
-    for i, item in enumerate(uploaded):
-        try:
-            # 查找刚创建的文档
-            doc_result = await db.execute(
-                select(KnowledgeDocument)
-                .where(KnowledgeDocument.knowledge_base_id == kb_id)
-                .where(KnowledgeDocument.title == item["title"])
-                .where(KnowledgeDocument.file_type == item["file_type"])
-                .order_by(KnowledgeDocument.id.desc())
-                .limit(1)
-            )
-            doc = doc_result.scalar_one_or_none()
-            if doc:
-                await _parse_document(doc.id, db)
-        except Exception as e:
-            parse_errors.append({"title": item["title"], "error": str(e)})
+    # 上传不自动解析，避免阻塞请求（用户可手动或批量解析）
 
     return BaseResponse(
         message=f"成功上传 {len(uploaded)} 个文档",
         data={
             "count": len(uploaded),
             "documents": uploaded,
-            "parse_errors": parse_errors if parse_errors else None,
         }
     )
 
