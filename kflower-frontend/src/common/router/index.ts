@@ -91,6 +91,48 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '用户管理', requiresAdmin: true }
       },
       {
+        path: 'ai-digital-base',
+        name: 'AIDigitalBase',
+        component: () => import('../../pc/views/AIDigitalBase.vue'),
+        meta: { title: 'AI数字底座' }
+      },
+      {
+        path: 'ai-agent-engine',
+        name: 'AIAgentEngine',
+        component: () => import('../../pc/views/AIAgentEngine.vue'),
+        meta: { title: 'AI智能体引擎' }
+      },
+      {
+        path: 'ai-gateway',
+        name: 'AIGateway',
+        component: () => import('../../pc/views/AIGateway.vue'),
+        meta: { title: 'AI网关' }
+      },
+      {
+        path: 'ai-tools',
+        name: 'AITools',
+        component: () => import('../../pc/views/AITools.vue'),
+        meta: { title: '工具集' }
+      },
+      {
+        path: 'agent-orchestrator',
+        name: 'AgentOrchestrator',
+        component: () => import('../../pc/views/AgentOrchestrator.vue'),
+        meta: { title: '智能体编排器' }
+      },
+      {
+        path: 'memory-management',
+        name: 'MemoryManagement',
+        component: () => import('../../pc/views/MemoryManagement.vue'),
+        meta: { title: '记忆管理' }
+      },
+      {
+        path: 'data-integration',
+        name: 'DataIntegration',
+        component: () => import('../../pc/views/DataIntegration.vue'),
+        meta: { title: '数据集成' }
+      },
+      {
         path: 'my-apps',
         name: 'MyApps',
         component: () => import('../../pc/views/MyApps.vue'),

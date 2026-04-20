@@ -169,7 +169,29 @@ export const knowledgeAPI = {
   parseDocument: (doc_id: number) => api.post(`/knowledge/parse/${doc_id}`),
   parseAll: (kb_id: number) => api.post(`/knowledge/parse-all/${kb_id}`),
   query: (params: { query: string; kb_id?: number; top_k?: number }) => 
-    api.post('/knowledge/query', null, { params })
+    api.post('/knowledge/query', null, { params }),
+  // 高级检索
+  search: (params: { q: string; type?: string; kb_id?: number; tag?: string; top_k?: number }) =>
+    api.get('/knowledge/search', { params }),
+  // 标签管理
+  listTags: (kb_id?: number) => api.get('/knowledge/tags', { params: { kb_id } }),
+  createTag: (data: { name: string; color?: string; description?: string; kb_id?: number }) =>
+    api.post('/knowledge/tags', data),
+  deleteTag: (tag_id: number) => api.delete(`/knowledge/tags/${tag_id}`),
+  addDocTag: (doc_id: number, tag_id: number) =>
+    api.post(`/knowledge/documents/${doc_id}/tags`, { tag_id }),
+  removeDocTag: (doc_id: number, tag_id: number) =>
+    api.delete(`/knowledge/documents/${doc_id}/tags/${tag_id}`),
+  // 笔记
+  listNotes: (kb_id?: number) => api.get('/knowledge/notes', { params: { kb_id } }),
+  getNote: (note_id: number) => api.get(`/knowledge/notes/${note_id}`),
+  createNote: (data: { title: string; content?: string; tags?: string[]; is_daily?: boolean; knowledge_base_id?: number }) =>
+    api.post('/knowledge/notes', data),
+  updateNote: (note_id: number, data: { title?: string; content?: string; tags?: string[]; is_daily?: boolean }) =>
+    api.put(`/knowledge/notes/${note_id}`, data),
+  deleteNote: (note_id: number) => api.delete(`/knowledge/notes/${note_id}`),
+  // 知识图谱
+  getGraph: (kb_id?: number) => api.get('/knowledge/graph', { params: { kb_id } }),
 }
 
 export const dashboardAPI = {

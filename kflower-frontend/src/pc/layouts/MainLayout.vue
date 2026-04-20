@@ -38,6 +38,46 @@
           <template #title>知识库</template>
         </el-menu-item>
         
+        <el-menu-item index="/ai-digital-base">
+          <el-icon><Cpu /></el-icon>
+          <template #title>AI数字底座</template>
+        </el-menu-item>
+        
+        <el-menu-item index="/ai-agent-engine">
+          <el-icon><User /></el-icon>
+          <template #title>AI智能体引擎</template>
+        </el-menu-item>
+        
+        <el-menu-item index="/ai-gateway">
+          <el-icon><Connection /></el-icon>
+          <template #title>AI网关</template>
+        </el-menu-item>
+        
+        <el-menu-item index="/ai-tools">
+          <el-icon><Tools /></el-icon>
+          <template #title>工具集</template>
+        </el-menu-item>
+        
+        <el-menu-item index="/agent-orchestrator">
+          <el-icon><SetUp /></el-icon>
+          <template #title>智能体编排器</template>
+        </el-menu-item>
+        
+        <el-menu-item index="/memory-management">
+          <el-icon><Collection /></el-icon>
+          <template #title>记忆管理</template>
+        </el-menu-item>
+        
+        <el-menu-item index="/data-integration">
+          <el-icon><DataBoard /></el-icon>
+          <template #title>数据集成</template>
+        </el-menu-item>
+        
+        <el-menu-item index="/migration">
+          <el-icon><Upload /></el-icon>
+          <template #title>数据库迁移</template>
+        </el-menu-item>
+        
         <el-menu-item index="/my-workspace">
           <el-icon><Folder /></el-icon>
           <template #title>我的工作区</template>
@@ -119,7 +159,8 @@ import { useUserStore } from '../../common/store/user'
 import { ElMessageBox } from 'element-plus'
 import {
   HomeFilled, Document, Connection, DataAnalysis,
-  Files, Setting, MagicStick, Fold, Expand, UserFilled, User, Folder, FolderOpened
+  Files, Setting, MagicStick, Fold, Expand, UserFilled, User, Folder, FolderOpened,
+  Cpu, Tools, SetUp, Collection, DataBoard, Upload
 } from '@element-plus/icons-vue'
 
 const route = useRoute()

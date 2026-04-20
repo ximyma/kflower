@@ -296,6 +296,36 @@ class DocumentQueryRequest(BaseModel):
     top_k: int = 5
 
 
+# ============ 知识库标签 ============
+class KnowledgeTagCreate(BaseModel):
+    name: str
+    color: Optional[str] = "#1890ff"
+    description: Optional[str] = None
+    kb_id: Optional[int] = None
+
+class KnowledgeTagUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+    description: Optional[str] = None
+
+class DocumentTagRequest(BaseModel):
+    tag_id: int
+
+# ============ 知识笔记 ============
+class KnowledgeNoteCreate(BaseModel):
+    title: str
+    content: Optional[str] = ""
+    tags: Optional[List[str]] = []
+    is_daily: Optional[bool] = False
+    note_date: Optional[str] = None
+    knowledge_base_id: Optional[int] = None
+
+class KnowledgeNoteUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    tags: Optional[List[str]] = None
+    is_daily: Optional[bool] = None
+
 # ============ 系统配置 ============
 class SystemConfigUpdate(BaseModel):
     value: str

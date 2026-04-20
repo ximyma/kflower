@@ -1,4 +1,7 @@
-<template>
+import os
+
+# Knowledge.vue - 参照knmchat4.py的左右分栏布局
+content = r'''<template>
   <div class="knowledge-page">
     <!-- 左侧知识库面板 -->
     <div class="left-panel">
@@ -766,3 +769,18 @@ onMounted(() => { loadKnowledgeBases() })
   height: 100%;
 }
 </style>
+'''
+
+path = r'E:\kkflower\kflower-frontend\src\pc\views\Knowledge.vue'
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(content)
+
+# Verify no BOM
+with open(path, 'rb') as f:
+    first3 = f.read(3)
+    print(f'BOM check: {first3 == bytes([0xEF, 0xBB, 0xBF])}')
+    
+# Verify file size
+import os
+size = os.path.getsize(path)
+print(f'File size: {size} bytes')
