@@ -170,20 +170,76 @@
 
           <!-- AI对话 -->
           <el-tab-pane label="AI对话" name="chat">
-            <div class="chat-container">
-              <div class="chat-messages" ref="chatBox">
-                <div v-for="(msg, i) in chatMessages" :key="i" :class="['chat-msg', msg.role]">
-                  <div class="msg-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</div>
-                  <div class="msg-content">{{ msg.content }}</div>
+            <div class="kb-chat-container">
+              <!-- 头部 -->
+              <div class="kb-chat-header">
+                <div class="header-left">
+                  <el-icon :size="18"><MagicStick /></el-icon>
+                  <span style="font-weight:500">知识库 AI 助手</span>
                 </div>
-                <div v-if="chatLoading" class="chat-msg assistant">
-                  <div class="msg-avatar">🤖</div>
-                  <div class="msg-content typing">思考中...</div>
+                <div class="header-right">
+                  <span style="font-size:12px;color:var(--el-text-color-secondary);margin-right:4px">关联知识库</span>
+                  <el-select v-model="chatKBId" size="small" style="width:200px" placeholder="选择知识库" @change="onChatKBChange">
+                    <el-option v-for="kb in knowledgeBases" :key="kb.id" :label="kb.name" :value="kb.id">
+                      <span>{{ kb.name }}</span>
+                      <span style="float:right;color:var(--el-text-color-secondary);font-size:12px">{{ kb.doc_count || 0 }} 篇</span>
+                    </el-option>
+                  </el-select>
+                  <el-select v-model="chatModel" size="small" style="width:140px" placeholder="模型">
+                    <el-option label="默认模型" value="" />
+                    <el-option label="通用助手" value="general" />
+                    <el-option label="模板设计" value="template" />
+                    <el-option label="流程审批" value="workflow" />
+                  </el-select>
+                  <el-button size="small" text @click="chatMessages=[]; chatConversationId=null" title="清空对话">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
                 </div>
               </div>
-              <div class="chat-input">
+
+              <!-- 消息列表 -->
+              <div class="kb-chat-messages" ref="chatBox">
+                <!-- 欢迎 -->
+                <div v-if="!chatMessages.length" class="kb-chat-welcome">
+                  <div class="welcome-icon">🧠</div>
+                  <h3>知识库 AI 助手</h3>
+                  <p style="color:var(--el-text-color-secondary)">基于知识库内容的智能问答，支持文档检索和RAG</p>
+                  <div class="quick-actions">
+                    <el-tag v-for="q in ['总结这个知识库的主要内容', '列出关键概念和术语', '帮我查找关于特定主题的文档']"
+                      :key="q" @click="chatInput=q; sendChat()" class="quick-action">{{ q }}</el-tag>
+                  </div>
+                </div>
+                <!-- 消息 -->
+                <div v-for="(msg, i) in chatMessages" :key="i" :class="['kb-chat-msg', msg.role]">
+                  <div class="kb-msg-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</div>
+                  <div class="kb-msg-body">
+                    <div class="kb-msg-text" v-html="formatMsgContent(msg.content)"></div>
+                    <!-- 检索来源 -->
+                    <div v-if="msg.sources?.length" class="kb-msg-sources">
+                      <div class="sources-title">📎 参考文档：</div>
+                      <div v-for="(src, si) in msg.sources" :key="si" class="source-item" @click="viewDoc({id: src.doc_id, title: src.title})">
+                        <el-icon><Document /></el-icon>
+                        <span>{{ src.title }}</span>
+                        <el-tag size="small" type="info" style="margin-left:auto">得分 {{ (src.score || 0).toFixed(2) }}</el-tag>
+                      </div>
+                    </div>
+                    <div class="kb-msg-time">{{ formatTime(msg.timestamp) }}</div>
+                  </div>
+                </div>
+                <!-- 加载 -->
+                <div v-if="chatLoading" class="kb-chat-msg assistant">
+                  <div class="kb-msg-avatar">🤖</div>
+                  <div class="kb-msg-body">
+                    <div v-if="chatSearching" class="kb-msg-text kb-searching">🔍 正在检索知识库...</div>
+                    <div v-else class="kb-msg-text kb-typing"><span class="dots"><span></span><span></span><span></span></span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 输入区 -->
+              <div class="kb-chat-input">
                 <el-upload
-                  :action="`/api/v1/knowledge/upload/${currentKB?.id}`"
+                  :action="`/api/v1/knowledge/upload/${chatKBId || currentKB?.id}`"
                   :headers="uploadHeaders"
                   :on-success="onChatFileUpload"
                   :before-upload="beforeUpload"
@@ -192,8 +248,18 @@
                 >
                   <el-button size="small" :disabled="chatLoading"><el-icon><Upload /></el-icon></el-button>
                 </el-upload>
-                <el-input v-model="chatInput" placeholder="基于知识库提问..." @keyup.enter="sendChat" :disabled="chatLoading" style="flex:1" />
-                <el-button type="primary" @click="sendChat" :loading="chatLoading">发送</el-button>
+                <el-input
+                  v-model="chatInput"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="输入问题，基于知识库检索回答... (Ctrl+Enter发送)"
+                  @keydown.enter.ctrl="sendChat"
+                  :disabled="chatLoading"
+                  style="flex:1"
+                />
+                <el-button type="primary" :disabled="(!chatInput.trim() && !chatInput) || chatLoading" @click="sendChat">
+                  发送
+                </el-button>
               </div>
             </div>
           </el-tab-pane>
@@ -662,30 +728,105 @@ async function loadTags() {
 }
 
 // ===== AI对话 =====
-const chatMessages = ref<{ role: string; content: string }[]>([])
+const chatMessages = ref<{ role: string; content: string; timestamp?: string; sources?: any[] }[]>([])
 const chatInput = ref('')
 const chatLoading = ref(false)
+const chatSearching = ref(false)
 const chatBox = ref<HTMLElement>()
+const chatKBId = ref<number | null>(null)
+const chatModel = ref('')
+const chatConversationId = ref<string | null>(null)
+
+function onChatKBChange(kbId: number) {
+  chatMessages.value = []
+  chatConversationId.value = null
+}
+
+function formatMsgContent(text: string) {
+  return text.replace(/\n/g, '<br>')
+}
+
+function formatTime(ts?: string) {
+  if (!ts) return ''
+  return new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
 
 async function sendChat() {
   const q = chatInput.value.trim()
-  if (!q) return
-  chatMessages.value.push({ role: 'user', content: q })
+  if (!q || chatLoading.value) return
+  chatMessages.value.push({ role: 'user', content: q, timestamp: new Date().toISOString() })
   chatInput.value = ''
   chatLoading.value = true
+  chatSearching.value = true
+
   try {
-    const res: any = await knowledgeAPI.query({ query: q, kb_id: currentKB.value?.id, top_k: 5 })
-    const results = res.results || []
-    let answer = '未找到相关内容。'
-    if (results.length > 0) {
-      answer = results.map((r: any, i: number) => `【${i + 1}】${r.text || r.content || ''}`).join('\n\n')
+    let context = ''
+    let sources: any[] = []
+    const targetKB = chatKBId.value || currentKB.value?.id
+
+    if (targetKB) {
+      try {
+        chatSearching.value = true
+        const searchRes: any = await knowledgeAPI.search({
+          q, type: 'hybrid', kb_id: targetKB, top_k: 3
+        })
+        const results = searchRes.results || searchRes.data?.results || []
+        if (results.length > 0) {
+          sources = results.slice(0, 3).map((r: any) => ({
+            doc_id: r.id || r.doc_id,
+            title: r.title || r.doc_title || '',
+            score: r.score || 0,
+            text: (r.text || r.summary || '').substring(0, 300)
+          }))
+          context = sources.map((s, i) =>
+            `[doc ${i + 1}] ${s.title}\n${s.text}`
+          ).join('\n\n')
+        }
+      } catch { /* search failed, continue without context */ }
+      finally { chatSearching.value = false }
     }
-    chatMessages.value.push({ role: 'assistant', content: answer })
+
+    let userMessage = q
+    if (context) {
+      userMessage = `Based on the following knowledge base content, answer the question. If not found, answer from your own knowledge.\n\n${context}\n\nQ: ${q}`
+    }
+
+    const { agentAPI, aiAPI } = await import('../../common/api')
+    let response = ''
+    try {
+      const res: any = await agentAPI.chat({
+        message: userMessage,
+        conversation_id: chatConversationId.value || undefined,
+        ai_type: chatModel.value || 'general'
+      })
+      if (res.conversation_id) chatConversationId.value = res.conversation_id
+      response = res.response || res.message || res.content || 'AI暂无回复'
+    } catch {
+      try {
+        const res: any = await aiAPI.chat({
+          message: userMessage,
+          conversation_id: chatConversationId.value || undefined,
+          ai_type: chatModel.value || 'general'
+        })
+        response = res.response || res.message || res.content || 'AI暂无回复'
+      } catch (e: any) {
+        response = 'AI服务不可用: ' + (e.message || '')
+      }
+    }
+
+    chatMessages.value.push({
+      role: 'assistant', content: response,
+      timestamp: new Date().toISOString(),
+      sources: sources.length > 0 ? sources : undefined
+    })
   } catch (e: any) {
-    chatMessages.value.push({ role: 'assistant', content: '查询出错: ' + (e.message || '') })
-  } finally { chatLoading.value = false }
-  await nextTick()
-  if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
+    chatMessages.value.push({ role: 'assistant', content: '出错: ' + (e.message || ''), timestamp: new Date().toISOString() })
+  } finally {
+    chatLoading.value = false
+    chatSearching.value = false
+    await nextTick()
+    if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
+  }
 }
 
 // ===== 笔记 =====
@@ -1452,14 +1593,172 @@ onMounted(() => { loadKnowledgeBases() })
   font-family: inherit;
 }
 
-/* 聊天增强 */
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px;
+/* AI对话 - 参照AIChatDialog设计 */
+.kb-chat-container {
   display: flex;
   flex-direction: column;
+  height: calc(100vh - 260px);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--el-bg-color);
+}
+.kb-chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--el-border-color-light);
+  background: var(--el-fill-color-light);
+  flex-shrink: 0;
+}
+.kb-chat-header .header-left {
+  display: flex;
+  align-items: center;
   gap: 8px;
+}
+.kb-chat-header .header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.kb-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.kb-chat-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--el-text-color-secondary);
+}
+.kb-chat-welcome h3 {
+  margin: 12px 0 8px;
+  color: var(--el-text-color-primary);
+}
+.welcome-icon { font-size: 48px; }
+.quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 16px;
+}
+.quick-action {
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 16px;
+  background: var(--el-fill-color);
+  border: 1px solid var(--el-border-color-light);
+  transition: all 0.2s;
+  font-size: 13px;
+}
+.quick-action:hover {
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-7);
+  color: var(--el-color-primary);
+}
+.kb-chat-msg {
+  display: flex;
+  gap: 12px;
+  max-width: 85%;
+}
+.kb-chat-msg.user {
+  flex-direction: row-reverse;
+  align-self: flex-end;
+}
+.kb-chat-msg.assistant {
+  align-self: flex-start;
+}
+.kb-msg-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--el-fill-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 18px;
+}
+.kb-msg-body {
+  flex: 1;
+  min-width: 0;
+}
+.kb-msg-text {
+  padding: 10px 14px;
+  border-radius: 12px;
+  line-height: 1.7;
+  font-size: 14px;
+  word-break: break-word;
+}
+.kb-chat-msg.user .kb-msg-text {
+  background: var(--el-color-primary);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.kb-chat-msg.assistant .kb-msg-text {
+  background: var(--el-fill-color);
+  border-bottom-left-radius: 4px;
+}
+.kb-msg-sources {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.sources-title {
+  color: var(--el-text-color-secondary);
+  margin-bottom: 4px;
+}
+.source-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 0;
+  cursor: pointer;
+  color: var(--el-color-primary);
+}
+.source-item:hover { text-decoration: underline; }
+.kb-msg-time {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  margin-top: 4px;
+}
+.kb-searching {
+  color: var(--el-text-color-secondary);
+  font-style: italic;
+}
+.kb-typing .dots span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--el-text-color-secondary);
+  margin: 0 2px;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+.kb-typing .dots span:nth-child(1) { animation-delay: -0.32s; }
+.kb-typing .dots span:nth-child(2) { animation-delay: -0.16s; }
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+.kb-chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--el-border-color-light);
+  align-items: flex-end;
+  flex-shrink: 0;
+  background: var(--el-bg-color);
 }
 
 /* 知识库面板增强 */
