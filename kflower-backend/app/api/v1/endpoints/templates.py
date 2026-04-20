@@ -1,4 +1,4 @@
-﻿"""
+"""
 API路由 - 模板管理
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File

@@ -1,4 +1,4 @@
-﻿"""
+"""
 AI数字底座 - 初始化模块
 """
 from app.core.ai_digital_base.gateway import ai_gateway, AIGateway

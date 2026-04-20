@@ -26,21 +26,31 @@
           <span class="create-time">{{ formatDate(app.created_at) }}</span>
         </div>
         <div class="app-actions">
-          <el-button size="small" @click="openApp(app)">
-            <el-icon><View /></el-icon> 进入
-          </el-button>
-          <el-button size="small" @click="designApp(app)">
-            <el-icon><SetUp /></el-icon> 设计
-          </el-button>
-          <el-button size="small" @click="editAppInfo(app)">
-            <el-icon><Edit /></el-icon> 信息
-          </el-button>
-          <el-button v-if="!app.is_published" size="small" type="success" @click="publishApp(app)">
-            <el-icon><Promotion /></el-icon> 发布
-          </el-button>
-          <el-button size="small" type="danger" @click="deleteApp(app)">
-            <el-icon><Delete /></el-icon> 删除
-          </el-button>
+          <div class="action-row">
+            <el-button size="small" type="primary" @click="openApp(app)">
+              <el-icon><View /></el-icon> 进入
+            </el-button>
+            <el-button size="small" @click="designApp(app)">
+              <el-icon><SetUp /></el-icon> 设计
+            </el-button>
+            <el-button size="small" @click="editAppInfo(app)">
+              <el-icon><Edit /></el-icon> 信息
+            </el-button>
+          </div>
+          <div class="action-row">
+            <el-button v-if="!app.is_published" size="small" type="success" @click="publishApp(app)">
+              <el-icon><Promotion /></el-icon> 发布
+            </el-button>
+            <el-button v-if="app.is_published" size="small" type="warning" @click="unpublishApp(app)">
+              <el-icon><ArrowDown /></el-icon> 撤回
+            </el-button>
+            <el-button v-if="app.is_published" size="small" @click="publishApp(app)">
+              <el-icon><RefreshRight /></el-icon> 重新发布
+            </el-button>
+            <el-button size="small" type="danger" @click="deleteApp(app)">
+              <el-icon><Delete /></el-icon> 删除
+            </el-button>
+          </div>
         </div>
       </el-card>
 
@@ -85,7 +95,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, View, Edit, Promotion, Delete, SetUp, MagicStick } from '@element-plus/icons-vue'
+import { Plus, View, Edit, Promotion, Delete, SetUp, MagicStick, ArrowDown, RefreshRight } from '@element-plus/icons-vue'
 import appAPI from '@/common/api/myApps'
 
 const router = useRouter()
@@ -148,15 +158,27 @@ async function saveApp() {
     ElMessage.warning('请输入应用名称')
     return
   }
-  
+
   saving.value = true
   try {
     if (editingApp.value) {
       await appAPI.update(editingApp.value.id, form.value)
-      ElMessage.success('更新成功')
+      // 如果应用已发布，自动重新发布
+      if (editingApp.value.is_published) {
+        await appAPI.publish(editingApp.value.id)
+        ElMessage.success('更新并重新发布成功')
+      } else {
+        ElMessage.success('更新成功（草稿状态）')
+      }
     } else {
-      await appAPI.create(form.value)
-      ElMessage.success('创建成功')
+      const res = await appAPI.create(form.value)
+      const newId = res.id || res.data?.id
+      if (newId) {
+        await appAPI.publish(newId)
+        ElMessage.success('创建并发布成功')
+      } else {
+        ElMessage.success('创建成功')
+      }
     }
     showCreateDialog.value = false
     editingApp.value = null
@@ -177,6 +199,22 @@ async function publishApp(app: any) {
     await loadApps()
   } catch (e: any) {
     ElMessage.error('发布失败：' + (e.message || ''))
+  }
+}
+
+// 撤回应用
+async function unpublishApp(app: any) {
+  try {
+    await ElMessageBox.confirm(`确定撤回应用「${app.name}」吗？撤回后用户将无法访问。`, '确认撤回', {
+      type: 'warning'
+    })
+    await appAPI.unpublish(app.id)
+    ElMessage.success('已撤回')
+    await loadApps()
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error('撤回失败：' + (e.message || ''))
+    }
   }
 }
 
@@ -287,8 +325,16 @@ onMounted(() => {
 
   .app-actions {
     display: flex;
+    flex-direction: column;
     gap: 8px;
-    justify-content: center;
+    align-items: center;
+
+    .action-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
   }
 }
 </style>

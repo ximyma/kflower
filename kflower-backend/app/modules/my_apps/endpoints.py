@@ -123,6 +123,16 @@ async def publish_app_endpoint(
     return await my_apps_service.publish_app(db, app_id)
 
 
+@router.post("/{app_id}/unpublish", response_model=ApplicationResponse)
+async def unpublish_app_endpoint(
+    app_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """撤回应用（取消发布）"""
+    return await my_apps_service.unpublish_app(db, app_id)
+
+
 # ============ 菜单管理 ============
 @router.post("/{app_id}/menus", response_model=AppMenuResponse)
 async def add_menu(

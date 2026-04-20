@@ -142,8 +142,8 @@ class PermissionService:
         cls,
         user_id: int,
         role_ids: List[int],
-        organization_id: Optional[int] = None,
-        db: AsyncSession
+        db: AsyncSession,
+        organization_id: Optional[int] = None
     ) -> bool:
         """分配角色"""
         # 删除现有角色

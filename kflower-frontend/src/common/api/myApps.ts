@@ -24,6 +24,9 @@ export const appAPI = {
   
   // 发布应用
   publish: (id: number) => request.post(`/apps/${id}/publish`),
+
+  // 撤回应用（取消发布）
+  unpublish: (id: number) => request.post(`/apps/${id}/unpublish`),
   
   // 菜单管理
   addMenu: (appId: number, data: { template_id: number; menu_label: string; menu_icon?: string; menu_order?: number; parent_id?: number }) => 

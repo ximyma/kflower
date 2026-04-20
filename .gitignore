@@ -3,6 +3,8 @@ node_modules/
 .pnp/
 .pnp.js
 venv/
+.venv/
+env/
 
 # Build
 dist/
@@ -24,6 +26,7 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Logs
 logs/
@@ -44,6 +47,8 @@ kflower-data/
 # Prisma
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 
 # Docker
 .docker/
@@ -53,13 +58,35 @@ kflower-data/
 *.key
 secrets/
 
-# Models
+# Models (large files)
 bge-reranker-v2-m3/
+models/
 
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+.eggs/
+*.egg
 
-# Misc
-.DS_Store
-*.local
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Data directories
+data/
+*.sqlite
+*.sqlite3
+
+# Temp files
+*.tmp
+*.bak
+*.swp
+check_*.py
+fix_*.py
+dd*chat.txt
+
+# Backup
+kkflower-backup/

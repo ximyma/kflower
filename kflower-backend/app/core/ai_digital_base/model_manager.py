@@ -1,4 +1,4 @@
-﻿"""
+"""
 AI模型管理 - 动态获取模型列表，支持多模型配置
 """
 from typing import Optional, Dict, Any, List

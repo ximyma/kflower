@@ -432,32 +432,51 @@ async function generateForms() {
     generatedTemplates.value.push(tplWithStatus)
 
     try {
+      // 构建字段列表
+      const fields = tpl.fields?.map((f: any) => ({
+        name: f.name,
+        label: f.label,
+        type: f.type || 'text',
+        required: f.required || false,
+        options: f.options || [],
+        placeholder: f.placeholder || '',
+        default: f.default ?? ''
+      })) || []
+
       const templateData = {
         name: tpl.name,
         description: tpl.description,
         category: tpl.category || '业务表单',
-        config: {
-          fields: tpl.fields?.map((f: any) => ({
-            name: f.name,
-            label: f.label,
-            type: f.type || 'text',
-            required: f.required || false,
-            options: f.options || []
-          })) || []
-        },
-        is_published: true,
-        is_public: false
+        ai_generated: true,
+        // config.fields: 兼容旧版前端读取
+        config: { fields },
+        // modules: 新版前端从 modules 读取字段，必须包含
+        modules: [{
+          name: tpl.name,
+          label: tpl.name,
+          fields
+        }]
       }
 
       const res: any = await templateAPI.create(templateData)
+      const tplId = res.id || res.data?.id
 
       const idx = generatedTemplates.value.findIndex(t => t.name === tpl.name)
       if (idx >= 0) {
         generatedTemplates.value[idx]._status = 'success'
-        generatedTemplates.value[idx]._id = res.id || res.data?.id
+        generatedTemplates.value[idx]._id = tplId
       }
 
-      ElMessage.success(`表单「${tpl.name}」创建成功`)
+      // 创建后立即发布模板（后端默认 is_published=false）
+      if (tplId) {
+        try {
+          await templateAPI.publish(tplId)
+        } catch (pubErr: any) {
+          console.warn(`Publish template ${tpl.name} warning:`, pubErr)
+        }
+      }
+
+      ElMessage.success(`表单「${tpl.name}」创建并发布成功`)
     } catch (e: any) {
       console.error(`Create template ${tpl.name} error:`, e)
       const idx = generatedTemplates.value.findIndex(t => t.name === tpl.name)

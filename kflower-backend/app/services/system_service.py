@@ -127,9 +127,9 @@ class SystemService:
         cls,
         key: str,
         value: str,
+        db: AsyncSession,
         description: Optional[str] = None,
-        is_secret: bool = False,
-        db: AsyncSession
+        is_secret: bool = False
     ) -> bool:
         """设置配置项"""
         from app.models.ai import SystemConfig

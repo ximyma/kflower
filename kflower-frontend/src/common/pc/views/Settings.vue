@@ -359,6 +359,9 @@
                 <el-form-item label="Base URL">
                   <el-input v-model="rerankModelForm.baseUrl" placeholder="API 地址（如需要）" />
                 </el-form-item>
+                <el-form-item label="本地模型路径">
+                  <el-input v-model="rerankModelForm.modelPath" placeholder="本地模型路径（如：E:\models\bge-reranker-v2-m3）" />
+                </el-form-item>
               </el-form>
               <template #footer>
                 <el-button @click="showAddRerankModel = false">取消</el-button>
@@ -494,7 +497,7 @@ const embedModelForm = reactive({
 const showAddRerankModel = ref(false)
 const configuredRerankModels = ref<any[]>([])
 const rerankModelForm = reactive({
-  name: '', modelId: '', apiKey: '', baseUrl: ''
+  name: '', modelId: '', apiKey: '', baseUrl: '', modelPath: ''
 })
 const rerankModelOptions = ref([
   { value: 'BAAI/bge-reranker-v2-m3', label: 'BGE-reranker-v2-m3', desc: '多语言重排' },
@@ -1068,6 +1071,7 @@ function resetRerankForm() {
   rerankModelForm.modelId = ''
   rerankModelForm.apiKey = ''
   rerankModelForm.baseUrl = ''
+  rerankModelForm.modelPath = ''
 }
 
 onMounted(async () => {

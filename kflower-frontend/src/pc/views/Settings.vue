@@ -190,6 +190,16 @@
                 <el-option v-for="m in availableModelsForSelect" :key="m.modelId" :label="m.modelName || m.modelId" :value="m.modelId" />
               </el-select>
             </el-form-item>
+            <el-form-item label="知识库">
+              <el-select v-model="moduleSettings.ragModel" style="width:300px" placeholder="选择模型">
+                <el-option v-for="m in availableModelsForSelect" :key="m.modelId" :label="m.modelName || m.modelId" :value="m.modelId" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="文档处理">
+              <el-select v-model="moduleSettings.processingModel" style="width:300px" placeholder="选择模型">
+                <el-option v-for="m in availableModelsForSelect" :key="m.modelId" :label="m.modelName || m.modelId" :value="m.modelId" />
+              </el-select>
+            </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="saveModuleSettings">保存模块配置</el-button>
             </el-form-item>
@@ -378,7 +388,7 @@
           
           <el-form label-width="140px">
             <el-form-item label="当前 Embedding">
-              <el-select v-model="embeddingConfig.currentModel" style="width:300px" @change="saveEmbeddingConfig">
+              <el-select v-model="embeddingConfig.currentModel" style="width:300px" @change="onCurrentEmbeddingChange">
                 <el-option
                   v-for="m in embeddingModels"
                   :key="m.model || m.name"
@@ -387,6 +397,50 @@
                 />
               </el-select>
             </el-form-item>
+
+            <!-- API 模型配置区 -->
+            <template v-if="currentEmbeddingDetail && currentEmbeddingDetail.provider === 'api'">
+              <el-form-item label="API 地址">
+                <el-input :model-value="currentEmbeddingDetail.api_base || ''" disabled style="max-width:500px" />
+              </el-form-item>
+              <el-form-item label="API Key">
+                <el-input :model-value="currentEmbeddingDetail.api_key ? '已配置' : '未配置'" disabled style="max-width:300px" />
+              </el-form-item>
+            </template>
+
+            <!-- 本地模型配置区 -->
+            <template v-if="currentEmbeddingDetail && currentEmbeddingDetail.provider === 'local'">
+              <el-form-item label="模型本地路径">
+                <div style="display:flex;gap:8px;width:100%;max-width:500px">
+                  <el-input
+                    v-model="currentEmbeddingDetail.model_path"
+                    placeholder="如: E:\models\bge-m3"
+                    style="flex:1"
+                  />
+                  <el-button type="success" @click="updateEmbeddingField('model_path', currentEmbeddingDetail.model_path)" :loading="savingEmbedding">保存</el-button>
+                </div>
+                <div style="font-size:12px;color:var(--el-text-color-secondary);margin-top:4px">
+                  留空将从 HuggingFace 自动下载，建议提前下载到本地加速加载
+                </div>
+              </el-form-item>
+              <el-form-item label="运行设备">
+                <el-select v-model="currentEmbeddingDetail.device" style="width:300px" @change="updateEmbeddingField('device', currentEmbeddingDetail.device)">
+                  <el-option label="CPU（通用）" value="cpu" />
+                  <el-option label="CUDA（NVIDIA GPU）" value="cuda" />
+                  <el-option label="MPS（Apple Silicon）" value="mps" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="Batch Size">
+                <el-input-number v-model="currentEmbeddingDetail.batch_size" :min="1" :max="256" style="width:200px" @change="updateEmbeddingField('batch_size', currentEmbeddingDetail.batch_size)" />
+              </el-form-item>
+              <el-form-item label="sentence-transformers">
+                <el-tag :type="embeddingConfig.stAvailable ? 'success' : 'danger'" size="small">
+                  {{ embeddingConfig.stAvailable ? '已安装' : '未安装' }}
+                </el-tag>
+                <span style="font-size:12px;color:var(--el-text-color-secondary);margin-left:8px">本地模型运行需要安装此库</span>
+              </el-form-item>
+            </template>
+
             <el-form-item>
               <el-button type="primary" @click="saveEmbeddingConfig" :loading="savingEmbedding">保存配置</el-button>
               <el-button type="success" @click="testCurrentEmbedding" :loading="testingEmbedding">测试当前模型</el-button>
@@ -903,6 +957,11 @@ const editingEmbedding = ref<any>(null)
 const savingEmbedding = ref(false)
 const testingEmbedding = ref(false)
 
+// 当前选中的Embedding模型详情（用于标签页内的配置区）
+const currentEmbeddingDetail = computed(() => {
+  return embeddingModels.value.find(m => (m.model || m.name) === embeddingConfig.currentModel) || null
+})
+
 const embeddingForm = reactive({
   name: '',
   model: '',
@@ -1388,6 +1447,32 @@ async function deleteRerankModel(row: any) {
 }
 
 // ===== Embedding 模型管理 =====
+
+// 当前Embedding切换时同步更新provider
+function onCurrentEmbeddingChange(modelId: string) {
+  const found = embeddingModels.value.find(m => (m.model || m.name) === modelId)
+  if (found) {
+    embeddingConfig.currentProvider = found.provider || 'api'
+  }
+  saveEmbeddingConfig()
+}
+
+// 直接更新当前Embedding模型的某个字段并保存
+async function updateEmbeddingField(field: string, value: any) {
+  if (!currentEmbeddingDetail.value) return
+  const modelId = currentEmbeddingDetail.value.model || currentEmbeddingDetail.value.name
+  try {
+    savingEmbedding.value = true
+    await localAIAPI.updateEmbedModel(modelId, { [field]: value })
+    // 更新本地数据
+    ;(currentEmbeddingDetail.value as any)[field] = value
+    ElMessage.success('已保存')
+  } catch (e: any) {
+    ElMessage.error('保存失败: ' + (e.message || '未知错误'))
+  } finally {
+    savingEmbedding.value = false
+  }
+}
 
 function handleEmbeddingProviderChange(provider: string) {
   // 切换类型时清空相关字段

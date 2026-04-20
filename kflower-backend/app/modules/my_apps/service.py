@@ -202,6 +202,32 @@ class MyAppsService:
             "updated_at": app.updated_at,
         }
 
+    async def unpublish_app(db: AsyncSession, app_id: int) -> dict:
+        """撤回应用（取消发布）"""
+        query = select(Application).where(Application.id == app_id)
+        result = await db.execute(query)
+        app = result.scalar_one_or_none()
+        if not app:
+            raise HTTPException(status_code=404, detail="应用不存在")
+        app.is_published = False
+        await db.commit()
+        await db.refresh(app)
+        return {
+            "id": app.id,
+            "code": app.code,
+            "name": app.name,
+            "description": app.description,
+            "icon": app.icon,
+            "theme": app.theme,
+            "config": app.config,
+            "is_published": app.is_published,
+            "is_public": app.is_public,
+            "created_by": app.created_by,
+            "organization_id": app.organization_id,
+            "created_at": app.created_at,
+            "updated_at": app.updated_at,
+        }
+
     # ========== 菜单管理 ==========
     @staticmethod
     async def add_menu(db: AsyncSession, app_id: int, data: AppMenuCreate) -> dict:

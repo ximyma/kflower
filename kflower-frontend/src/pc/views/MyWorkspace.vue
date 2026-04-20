@@ -323,13 +323,16 @@
                   </template>
                 </el-table-column>
                 <el-table-column prop="created_at" label="创建时间" width="180" align="center" />
-                <el-table-column label="操作" width="280" fixed="right" align="center">
+                <el-table-column label="操作" width="340" fixed="right" align="center">
                   <template #default="{ row }">
                     <el-button size="small" type="warning" text @click="designApp(row)" title="设计">
                       <el-icon><Edit /></el-icon>设计
                     </el-button>
                     <el-button v-if="row.is_published" size="small" type="success" text @click="openApp(row)" title="打开应用">
                       <el-icon><View /></el-icon>打开
+                    </el-button>
+                    <el-button v-if="row.is_published" size="small" type="warning" text @click="unpublishApp(row)" title="撤回应用">
+                      <el-icon><ArrowDown /></el-icon>撤回
                     </el-button>
                     <el-button size="small" type="danger" text @click="deleteApp(row)" title="删除">
                       <el-icon><Delete /></el-icon>删除
@@ -405,7 +408,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Document, Share, DataLine, Calendar,
   Plus, Refresh, View, Edit, Promotion, Delete, Search,
-  EditPen, List, RefreshRight, Key
+  EditPen, List, RefreshRight, Key, ArrowDown
 } from '@element-plus/icons-vue'
 import { templateAPI } from '../../common/api'
 import { appAPI } from '../../common/api/myApps'
@@ -776,6 +779,23 @@ function designApp(app: any) {
 function openApp(app: any) {
   // 打开应用（跳转到应用容器页）
   router.push(`/app/${app.id}`)
+}
+
+async function unpublishApp(app: any) {
+  try {
+    await ElMessageBox.confirm(`确定撤回应用「${app.name}」吗？撤回后用户将无法访问。`, '确认撤回', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await appAPI.unpublish(app.id)
+    ElMessage.success('已撤回')
+    loadMyApps()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error('撤回失败：' + (error.message || '未知错误'))
+    }
+  }
 }
 
 async function deleteApp(app: any) {
