@@ -743,6 +743,11 @@ class EmbeddingService:
         # 先检查自定义模型
         if model_name in self._custom_models:
             return self._custom_models[model_name]
+        # 检查是否是本地路径（自动识别本地模型）
+        if model_name and (os.path.isdir(model_name) or 
+                          model_name.startswith(("E:\\", "C:\\", "/")) or
+                          model_name in ["all-mpnet-base-v2", "all-MiniLM-L6-v2", "bge-m3", "bge-reranker-v2-m3"]):
+            return {"provider": "local", "dimension": 768, "description": f"本地模型: {model_name}"}
         # 再检查内置模型
         return self.SUPPORTED_MODELS.get(model_name, {"provider": "api", "dimension": 1536, "description": model_name})
 
