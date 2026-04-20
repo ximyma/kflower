@@ -217,10 +217,13 @@
               <div class="notes-editor" v-if="currentNote">
                 <el-input v-model="currentNote.title" placeholder="标题" style="margin-bottom:8px" @change="saveNote" />
                 <el-input type="textarea" v-model="currentNote.content" :rows="16" placeholder="内容（支持Markdown）" @change="saveNote" />
-                <div style="margin-top:8px;display:flex;gap:8px">
+                <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
                   <el-tag v-for="t in (currentNote.tags || [])" :key="t" closable @close="removeNoteTag(t)" size="small">{{ t }}</el-tag>
                   <el-button size="small" @click="addNoteTag">+标签</el-button>
                   <div style="flex:1" />
+                  <el-button size="small" type="success" @click="showSaveToKBDlg">
+                    <el-icon><FolderOpened /></el-icon> 保存到知识库
+                  </el-button>
                   <el-button size="small" type="danger" @click="deleteNote">删除</el-button>
                 </div>
               </div>
@@ -361,6 +364,34 @@
         <el-button type="primary" @click="uploadFolderFiles" :loading="folderUploading" :disabled="!folderFiles.length">
           开始上传
         </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 保存笔记到知识库对话框 -->
+    <el-dialog v-model="saveToKBDlg" title="保存笔记到知识库" width="450px">
+      <p style="color:var(--el-text-color-secondary);margin-bottom:12px">
+        将笔记「{{ currentNote?.title }}」保存为知识库文档，保存后可在知识库中检索到该内容。
+      </p>
+      <el-form label-width="100px">
+        <el-form-item label="目标知识库">
+          <el-select v-model="saveToKBTarget" placeholder="选择知识库" style="width:100%">
+            <el-option v-for="kb in knowledgeBases" :key="kb.id" :label="kb.name" :value="kb.id">
+              <span>{{ kb.name }}</span>
+              <span style="float:right;color:var(--el-text-color-secondary);font-size:12px">{{ kb.doc_count || 0 }} 篇</span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="文档标题">
+          <el-input v-model="saveToKBTitle" placeholder="保存为文档的标题" />
+        </el-form-item>
+        <el-form-item label="同时解析">
+          <el-switch v-model="saveToKBParse" />
+          <span style="margin-left:8px;font-size:12px;color:var(--el-text-color-secondary)">解析后可被向量检索</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="saveToKBDlg = false">取消</el-button>
+        <el-button type="primary" @click="handleSaveNoteToKB" :loading="savingToKB">保存</el-button>
       </template>
     </el-dialog>
 
@@ -998,6 +1029,66 @@ function sendSearchToChat() {
 
 async function onChatFileUpload(res: any) {
   ElMessage.success('文件已上传，可结合此文档提问')
+}
+
+// ===== 保存笔记到知识库 =====
+const saveToKBDlg = ref(false)
+const saveToKBTarget = ref<number | null>(null)
+const saveToKBTitle = ref('')
+const saveToKBParse = ref(true)
+const savingToKB = ref(false)
+
+function showSaveToKBDlg() {
+  if (!currentNote.value) return
+  saveToKBTitle.value = currentNote.value.title
+  saveToKBParse.value = true
+  // 默认选当前知识库（如果在知识库上下文中）
+  saveToKBTarget.value = currentKB.value?.id || null
+  saveToKBDlg.value = true
+}
+
+async function handleSaveNoteToKB() {
+  if (!saveToKBTarget.value) return ElMessage.warning('请选择目标知识库')
+  if (!currentNote.value?.content?.trim()) return ElMessage.warning('笔记内容为空')
+  savingToKB.value = true
+  try {
+    // 1. 上传笔记内容为文档到目标知识库
+    const content = currentNote.value.content
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+    const file = new File([blob], `${saveToKBTitle.value}.txt`, { type: 'text/plain' })
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const uploadRes: any = await fetch(`/api/v1/knowledge/upload/${saveToKBTarget.value}`, {
+      method: 'POST',
+      headers: { 'Authorization': uploadHeaders.Authorization },
+      body: formData
+    })
+    const uploadData = await uploadRes.json()
+
+    if (!uploadRes.ok && !uploadData.id && !uploadData.data?.id) {
+      throw new Error(uploadData.detail || '上传失败')
+    }
+
+    const docId = uploadData.id || uploadData.data?.id
+
+    // 2. 如果需要解析，调用解析接口
+    if (saveToKBParse.value && docId) {
+      await knowledgeAPI.parseDocument(docId)
+    }
+
+    ElMessage.success(`笔记已保存到知识库${saveToKBParse.value ? '并完成解析' : ''}`)
+    saveToKBDlg.value = false
+
+    // 刷新文档列表（如果当前在目标知识库上下文）
+    if (currentKB.value?.id === saveToKBTarget.value) {
+      loadDocuments()
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败')
+  } finally {
+    savingToKB.value = false
+  }
 }
 
 // ===== 批量上传 =====
