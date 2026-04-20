@@ -948,6 +948,13 @@ async def _rerank_results(query: str, results: List[Dict], rerank_model: str, to
 
 # ============ 高级检索 ============
 
+async def _do_vector_search(query: str, kb_id: Optional[int], top_k: int) -> List[Dict[str, Any]]:
+    """独立的向量搜索函数，支持懒加载模型"""
+    from app.core.ai_digital_base import rag_retriever
+    collection_name = f"kb_{kb_id}" if kb_id else "global"
+    return await rag_retriever.search(collection_name=collection_name, query=query, top_k=top_k)
+
+
 @router.get("/search")
 async def advanced_search(
     q: str = Query(..., description="搜索关键词"),
@@ -984,7 +991,7 @@ async def advanced_search(
                 "created_at": str(doc.created_at) if doc.created_at else None,
             })
 
-    # 关键词检索
+    # 关键词检索：jieba分词后匹配title
     if type in ("keyword", "hybrid"):
         import jieba
         kw_list = list(jieba.cut(q))
@@ -993,10 +1000,11 @@ async def advanced_search(
             query = select(KnowledgeDocument).where(KnowledgeDocument.is_active == True)
             if kb_id:
                 query = query.where(KnowledgeDocument.knowledge_base_id == kb_id)
+            # 关键词模式下匹配标题和摘要
             for kw in kw_list[:5]:
                 query = query.where(
-                    (KnowledgeDocument.keywords.astext.like(f'%"{kw}"%')) |
-                    (KnowledgeDocument.title.ilike(f"%{kw}%"))
+                    (KnowledgeDocument.title.ilike(f"%{kw}%")) |
+                    (KnowledgeDocument.summary.ilike(f"%{kw}%"))
                 )
             query = query.limit(top_k * 2)
             result = await db.execute(query)
@@ -1012,14 +1020,11 @@ async def advanced_search(
                         "created_at": str(doc.created_at) if doc.created_at else None,
                     })
 
-    # 向量检索
+    # 向量检索（有超时保护，加载模型可能很慢）
     if type in ("vector", "hybrid"):
+        import asyncio
         try:
-            from app.core.ai_digital_base import rag_retriever
-            collection_name = f"kb_{kb_id}" if kb_id else "global"
-            vec_results = await rag_retriever.search(
-                collection_name=collection_name, query=q, top_k=top_k * 2
-            )
+            vec_results = await asyncio.wait_for(_do_vector_search(q, kb_id, top_k * 2), timeout=5.0)
             if vec_results:
                 existing_ids = {r["id"] for r in results}
                 for vr in vec_results:
@@ -1033,6 +1038,8 @@ async def advanced_search(
                             "keywords": vr.get("metadata", {}).get("keywords", []),
                             "created_at": None,
                         })
+        except asyncio.TimeoutError:
+            logger.warning("向量检索超时，跳过")
         except Exception as e:
             logger.warning(f"向量检索失败: {e}")
 

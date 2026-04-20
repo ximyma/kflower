@@ -200,7 +200,7 @@ class TemplateStatsResponse(BaseModel):
 # ============ 工作流 ============
 class WorkflowNode(BaseModel):
     id: str
-    type: str  # start/end/task/condition/approval
+    type: str  # start/end/task/condition/approval/cc/data_fill/add_data/update_data/delete_data/parallel_branch/condition_branch
     name: str
     config: Dict = {}
 
@@ -210,6 +210,7 @@ class WorkflowEdge(BaseModel):
     source: str
     target: str
     label: Optional[str] = None
+    condition: Optional[Dict] = None  # 连线条件
 
 
 class WorkflowCreate(BaseModel):
@@ -219,6 +220,11 @@ class WorkflowCreate(BaseModel):
     flow_type: str = "normal"
     nodes: List[WorkflowNode] = []
     edges: List[WorkflowEdge] = []
+    # 斑斑低代码平台扩展字段
+    node_definitions: Optional[List[Dict]] = None
+    edge_definitions: Optional[List[Dict]] = None
+    variables: Optional[Dict] = None
+    form_template_id: Optional[int] = None
 
 
 class WorkflowUpdate(BaseModel):
@@ -227,6 +233,11 @@ class WorkflowUpdate(BaseModel):
     nodes: Optional[List[WorkflowNode]] = None
     edges: Optional[List[WorkflowEdge]] = None
     is_active: Optional[bool] = None
+    # 斑斑低代码平台扩展字段
+    node_definitions: Optional[List[Dict]] = None
+    edge_definitions: Optional[List[Dict]] = None
+    variables: Optional[Dict] = None
+    form_template_id: Optional[int] = None
 
 
 class WorkflowResponse(BaseModel):
@@ -239,6 +250,11 @@ class WorkflowResponse(BaseModel):
     edges: List[Dict]
     is_active: bool
     created_at: datetime
+    # 斑斑低代码平台扩展字段
+    node_definitions: Optional[List[Dict]] = None
+    edge_definitions: Optional[List[Dict]] = None
+    variables: Optional[Dict] = None
+    form_template_id: Optional[int] = None
 
 
 class WorkflowExecuteRequest(BaseModel):

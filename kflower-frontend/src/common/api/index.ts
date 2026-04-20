@@ -85,11 +85,25 @@ export const aiAPI = {
   // AI智能体引擎API
   getAgentEngineStatus: () => api.get('/ai/agent-engine/status'),
   getAgentEngineAgents: () => api.get('/ai/agent-engine/agents'),
+  createAgent: (data: any) => api.post('/ai/agent-engine/agents', data),
+  updateAgent: (id: number, data: any) => api.put(`/ai/agent-engine/agents/${id}`, data),
+  deleteAgent: (id: number) => api.delete(`/ai/agent-engine/agents/${id}`),
   getAgentEngineTools: () => api.get('/ai/agent-engine/tools'),
   getAgentEngineTasks: () => api.get('/ai/agent-engine/tasks'),
   // AI能力API
   executeCapability: (capability: string, input_data: any) => api.post('/ai/capability/execute', { capability, input_data }),
-  listCapabilities: () => api.get('/ai/capability/list')
+  listCapabilities: () => api.get('/ai/capability/list'),
+  // AI网关API
+  getGatewayStats: () => api.get('/ai/digital-base/gateway-stats'),
+  // 记忆管理API
+  getMemoryStats: () => api.get('/ai/agent-engine/memory/stats'),
+  listMemories: (limit?: number) => api.get('/ai/agent-engine/memory/list', { params: { limit } }),
+  // 数据集成API
+  getDataIntegrationStats: () => api.get('/ai/digital-base/data-integration/stats'),
+  getDataIntegrationConnections: () => api.get('/ai/digital-base/data-integration/connections'),
+  getDataIntegrationSyncTasks: () => api.get('/ai/digital-base/data-integration/sync-tasks'),
+  // 数据库迁移API
+  getMigrationStats: () => api.get('/ai/digital-base/migration/stats')
 }
 
 export const agentAPI = {

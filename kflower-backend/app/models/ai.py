@@ -281,3 +281,35 @@ class AIRecommendationCache(Base):
     result = Column(JSON, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     expires_at = Column(DateTime, nullable=True)
+
+
+class Agent(Base):
+    """智能体配置"""
+    __tablename__ = "agents"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    agent_type = Column(String(50), nullable=False, comment="智能体类型: template_agent, workflow_agent, analytics_agent, query_agent, general_agent, custom")
+    description = Column(Text, nullable=True)
+    
+    # 配置
+    config = Column(JSON, default=dict, comment="智能体配置（提示词、工具、参数等）")
+    tools = Column(JSON, default=list, comment="关联的工具列表")
+    
+    # 状态
+    status = Column(String(20), default="offline", comment="online, offline, disabled")
+    task_count = Column(Integer, default=0, comment="已处理任务数")
+    
+    # 组织/用户
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    # 关系
+    organization = relationship("Organization", lazy="selectin")
+    creator = relationship("User", foreign_keys=[created_by], lazy="selectin")
+    
+    def __repr__(self):
+        return f"<Agent {self.name}>"
