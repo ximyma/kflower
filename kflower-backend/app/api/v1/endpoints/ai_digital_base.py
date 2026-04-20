@@ -157,3 +157,91 @@ async def get_usage_stats(
     }
     
     return {"success": True, "data": stats}
+
+
+@router.get("/gateway-stats")
+async def get_gateway_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """获取AI网关统计信息"""
+    # TODO: 从数据库查询实际网关统计数据
+    # 临时返回模拟数据，匹配前端期望的字段
+    stats = {
+        "totalRequests": 124567,
+        "todayRequests": 2345,
+        "avgLatency": 342,
+        "latencyTrend": -12,
+        "successRate": 98.7,
+    }
+    
+    return {"success": True, "data": stats}
+
+
+@router.get("/data-integration/stats")
+async def get_data_integration_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """获取数据集成统计信息"""
+    # 模拟数据，匹配前端DataIntegration.vue的期望字段
+    stats = {
+        "connections": 8,
+        "dataSources": 6,
+        "syncTasks": 12,
+        "healthRate": 94.5,
+    }
+    
+    return {"success": True, "data": stats}
+
+
+@router.get("/data-integration/connections")
+async def get_data_integration_connections(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """获取数据连接列表"""
+    connections = [
+        {"id": 1, "name": "主数据库", "type": "MySQL", "status": "正常", "lastSync": "2026-04-20 10:30"},
+        {"id": 2, "name": "用户API", "type": "REST API", "status": "正常", "lastSync": "2026-04-20 10:15"},
+        {"id": 3, "name": "文件存储", "type": "文件系统", "status": "正常", "lastSync": "2026-04-20 09:45"},
+        {"id": 4, "name": "消息队列", "type": "RabbitMQ", "status": "异常", "lastSync": "2026-04-19 16:20"},
+        {"id": 5, "name": "数据仓库", "type": "ClickHouse", "status": "正常", "lastSync": "2026-04-19 14:30"},
+        {"id": 6, "name": "外部服务", "type": "Web Service", "status": "警告", "lastSync": "2026-04-18 11:45"},
+    ]
+    
+    return {"success": True, "data": connections}
+
+
+@router.get("/data-integration/sync-tasks")
+async def get_data_integration_sync_tasks(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """获取同步任务列表"""
+    sync_tasks = [
+        {"id": 1, "name": "用户数据同步", "source": "MySQL", "target": "数据仓库", "schedule": "每小时", "lastRun": "2026-04-20 10:00", "status": "运行中"},
+        {"id": 2, "name": "日志收集", "source": "文件系统", "target": "Elasticsearch", "schedule": "实时", "lastRun": "2026-04-20 09:45", "status": "正常"},
+        {"id": 3, "name": "API数据拉取", "source": "外部API", "target": "MySQL", "schedule": "每天", "lastRun": "2026-04-20 08:30", "status": "失败"},
+        {"id": 4, "name": "数据备份", "source": "主数据库", "target": "备份存储", "schedule": "每周", "lastRun": "2026-04-19 23:00", "status": "正常"},
+        {"id": 5, "name": "实时监控", "source": "消息队列", "target": "监控系统", "schedule": "实时", "lastRun": "2026-04-19 22:15", "status": "警告"},
+    ]
+    
+    return {"success": True, "data": sync_tasks}
+
+
+@router.get("/migration/stats")
+async def get_migration_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """获取数据库迁移统计信息"""
+    stats = {
+        "totalMigrations": 156,
+        "pendingMigrations": 8,
+        "failedMigrations": 3,
+        "successRate": 98.1,
+        "lastMigrationTime": "2026-04-20 14:30",
+    }
+    
+    return {"success": True, "data": stats}

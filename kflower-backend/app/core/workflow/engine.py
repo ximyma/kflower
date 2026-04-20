@@ -1,6 +1,7 @@
 """
 流程引擎核心类
 """
+import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
@@ -12,6 +13,7 @@ from app.models.workflow import (
     Workflow, WorkflowInstance, WorkflowTask, WorkflowNodeInstance,
     WorkflowVariableLog, WorkflowTaskCandidates
 )
+from app.modules.my_apps.plugin_executor import plugin_executor, PluginContext
 from app.core.workflow.node_types import NodeType
 from app.core.workflow.condition_evaluator import ConditionEvaluator
 from app.core.workflow.assignee_resolver import AssigneeResolver
@@ -176,19 +178,49 @@ class WorkflowEngine:
     
     async def _handle_condition_node(self, instance_id: int, node: Dict, variables: Dict):
         """条件分支：根据表达式选择出口"""
-        config = node.get("config", {})
-        expression = config.get("expression", "true")
-        result = await self.condition_evaluator.evaluate(expression, variables)
+        # 获取流程实例和定义
+        inst_result = await self.db.execute(select(WorkflowInstance).where(WorkflowInstance.id == instance_id))
+        instance = inst_result.scalar_one()
+        wf_result = await self.db.execute(select(Workflow).where(Workflow.id == instance.workflow_id))
+        workflow = wf_result.scalar_one()
         
-        # 查找对应的边
-        # 实际需要从 workflow.edges 中根据 source 和条件 label 获取 target
-        # 这里简化：根据结果选择下一个节点
-        pass
+        # 使用现有的_find_next_node方法查找下一个节点
+        next_node = await self._find_next_node(workflow, node["id"], variables)
+        if next_node:
+            await self._enter_node(instance_id, next_node, variables)
+        else:
+            # 如果没有符合条件的出口，记录错误
+            logger = logging.getLogger(__name__)
+            logger.error(f"条件节点 {node['id']} 没有找到符合条件的出口")
+            # 可以考虑结束流程或抛出异常
+            await self._auto_goto_next(instance_id, node)
     
     async def _handle_parallel_node(self, instance_id: int, node: Dict, variables: Dict):
-        """并行分支：创建多个分支任务，等待所有完成"""
-        # 记录并行网关实例，等待所有分支完成后触发 join
-        pass
+        """并行分支：创建多个分支任务"""
+        # 获取流程定义
+        inst_result = await self.db.execute(select(WorkflowInstance).where(WorkflowInstance.id == instance_id))
+        instance = inst_result.scalar_one()
+        wf_result = await self.db.execute(select(Workflow).where(Workflow.id == instance.workflow_id))
+        workflow = wf_result.scalar_one()
+        
+        # 获取所有出边
+        edges = workflow.edges or []
+        outgoing_edges = [e for e in edges if e.get("source") == node["id"]]
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"并行网关 {node['id']} 分叉为 {len(outgoing_edges)} 条路径")
+        
+        # 对于并行网关，所有出边都应该执行
+        # 这里简化：直接进入第一个出边对应的节点，其他分支需要特殊处理
+        # 实际实现需要创建并行分支实例，跟踪每个分支的状态
+        # 暂时使用第一个出口继续执行
+        if outgoing_edges:
+            first_edge = outgoing_edges[0]
+            target_id = first_edge.get("target")
+            for workflow_node in workflow.nodes:
+                if workflow_node.get("id") == target_id:
+                    await self._enter_node(instance_id, workflow_node, variables)
+                    break
     
     async def _handle_data_change_node(self, instance_id: int, node: Dict, variables: Dict):
         """数据变化节点：增/改/删数据"""
@@ -203,8 +235,13 @@ class WorkflowEngine:
             rendered_data[target_field] = await self.condition_evaluator.render_expression(expr, variables)
         
         # 执行数据操作
-        # 实际需要调用对应服务
-        # ...
+        # 实际需要调用模板数据服务
+        logger = logging.getLogger(__name__)
+        logger.info(f"数据变更节点执行: action={action}, target_template_id={target_template_id}, data={rendered_data}")
+        
+        # 这里可以调用模板数据提交/更新/删除API
+        # 示例：通过RPC或直接调用服务层
+        # 暂时记录日志，实际实现需要根据业务需求
         
         # 自动进入下一节点
         await self._auto_goto_next(instance_id, node)
@@ -214,9 +251,11 @@ class WorkflowEngine:
         config = node.get("config", {})
         plugin_id = config.get("plugin_id")
         if plugin_id:
-            # 这里需要调用插件执行器
-            # 暂时留空
-            pass
+            await self._run_plugin(plugin_id, {
+                "instance_id": instance_id,
+                "node": node,
+                "variables": variables
+            })
         
         await self._auto_goto_next(instance_id, node)
     
@@ -266,9 +305,23 @@ class WorkflowEngine:
     
     async def _run_plugin(self, plugin_id: str, context_data: Dict):
         """执行插件"""
-        # 这里需要调用插件执行器
-        # 暂时留空
-        pass
+        from app.modules.my_apps.models import AppPlugin
+        result = await self.db.execute(select(AppPlugin).where(AppPlugin.id == int(plugin_id)))
+        plugin = result.scalar_one_or_none()
+        if plugin and plugin.is_enabled:
+            context = PluginContext(
+                data=context_data,
+                old_data=None,
+                db=self.db,
+                user_id=context_data.get("user_id", 0),
+                template_id=0,
+                event=plugin.trigger_event,
+                app_id=plugin.app_id
+            )
+            await plugin_executor.execute(plugin.script_code, context)
+        else:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"插件 {plugin_id} 不存在或未启用")
     
     async def _send_notification(self, user_id: int, node_name: str, instance_id: int):
         """发送通知（站内信/邮件）"""

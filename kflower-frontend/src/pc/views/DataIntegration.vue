@@ -251,9 +251,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Connection, DataBoard, Refresh, CircleCheck, CircleClose, SetUp, Document, Folder, Cloudy, Service } from '@element-plus/icons-vue'
+import { aiAPI } from '@/common/api'
 
 const stats = ref({
   connections: 8,
@@ -292,6 +293,48 @@ const qualityIssues = ref([
   { id: 3, name: '重复数据', count: 23 },
   { id: 4, name: '数据过期', count: 5 },
 ])
+
+onMounted(() => {
+  loadDataIntegrationStats()
+  loadConnections()
+  loadSyncTasks()
+})
+
+async function loadDataIntegrationStats() {
+  try {
+    const response = await aiAPI.getDataIntegrationStats()
+    if (response.success) {
+      stats.value = response.data
+    }
+  } catch (error) {
+    console.error('加载数据集成统计失败:', error)
+    // 保持模拟数据
+  }
+}
+
+async function loadConnections() {
+  try {
+    const response = await aiAPI.getDataIntegrationConnections()
+    if (response.success) {
+      connections.value = response.data
+    }
+  } catch (error) {
+    console.error('加载数据连接列表失败:', error)
+    // 保持模拟数据
+  }
+}
+
+async function loadSyncTasks() {
+  try {
+    const response = await aiAPI.getDataIntegrationSyncTasks()
+    if (response.success) {
+      syncTasks.value = response.data
+    }
+  } catch (error) {
+    console.error('加载同步任务列表失败:', error)
+    // 保持模拟数据
+  }
+}
 
 function getSourceIcon(type: string) {
   const map: any = {

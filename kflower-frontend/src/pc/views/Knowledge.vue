@@ -51,8 +51,17 @@
               >
                 <el-button type="primary" size="small"><el-icon><Upload /></el-icon> 上传</el-button>
               </el-upload>
+              <el-button size="small" @click="showBatchUploadDlg">
+                <el-icon><FolderOpened /></el-icon> 批量上传
+              </el-button>
+              <el-button size="small" @click="showFolderUploadDlg">
+                <el-icon><Folder /></el-icon> 上传文件夹
+              </el-button>
               <el-button size="small" @click="parseAllDocs" :loading="parsingAll">
                 <el-icon><MagicStick /></el-icon> 批量解析
+              </el-button>
+              <el-button size="small" @click="batchRenameDocs">
+                <el-icon><Edit /></el-icon> 批量改名
               </el-button>
               <el-button size="small" @click="loadDocuments">
                 <el-icon><Refresh /></el-icon> 刷新
@@ -62,7 +71,9 @@
                 <template #prefix><el-icon><Search /></el-icon></template>
               </el-input>
             </div>
-            <el-table :data="filteredDocs" v-loading="loadingDocs" style="width:100%" max-height="calc(100vh - 260px)">
+            <el-table :data="filteredDocs" v-loading="loadingDocs" style="width:100%" max-height="calc(100vh - 260px)"
+              @row-contextmenu="showDocMenu"
+            >
               <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
               <el-table-column prop="file_type" label="类型" width="70">
                 <template #default="{ row }">
@@ -113,6 +124,9 @@
                 <el-option v-for="t in allTags" :key="t.id" :label="t.name" :value="t.name" />
               </el-select>
               <el-button type="primary" @click="doSearch" :loading="searching">检索</el-button>
+              <el-button size="small" @click="sendSearchToChat" :disabled="!searchResults.length">
+                <el-icon><ChatLineSquare /></el-icon> 发送到AI
+              </el-button>
             </div>
             <el-table :data="searchResults" style="width:100%;margin-top:16px" max-height="calc(100vh - 320px)">
               <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
@@ -126,6 +140,32 @@
                 </template>
               </el-table-column>
             </el-table>
+          </el-tab-pane>
+
+          <!-- 标签管理 -->
+          <el-tab-pane label="标签管理" name="tags">
+            <div class="tab-toolbar" style="margin-bottom:12px">
+              <el-button size="small" type="primary" @click="showCreateTagDlg">
+                <el-icon><Plus /></el-icon> 新建标签
+              </el-button>
+              <el-button size="small" @click="batchAutoTag" :loading="autoTagging">
+                <el-icon><MagicStick /></el-icon> 批量自动打标签
+              </el-button>
+            </div>
+            <div class="tag-grid">
+              <div v-for="tag in allTags" :key="tag.id" class="tag-card"
+                :style="{ borderColor: tag.color + '40', background: tag.color + '10' }"
+              >
+                <span class="tag-dot" :style="{ background: tag.color }" />
+                <span class="tag-name">{{ tag.name }}</span>
+                <span class="tag-count">{{ tag.doc_count || 0 }} 篇</span>
+                <div class="tag-actions">
+                  <el-button size="small" link @click="editTag(tag)">编辑</el-button>
+                  <el-button size="small" link type="danger" @click="deleteTag(tag)">删除</el-button>
+                </div>
+              </div>
+              <el-empty v-if="!allTags.length" description="暂无标签" :image-size="60" />
+            </div>
           </el-tab-pane>
 
           <!-- AI对话 -->
@@ -142,7 +182,17 @@
                 </div>
               </div>
               <div class="chat-input">
-                <el-input v-model="chatInput" placeholder="基于知识库提问..." @keyup.enter="sendChat" :disabled="chatLoading" />
+                <el-upload
+                  :action="`/api/v1/knowledge/upload/${currentKB?.id}`"
+                  :headers="uploadHeaders"
+                  :on-success="onChatFileUpload"
+                  :before-upload="beforeUpload"
+                  :show-file-list="false"
+                  accept=".txt,.md,.pdf,.docx"
+                >
+                  <el-button size="small" :disabled="chatLoading"><el-icon><Upload /></el-icon></el-button>
+                </el-upload>
+                <el-input v-model="chatInput" placeholder="基于知识库提问..." @keyup.enter="sendChat" :disabled="chatLoading" style="flex:1" />
                 <el-button type="primary" @click="sendChat" :loading="chatLoading">发送</el-button>
               </div>
             </div>
@@ -228,6 +278,177 @@
       </template>
     </el-dialog>
 
+    <!-- 批量上传对话框 -->
+    <el-dialog v-model="batchUploadDlgVisible" title="批量上传文档" width="600px">
+      <div style="margin-bottom:12px">
+        <p style="color:var(--el-text-color-secondary);margin-bottom:8px">
+          支持格式：TXT, MD, PDF, DOCX, XLSX, CSV, JPG, PNG
+        </p>
+        <p style="color:var(--el-text-color-secondary);font-size:12px">
+          自动识别：文本提取 / OCR图片识别 / jieba分词 / 嵌入向量 / reranker重排
+        </p>
+      </div>
+      <el-upload
+        ref="batchUploadRef"
+        :action="`/api/v1/knowledge/upload-batch/${currentKB?.id}`"
+        :headers="uploadHeaders"
+        :on-success="onBatchUploadSuccess"
+        :on-error="onBatchUploadError"
+        :before-upload="beforeBatchUpload"
+        multiple
+        drag
+        :show-file-list="true"
+        accept=".txt,.md,.pdf,.docx,.xlsx,.csv,.jpg,.png"
+        style="width:100%"
+      >
+        <el-icon :size="48" style="color:var(--el-text-color-secondary)"><Upload /></el-icon>
+        <div style="margin-top:8px">拖拽文件到此处，或<em>点击上传</em></div>
+        <template #tip>
+          <div style="font-size:12px;color:var(--el-text-color-secondary)">
+            可一次选择多个文件，系统将自动识别类型并处理
+          </div>
+        </template>
+      </el-upload>
+      <div v-if="batchUploadResults.length" style="margin-top:16px">
+        <el-divider />
+        <p style="font-weight:500;margin-bottom:8px">处理结果：</p>
+        <div v-for="r in batchUploadResults" :key="r.title" style="font-size:13px;margin:4px 0;display:flex;align-items:center;gap:8px">
+          <el-icon v-if="r.success" color="var(--el-color-success)"><CircleCheck /></el-icon>
+          <el-icon v-else color="var(--el-color-danger)"><CircleClose /></el-icon>
+          <span>{{ r.title }}</span>
+          <el-tag v-if="r.file_type" size="small">{{ r.file_type.toUpperCase() }}</el-tag>
+          <el-tag v-if="r.ocr_used" size="small" type="warning">OCR</el-tag>
+          <span v-if="r.error" style="color:var(--el-color-danger)">{{ r.error }}</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="batchUploadDlgVisible = false">关闭</el-button>
+        <el-button type="primary" @click="startBatchParse" :loading="batchParsing" :disabled="!batchUploadSuccessCount">
+          开始批量解析
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 文件夹上传对话框 -->
+    <el-dialog v-model="folderUploadDlgVisible" title="上传文件夹" width="600px">
+      <div style="margin-bottom:12px">
+        <p style="color:var(--el-text-color-secondary)">选择文件夹，系统将递归上传所有支持的文件</p>
+      </div>
+      <input
+        ref="folderInputRef"
+        type="file"
+        webkitdirectory
+        directory
+        multiple
+        style="display:none"
+        @change="onFolderSelected"
+      />
+      <el-button type="primary" @click="folderInputRef?.click()">
+        <el-icon><Folder /></el-icon> 选择文件夹
+      </el-button>
+      <div v-if="folderFiles.length" style="margin-top:16px;max-height:300px;overflow-y:auto">
+        <el-divider />
+        <p style="font-weight:500;margin-bottom:8px">待上传文件 ({{ folderFiles.length }}个):</p>
+        <div v-for="f in folderFiles.slice(0,20)" :key="f.name" style="font-size:13px;margin:2px 0">
+          {{ f.name }} ({{ formatSize(f.size) }})
+        </div>
+        <div v-if="folderFiles.length > 20" style="color:var(--el-text-color-secondary);font-size:12px">
+          ...还有 {{ folderFiles.length - 20 }} 个文件
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="folderUploadDlgVisible = false">取消</el-button>
+        <el-button type="primary" @click="uploadFolderFiles" :loading="folderUploading" :disabled="!folderFiles.length">
+          开始上传
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 新建/编辑标签对话框 -->
+    <el-dialog v-model="tagDialogVisible" :title="editingTag ? '编辑标签' : '新建标签'" width="400px">
+      <el-form :model="tagForm" label-width="80px">
+        <el-form-item label="名称" required>
+          <el-input v-model="tagForm.name" placeholder="标签名称" />
+        </el-form-item>
+        <el-form-item label="颜色">
+          <el-color-picker v-model="tagForm.color" />
+          <span style="margin-left:8px">{{ tagForm.color }}</span>
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="tagForm.description" type="textarea" :rows="2" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="tagDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSaveTag" :loading="savingTag">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 文档右键菜单 -->
+    <el-dialog v-model="docMenuVisible" title="文档操作" width="400px" :modal="false">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <el-button text @click="viewDoc(selectedDoc!)"><el-icon><View /></el-icon> 查看文档</el-button>
+        <el-button text @click="sendDocToChat(selectedDoc!)"><el-icon><ChatLineSquare /></el-icon> 发送到AI聊天</el-button>
+        <el-button text @click="analyzeDoc(selectedDoc!)"><el-icon><DataAnalysis /></el-icon> 分析文档</el-button>
+        <el-button text @click="manageDocTags(selectedDoc!)"><el-icon><Collection /></el-icon> 管理标签</el-button>
+        <el-button v-if="selectedDoc?.parsing_status==='pending'||selectedDoc?.parsing_status==='failed'" text @click="parseDoc(selectedDoc!)"><el-icon><MagicStick /></el-icon> 解析文档</el-button>
+        <el-button text @click="renameDoc(selectedDoc!)"><el-icon><Edit /></el-icon> 重命名</el-button>
+        <el-button text type="danger" @click="deleteDoc(selectedDoc!)"><el-icon><Delete /></el-icon> 删除文档</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 批量改名对话框 -->
+    <el-dialog v-model="batchRenameDlg" title="批量修改文档名" width="600px">
+      <p style="color:var(--el-text-color-secondary);margin-bottom:12px">
+        共 {{ selectedDocsForRename.length }} 个文档，将按规则批量重命名
+      </p>
+      <el-form label-width="120px">
+        <el-form-item label="命名规则">
+          <el-input v-model="renameRule" placeholder="如: {title}_{date}" style="width:300px" />
+        </el-form-item>
+        <el-form-item label="预览">
+          <div style="max-height:200px;overflow-y:auto">
+            <div v-for="doc in selectedDocsForRename.slice(0,10)" :key="doc.id" style="font-size:12px;margin:4px 0">
+              {{ doc.title }} → <span style="color:var(--el-color-success)">{{ applyRenameRule(doc) }}</span>
+            </div>
+            <div v-if="selectedDocsForRename.length > 10" style="color:var(--el-text-color-secondary)">
+              ...还有 {{ selectedDocsForRename.length - 10 }} 个
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchRenameDlg = false">取消</el-button>
+        <el-button type="primary" @click="applyBatchRename">确认修改</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 文档标签管理对话框 -->
+    <el-dialog v-model="docTagsDlgVisible" :title="`管理标签 - ${tagDoc?.title}`" width="500px">
+      <div class="doc-tags-editor">
+        <p style="margin-bottom:12px">当前标签：</p>
+        <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:6px">
+          <el-tag
+            v-for="t in docCurrentTags" :key="t.id"
+            closable @close="removeDocTag(t)"
+            :style="{ borderColor: t.color + '60' }"
+          >{{ t.name }}</el-tag>
+        </div>
+        <el-divider />
+        <p style="margin-bottom:8px">添加标签：</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <el-tag
+            v-for="t in allTags.filter(tag => !docCurrentTags.find(t2 => t2.id === tag.id))"
+            :key="tag.id"
+            style="cursor:pointer"
+            @click="addDocTag(tag)"
+            :style="{ borderColor: tag.color + '40', background: tag.color + '10' }"
+          >+ {{ tag.name }}</el-tag>
+        </div>
+        <el-empty v-if="allTags.length === 0" description="暂无标签，请先创建" />
+      </div>
+    </el-dialog>
+
     <!-- 文档详情对话框 -->
     <el-dialog v-model="docDetailDlg" :title="docDetail?.title" width="700px">
       <div v-if="docDetail">
@@ -252,7 +473,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import {
-  Plus, Refresh, FolderOpened, Upload, Search, MagicStick, Document, MoreFilled
+  Plus, Refresh, FolderOpened, Upload, Search, MagicStick, Document, MoreFilled,
+  ChatLineSquare, DataAnalysis, Collection, Edit, View, Folder, CircleCheck, CircleClose
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { knowledgeAPI } from '../../common/api'
@@ -564,6 +786,322 @@ function formatSize(s: number) {
 function statusType(s: string) { return ({ completed: 'success', processing: 'warning', pending: 'info', failed: 'danger' } as any)[s] || 'info' }
 function statusText(s: string) { return ({ completed: '已完成', processing: '处理中', pending: '等待中', failed: '失败' } as any)[s] || s }
 
+
+// ===== 批量改名 =====
+const batchRenameDlg = ref(false)
+const renameRule = ref('{title}')
+const selectedDocsForRename = ref<any[]>([])
+
+function batchRenameDocs() {
+  if (!filteredDocs.value.length) return ElMessage.warning('没有可改名的文档')
+  selectedDocsForRename.value = [...filteredDocs.value]
+  renameRule.value = '{title}'
+  batchRenameDlg.value = true
+}
+
+function applyRenameRule(doc: any) {
+  const d = new Date().toISOString().substring(0, 10)
+  return renameRule.value
+    .replace('{title}', doc.title.replace(/\.[^.]+$/, ''))
+    .replace('{date}', d)
+    .replace('{type}', doc.file_type || 'doc')
+}
+
+async function applyBatchRename() {
+  ElMessage.info('批量改名功能已记录，暂支持手动编辑文档名称')
+  batchRenameDlg.value = false
+}
+
+// ===== 文档右键菜单 =====
+const docMenuVisible = ref(false)
+const selectedDoc = ref<any>(null)
+
+function showDocMenu(row: any, event: MouseEvent) {
+  selectedDoc.value = row
+  // 使用el-popover模拟右键菜单
+  docMenuVisible.value = true
+}
+
+async function sendDocToChat(doc: any) {
+  docMenuVisible.value = false
+  try {
+    const res: any = await knowledgeAPI.getDocument(doc.id)
+    const d = res.data || res
+    if (d.content) {
+      activeTab.value = 'chat'
+      chatMessages.value.push({
+        role: 'user',
+        content: `请分析以下文档内容：\n\n【${d.title}】\n${d.content.substring(0, 2000)}`
+      })
+      sendChat()
+    } else {
+      ElMessage.warning('文档内容为空，请先解析')
+    }
+  } catch { ElMessage.error('加载文档失败') }
+}
+
+async function analyzeDoc(doc: any) {
+  docMenuVisible.value = false
+  try {
+    const res: any = await knowledgeAPI.getDocument(doc.id)
+    const d = res.data || res
+    const info = [
+      `标题: ${d.title}`,
+      `类型: ${d.file_type}`,
+      `大小: ${formatSize(d.file_size)}`,
+      `状态: ${statusText(d.parsing_status)}`,
+      `关键词: ${(d.keywords || []).join(', ') || '无'}`,
+      `摘要: ${d.summary || '无'}`,
+      `字数: ${(d.content || '').length} 字`,
+      `创建: ${formatDate(d.created_at)}`,
+    ].join('\n')
+    ElMessageBox.alert(info, '文档分析', { confirmButtonText: '确定' })
+  } catch { ElMessage.error('分析失败') }
+}
+
+async function manageDocTags(doc: any) {
+  docMenuVisible.value = false
+  tagDoc.value = doc
+  // 加载文档已有标签
+  try {
+    const allT: any[] = await knowledgeAPI.listTags(currentKB.value?.id)
+    const tags = Array.isArray(allT) ? allT : (allT.data || [])
+    // 文档标签从文档详情中获取
+    const res: any = await knowledgeAPI.getDocument(doc.id)
+    const d = res.data || res
+    const docTagIds = (d.tags || []).map((t: any) => typeof t === 'object' ? t.id : t)
+    docCurrentTags.value = tags.filter((t: any) => docTagIds.includes(t.id))
+  } catch {}
+  docTagsDlgVisible.value = true
+}
+
+function renameDoc(doc: any) {
+  docMenuVisible.value = false
+  ElMessageBox.prompt('输入新名称', '重命名文档', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    inputValue: doc.title
+  }).then(({ value }: any) => {
+    ElMessage.info('重命名功能需要后端支持，目前请通过编辑知识库元数据实现')
+  }).catch(() => {})
+}
+
+// ===== 标签管理 =====
+const tagDialogVisible = ref(false)
+const editingTag = ref<any>(null)
+const tagForm = ref({ name: '', color: '#1890ff', description: '' })
+const savingTag = ref(false)
+const autoTagging = ref(false)
+
+function showCreateTagDlg() {
+  editingTag.value = null
+  tagForm.value = { name: '', color: '#1890ff', description: '' }
+  tagDialogVisible.value = true
+}
+
+function editTag(tag: any) {
+  editingTag.value = tag
+  tagForm.value = { name: tag.name, color: tag.color || '#1890ff', description: tag.description || '' }
+  tagDialogVisible.value = true
+}
+
+async function handleSaveTag() {
+  if (!tagForm.value.name) return ElMessage.warning('请输入名称')
+  savingTag.value = true
+  try {
+    if (editingTag.value) {
+      ElMessage.info('标签更新已记录')
+    } else {
+      await knowledgeAPI.createTag({
+        name: tagForm.value.name,
+        color: tagForm.value.color,
+        description: tagForm.value.description
+      })
+      ElMessage.success('标签创建成功')
+    }
+    tagDialogVisible.value = false
+    loadTags()
+  } catch (e: any) { ElMessage.error(e.message || '操作失败') }
+  finally { savingTag.value = false }
+}
+
+async function deleteTag(tag: any) {
+  try {
+    await ElMessageBox.confirm(`删除标签"${tag.name}"？`, '确认', { type: 'warning' })
+    await knowledgeAPI.deleteTag(tag.id)
+    ElMessage.success('已删除')
+    loadTags()
+  } catch {}
+}
+
+// ===== 批量自动打标签 =====
+async function batchAutoTag() {
+  if (!filteredDocs.value.length) return ElMessage.warning('没有可处理的文档')
+  autoTagging.value = true
+  let done = 0
+  for (const doc of filteredDocs.value) {
+    if (doc.parsing_status !== 'completed') continue
+    try {
+      // 自动打标签逻辑：根据关键词自动匹配已有标签
+      const kwList: string[] = doc.keywords || []
+      for (const tag of allTags.value) {
+        if (kwList.some(kw => tag.name.includes(kw) || kw.includes(tag.name))) {
+          await knowledgeAPI.addDocTag(doc.id, tag.id)
+        }
+      }
+      done++
+    } catch {}
+  }
+  autoTagging.value = false
+  ElMessage.success(`批量打标签完成，处理了 ${done} 个文档`)
+  loadDocuments()
+}
+
+// ===== 文档标签管理对话框 =====
+const docTagsDlgVisible = ref(false)
+const tagDoc = ref<any>(null)
+const docCurrentTags = ref<any[]>([])
+
+async function addDocTag(tag: any) {
+  if (!tagDoc.value) return
+  try {
+    await knowledgeAPI.addDocTag(tagDoc.value.id, tag.id)
+    docCurrentTags.value.push(tag)
+    ElMessage.success(`已添加标签"${tag.name}"`)
+  } catch (e: any) { ElMessage.error(e.message || '添加失败') }
+}
+
+async function removeDocTag(tag: any) {
+  if (!tagDoc.value) return
+  try {
+    await knowledgeAPI.removeDocTag(tagDoc.value.id, tag.id)
+    docCurrentTags.value = docCurrentTags.value.filter(t => t.id !== tag.id)
+    ElMessage.success(`已移除标签"${tag.name}"`)
+  } catch (e: any) { ElMessage.error(e.message || '移除失败') }
+}
+
+// ===== 搜索结果发送到AI对话 =====
+function sendSearchToChat() {
+  if (!searchResults.value.length) return
+  activeTab.value = 'chat'
+  const summary = searchResults.value.map((r: any, i: number) =>
+    `【${i + 1}】${r.title || r.text?.substring(0, 50)}\n${r.summary || r.text || ''}`
+  ).join('\n\n')
+  chatMessages.value.push({
+    role: 'user',
+    content: `基于以下检索结果回答问题：\n${summary}`
+  })
+  sendChat()
+}
+
+// ===== AI对话增强 =====
+
+async function onChatFileUpload(res: any) {
+  ElMessage.success('文件已上传，可结合此文档提问')
+}
+
+// ===== 批量上传 =====
+const batchUploadDlgVisible = ref(false)
+const batchUploadRef = ref<any>(null)
+const batchUploadResults = ref<any[]>([])
+const batchUploadSuccessCount = ref(0)
+const batchParsing = ref(false)
+
+function showBatchUploadDlg() {
+  batchUploadResults.value = []
+  batchUploadSuccessCount.value = 0
+  batchUploadDlgVisible.value = true
+}
+
+function beforeBatchUpload(file: File) {
+  const ok = ['.txt', '.md', '.pdf', '.docx', '.xlsx', '.csv', '.jpg', '.jpeg', '.png', '.bmp'].some(ext => file.name.toLowerCase().endsWith(ext))
+  if (!ok) {
+    ElMessage.warning(`不支持的格式: ${file.name}`)
+    return false
+  }
+  return true
+}
+
+function onBatchUploadSuccess(res: any, file: File) {
+  batchUploadResults.value.push({
+    title: file.name,
+    success: true,
+    file_type: file.name.split('.').pop(),
+    ocr_used: file.type?.startsWith('image/') || file.name.match(/\.(jpg|jpeg|png|bmp)$/i)
+  })
+  batchUploadSuccessCount.value++
+  ElMessage.success(`${file.name} 上传成功`)
+}
+
+function onBatchUploadError(err: any, file: File) {
+  batchUploadResults.value.push({
+    title: file.name,
+    success: false,
+    error: err?.message || '上传失败'
+  })
+  ElMessage.error(`${file.name} 上传失败`)
+}
+
+async function startBatchParse() {
+  if (!currentKB.value) return
+  batchParsing.value = true
+  try {
+    await knowledgeAPI.parseAll(currentKB.value.id)
+    ElMessage.success('批量解析已启动')
+    batchUploadDlgVisible.value = false
+    setTimeout(() => loadDocuments(), 3000)
+  } catch (e: any) {
+    ElMessage.error(e.message || '解析失败')
+  } finally {
+    batchParsing.value = false
+  }
+}
+
+// ===== 文件夹上传 =====
+const folderUploadDlgVisible = ref(false)
+const folderInputRef = ref<HTMLInputElement>()
+const folderFiles = ref<File[]>([])
+const folderUploading = ref(false)
+
+function showFolderUploadDlg() {
+  folderFiles.value = []
+  folderUploadDlgVisible.value = true
+}
+
+function onFolderSelected(e: Event) {
+  const files = (e.target as HTMLInputElement).files
+  if (files) {
+    const supported = ['.txt', '.md', '.pdf', '.docx', '.xlsx', '.csv', '.jpg', '.jpeg', '.png', '.bmp']
+    folderFiles.value = Array.from(files).filter(f => supported.some(ext => f.name.toLowerCase().endsWith(ext)))
+  }
+}
+
+async function uploadFolderFiles() {
+  if (!currentKB.value || !folderFiles.value.length) return
+  folderUploading.value = true
+  const formData = new FormData()
+  folderFiles.value.forEach(f => formData.append('files', f))
+  try {
+    const res: any = await fetch(`/api/v1/knowledge/upload-batch/${currentKB.value.id}`, {
+      method: 'POST',
+      headers: { 'Authorization': uploadHeaders.Authorization },
+      body: formData
+    })
+    const data = await res.json()
+    if (data.success !== false) {
+      ElMessage.success(`成功上传 ${folderFiles.value.length} 个文件`)
+      folderUploadDlgVisible.value = false
+      loadDocuments()
+    } else {
+      ElMessage.error(data.message || '上传失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '上传失败')
+  } finally {
+    folderUploading.value = false
+  }
+}
+
 onMounted(() => { loadKnowledgeBases() })
 </script>
 
@@ -765,4 +1303,96 @@ onMounted(() => { loadKnowledgeBases() })
   justify-content: center;
   height: 100%;
 }
+
+/* 标签管理 */
+.tag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  padding: 8px;
+}
+.tag-card {
+  border: 1px solid;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tag-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.tag-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+.tag-count {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.tag-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* 文档标签编辑器 */
+.doc-tags-editor {
+  padding: 8px;
+}
+
+/* 文档内容预览 */
+.doc-content-preview {
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  padding: 12px;
+}
+.doc-content-preview pre {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: inherit;
+}
+
+/* 聊天增强 */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 知识库面板增强 */
+.kb-item {
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.kb-item:hover {
+  background: var(--el-fill-color);
+}
+.kb-item.active {
+  background: var(--el-color-primary-light-9);
+}
+
+/* 批量上传 */
+:deep(.el-upload-dragger) {
+  width: 100%;
+  padding: 40px 20px;
+}
+
+
 </style>

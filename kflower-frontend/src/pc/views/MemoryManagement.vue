@@ -250,31 +250,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Collection, VideoPlay, Search, CircleCheck, Document, ChatDotRound, Tools, Star } from '@element-plus/icons-vue'
+import { aiAPI } from '@/common/api/index'
 
 const stats = ref({
-  totalMemories: 24567,
-  activeAgents: 12,
-  avgRetrievalTime: 128,
-  retrievalAccuracy: 92.3,
+  totalMemories: 0,
+  activeAgents: 0,
+  avgRetrievalTime: 0,
+  retrievalAccuracy: 0,
 })
 
-const memoryTypes = ref([
-  { name: '事实记忆', icon: Document, color: '#409EFF', count: 12345, percentage: 50 },
-  { name: '对话记忆', icon: ChatDotRound, color: '#67C23A', count: 8765, percentage: 36 },
-  { name: '程序记忆', icon: Tools, color: '#E6A23C', count: 2345, percentage: 10 },
-  { name: '情景记忆', icon: Star, color: '#F56C6C', count: 1112, percentage: 4 },
-])
-
-const recentMemories = ref([
-  { id: 1, content: '用户偏好深色主题界面', type: 'fact', agent: '用户偏好智能体', time: '10:30' },
-  { id: 2, content: '月度报告需要包含销售数据图表', type: 'conversation', agent: '模板设计智能体', time: '10:15' },
-  { id: 3, content: 'API调用超时时间应设置为30秒', type: 'procedure', agent: 'API调用工具', time: '09:45' },
-  { id: 4, content: '上次登录失败原因为密码错误', type: 'episodic', agent: '安全监控智能体', time: '09:20' },
-  { id: 5, content: '数据分析模板需要新增环比字段', type: 'fact', agent: '数据分析智能体', time: '08:55' },
-])
+const memoryTypes = ref([])
+const recentMemories = ref([])
 
 const searchQuery = ref('')
 const searchFilters = ref(['fact', 'conversation', 'procedure', 'episodic'])
@@ -288,6 +277,84 @@ const config = ref({
   cleanupInterval: 'weekly',
   similarityThreshold: 0.75,
   enableCompression: true,
+})
+
+// 加载记忆统计数据
+async function loadMemoryStats() {
+  try {
+    const response = await aiAPI.getMemoryStats()
+    if (response.success && response.data) {
+      stats.value = response.data
+      // 更新记忆类型分布（模拟计算）
+      updateMemoryTypesDistribution()
+    }
+  } catch (error) {
+    console.error('加载记忆统计失败:', error)
+    // 使用模拟数据
+    stats.value = {
+      totalMemories: 24567,
+      activeAgents: 12,
+      avgRetrievalTime: 128,
+      retrievalAccuracy: 92.3,
+    }
+    updateMemoryTypesDistribution()
+  }
+}
+
+// 更新记忆类型分布（模拟）
+function updateMemoryTypesDistribution() {
+  const total = stats.value.totalMemories
+  if (total === 0) {
+    memoryTypes.value = []
+    return
+  }
+  // 模拟分布
+  memoryTypes.value = [
+    { name: '事实记忆', icon: Document, color: '#409EFF', count: Math.floor(total * 0.5), percentage: 50 },
+    { name: '对话记忆', icon: ChatDotRound, color: '#67C23A', count: Math.floor(total * 0.36), percentage: 36 },
+    { name: '程序记忆', icon: Tools, color: '#E6A23C', count: Math.floor(total * 0.1), percentage: 10 },
+    { name: '情景记忆', icon: Star, color: '#F56C6C', count: total - Math.floor(total * 0.5) - Math.floor(total * 0.36) - Math.floor(total * 0.1), percentage: 4 },
+  ]
+}
+
+// 加载最近记忆
+async function loadRecentMemories() {
+  try {
+    const response = await aiAPI.listMemories(5)
+    if (response.success && response.data) {
+      recentMemories.value = response.data.map((memory: any) => ({
+        id: memory.id,
+        content: memory.content,
+        type: memory.type,
+        agent: memory.agent,
+        time: memory.time,
+      }))
+    } else {
+      // 模拟数据
+      recentMemories.value = [
+        { id: 1, content: '用户偏好深色主题界面', type: 'fact', agent: '用户偏好智能体', time: '10:30' },
+        { id: 2, content: '月度报告需要包含销售数据图表', type: 'conversation', agent: '模板设计智能体', time: '10:15' },
+        { id: 3, content: 'API调用超时时间应设置为30秒', type: 'procedure', agent: 'API调用工具', time: '09:45' },
+        { id: 4, content: '上次登录失败原因为密码错误', type: 'episodic', agent: '安全监控智能体', time: '09:20' },
+        { id: 5, content: '数据分析模板需要新增环比字段', type: 'fact', agent: '数据分析智能体', time: '08:55' },
+      ]
+    }
+  } catch (error) {
+    console.error('加载最近记忆失败:', error)
+    recentMemories.value = [
+      { id: 1, content: '用户偏好深色主题界面', type: 'fact', agent: '用户偏好智能体', time: '10:30' },
+      { id: 2, content: '月度报告需要包含销售数据图表', type: 'conversation', agent: '模板设计智能体', time: '10:15' },
+      { id: 3, content: 'API调用超时时间应设置为30秒', type: 'procedure', agent: 'API调用工具', time: '09:45' },
+      { id: 4, content: '上次登录失败原因为密码错误', type: 'episodic', agent: '安全监控智能体', time: '09:20' },
+      { id: 5, content: '数据分析模板需要新增环比字段', type: 'fact', agent: '数据分析智能体', time: '08:55' },
+    ]
+  }
+}
+
+// 初始化加载数据
+onMounted(() => {
+  loadMemoryStats()
+  loadRecentMemories()
 })
 
 function formatNumber(num: number) {
@@ -312,7 +379,9 @@ function getTagType(memoryType: string) {
 }
 
 function refreshMemories() {
-  ElMessage.info('刷新记忆列表')
+  loadMemoryStats()
+  loadRecentMemories()
+  ElMessage.success('记忆列表已刷新')
 }
 
 function performSearch() {

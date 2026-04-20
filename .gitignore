@@ -60,7 +60,7 @@ secrets/
 
 # Models (large files)
 bge-reranker-v2-m3/
-models/
+# models/
 
 # Python
 __pycache__/

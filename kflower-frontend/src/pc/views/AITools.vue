@@ -144,34 +144,110 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Clock, User, DataBoard, Connection, Document, VideoPlay, Tools, Setting, ChatDotRound, Collection, Upload, Download, Edit, Delete } from '@element-plus/icons-vue'
+import { aiAPI } from '@/common/api/index'
 
 const searchKeyword = ref('')
 const activeCategory = ref('all')
 
-const tools = ref([
-  { id: 1, name: 'SQL查询', category: 'data', categoryTag: 'primary', icon: DataBoard, color: '#409EFF', description: '执行SQL查询，支持多种数据库', version: 'v1.0', usageCount: 1245, enabled: true },
-  { id: 2, name: 'API调用', category: 'api', categoryTag: 'success', icon: Connection, color: '#67C23A', description: '调用外部REST API，支持认证和参数化', version: 'v1.2', usageCount: 876, enabled: true },
-  { id: 3, name: '文件读取', category: 'file', categoryTag: 'warning', icon: Document, color: '#E6A23C', description: '读取本地文件内容，支持多种格式', version: 'v1.1', usageCount: 543, enabled: true },
-  { id: 4, name: 'Python执行', category: 'code', categoryTag: 'danger', icon: VideoPlay, color: '#F56C6C', description: '执行Python代码片段，沙箱环境', version: 'v0.9', usageCount: 321, enabled: false },
-  { id: 5, name: '数据转换', category: 'data', categoryTag: 'primary', icon: Tools, color: '#409EFF', description: 'JSON/CSV/Excel格式转换', version: 'v1.0', usageCount: 654, enabled: true },
-  { id: 6, name: '邮件发送', category: 'api', categoryTag: 'success', icon: Connection, color: '#67C23A', description: '发送电子邮件，支持附件', version: 'v1.1', usageCount: 234, enabled: true },
-  { id: 7, name: 'OCR识别', category: 'file', categoryTag: 'warning', icon: Document, color: '#E6A23C', description: '图片文字识别，支持多语言', version: 'v0.8', usageCount: 123, enabled: false },
-  { id: 8, name: '天气查询', category: 'api', categoryTag: 'success', icon: Connection, color: '#67C23A', description: '查询实时天气信息', version: 'v1.0', usageCount: 432, enabled: true },
-  { id: 9, name: '文本摘要', category: 'data', categoryTag: 'primary', icon: DataBoard, color: '#409EFF', description: '自动生成文本摘要', version: 'v0.7', usageCount: 198, enabled: true },
-  { id: 10, name: '代码生成', category: 'code', categoryTag: 'danger', icon: VideoPlay, color: '#F56C6C', description: '根据描述生成代码片段', version: 'v0.6', usageCount: 89, enabled: false },
-  { id: 11, name: '文件上传', category: 'file', categoryTag: 'warning', icon: Upload, color: '#E6A23C', description: '上传文件到指定存储', version: 'v1.0', usageCount: 567, enabled: true },
-  { id: 12, name: '数据验证', category: 'data', categoryTag: 'primary', icon: DataBoard, color: '#409EFF', description: '数据格式和完整性验证', version: 'v1.0', usageCount: 345, enabled: true },
-])
-
+const tools = ref([])
 const newTool = ref({
   name: '',
   category: 'data',
   description: ''
 })
 
+// 加载工具列表
+async function loadTools() {
+  try {
+    const response = await aiAPI.getAgentEngineTools()
+    if (response.success && response.data) {
+      // 转换后端数据格式为前端所需格式
+      tools.value = response.data.map((tool: any, index: number) => ({
+        id: index + 1,
+        name: tool.name,
+        category: mapCategory(tool.category),
+        categoryTag: getCategoryTag(mapCategory(tool.category)),
+        icon: getIconForCategory(tool.category),
+        color: getColorForCategory(tool.category),
+        description: tool.description,
+        version: 'v1.0',
+        usageCount: tool.call_count || 0,
+        enabled: tool.enabled !== false
+      }))
+    } else {
+      // 如果API返回失败，使用模拟数据
+      loadMockTools()
+    }
+  } catch (error) {
+    console.error('加载工具列表失败:', error)
+    ElMessage.error('加载工具列表失败，请检查网络连接')
+    loadMockTools()
+  }
+}
+
+// 模拟数据（备用）
+function loadMockTools() {
+  tools.value = [
+    { id: 1, name: 'SQL查询', category: 'data', categoryTag: 'primary', icon: DataBoard, color: '#409EFF', description: '执行SQL查询，支持多种数据库', version: 'v1.0', usageCount: 1245, enabled: true },
+    { id: 2, name: 'API调用', category: 'api', categoryTag: 'success', icon: Connection, color: '#67C23A', description: '调用外部REST API，支持认证和参数化', version: 'v1.2', usageCount: 876, enabled: true },
+    { id: 3, name: '文件读取', category: 'file', categoryTag: 'warning', icon: Document, color: '#E6A23C', description: '读取本地文件内容，支持多种格式', version: 'v1.1', usageCount: 543, enabled: true },
+    { id: 4, name: 'Python执行', category: 'code', categoryTag: 'danger', icon: VideoPlay, color: '#F56C6C', description: '执行Python代码片段，沙箱环境', version: 'v0.9', usageCount: 321, enabled: false },
+    { id: 5, name: '数据转换', category: 'data', categoryTag: 'primary', icon: Tools, color: '#409EFF', description: 'JSON/CSV/Excel格式转换', version: 'v1.0', usageCount: 654, enabled: true },
+    { id: 6, name: '邮件发送', category: 'api', categoryTag: 'success', icon: Connection, color: '#67C23A', description: '发送电子邮件，支持附件', version: 'v1.1', usageCount: 234, enabled: true },
+    { id: 7, name: 'OCR识别', category: 'file', categoryTag: 'warning', icon: Document, color: '#E6A23C', description: '图片文字识别，支持多语言', version: 'v0.8', usageCount: 123, enabled: false },
+    { id: 8, name: '天气查询', category: 'api', categoryTag: 'success', icon: Connection, color: '#67C23A', description: '查询实时天气信息', version: 'v1.0', usageCount: 432, enabled: true },
+    { id: 9, name: '文本摘要', category: 'data', categoryTag: 'primary', icon: DataBoard, color: '#409EFF', description: '自动生成文本摘要', version: 'v0.7', usageCount: 198, enabled: true },
+    { id: 10, name: '代码生成', category: 'code', categoryTag: 'danger', icon: VideoPlay, color: '#F56C6C', description: '根据描述生成代码片段', version: 'v0.6', usageCount: 89, enabled: false },
+    { id: 11, name: '文件上传', category: 'file', categoryTag: 'warning', icon: Upload, color: '#E6A23C', description: '上传文件到指定存储', version: 'v1.0', usageCount: 567, enabled: true },
+    { id: 12, name: '数据验证', category: 'data', categoryTag: 'primary', icon: DataBoard, color: '#409EFF', description: '数据格式和完整性验证', version: 'v1.0', usageCount: 345, enabled: true },
+  ]
+}
+
+// 映射后端分类到前端分类
+function mapCategory(backendCategory: string): string {
+  const mapping: Record<string, string> = {
+    '网络': 'api',
+    '工具': 'other',
+    '生活': 'api',
+    '语言': 'other',
+    '数据': 'data',
+    '可视化': 'data',
+    'api': 'api',
+    'data': 'data',
+    'file': 'file',
+    'code': 'code',
+  }
+  return mapping[backendCategory] || 'other'
+}
+
+// 根据分类获取图标
+function getIconForCategory(category: string) {
+  const iconMap: Record<string, any> = {
+    'data': DataBoard,
+    'api': Connection,
+    'file': Document,
+    'code': VideoPlay,
+    'other': Tools
+  }
+  return iconMap[mapCategory(category)] || Tools
+}
+
+// 根据分类获取颜色
+function getColorForCategory(category: string) {
+  const colorMap: Record<string, string> = {
+    'data': '#409EFF',
+    'api': '#67C23A',
+    'file': '#E6A23C',
+    'code': '#F56C6C',
+    'other': '#909399'
+  }
+  return colorMap[mapCategory(category)] || '#909399'
+}
+
+// 计算过滤后的工具列表
 const filteredTools = computed(() => {
   let result = tools.value
   
@@ -188,6 +264,11 @@ const filteredTools = computed(() => {
   }
   
   return result
+})
+
+// 初始化加载数据
+onMounted(() => {
+  loadTools()
 })
 
 function setCategory(category: string) {

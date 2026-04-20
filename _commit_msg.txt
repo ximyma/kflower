@@ -1,0 +1,16 @@
+feat: 知识库模块全面升级
+
+后端:
+- KnowledgeTag/KnowledgeDocumentTag/KnowledgeNote数据模型
+- 高级检索API: 全文/关键词/向量/混合四种模式
+- 标签CRUD + 文档标签关联API
+- 笔记CRUD API
+- 知识图谱API
+- 修复SQLAlchemy relationship外键配置
+- 修复SQLite JSON列查询兼容性问题
+- 向量检索超时保护(asyncio.wait_for)
+
+前端:
+- 重写Knowledge.vue为左右分栏布局
+- 5标签页: 文档管理/高级检索/AI对话/笔记/知识图谱
+- 新增所有新API方法(search/tags/notes/graph)

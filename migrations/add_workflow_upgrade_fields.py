@@ -7,83 +7,73 @@ import sys
 import os
 
 # 添加项目根目录到路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(base_dir, "kflower-backend"))
 
 
 async def migrate():
     from app.core.database import engine
     from sqlalchemy import text
+    import traceback
     
     async with engine.begin() as conn:
         print("开始工作流模块升级迁移...")
         
+        # 辅助函数：安全添加字段
+        async def safe_add_column(table_name, column_name, column_type):
+            try:
+                # SQLite兼容的字段检查方式
+                # 尝试直接添加字段，如果失败则说明字段已存在
+                await conn.execute(text(
+                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+                ))
+                print(f"✓ 添加 {column_name} 字段到 {table_name} 表")
+                return True
+            except Exception as e:
+                error_msg = str(e).lower()
+                # 检查是否是因为字段已存在的错误
+                if "duplicate column" in error_msg or "already exists" in error_msg or "sqlite error" in error_msg:
+                    print(f"- {column_name} 字段已存在，跳过")
+                    return False
+                else:
+                    # 其他错误，打印并继续
+                    print(f"! 添加 {column_name} 字段时出错: {str(e)[:100]}")
+                    return False
+        
         # 1. 为 workflows 表添加新字段
         fields_to_add = [
-            ("node_definitions", "JSON", "[]"),
-            ("edge_definitions", "JSON", "[]"),
-            ("variables", "JSON", "{}"),
-            ("form_template_id", "INTEGER", "NULL")
+            ("node_definitions", "JSON"),
+            ("edge_definitions", "JSON"),
+            ("variables", "JSON"),
+            ("form_template_id", "INTEGER")
         ]
         
-        for field_name, field_type, default_value in fields_to_add:
-            result = await conn.execute(text(
-                "SELECT column_name FROM information_schema.columns "
-                f"WHERE table_name = 'workflows' AND column_name = '{field_name}'"
-            ))
-            if result.fetchone() is None:
-                await conn.execute(text(
-                    f"ALTER TABLE workflows ADD COLUMN {field_name} {field_type}"
-                ))
-                print(f"✓ 添加 {field_name} 字段到 workflows 表")
-            else:
-                print(f"- {field_name} 字段已存在，跳过")
+        for field_name, field_type in fields_to_add:
+            await safe_add_column("workflows", field_name, field_type)
         
         # 2. 为 workflow_instances 表添加新字段
         instance_fields = [
-            ("variables", "JSON", "{}"),
-            ("parent_instance_id", "INTEGER", "NULL"),
-            ("form_data_id", "INTEGER", "NULL")
+            ("variables", "JSON"),
+            ("parent_instance_id", "INTEGER"),
+            ("form_data_id", "INTEGER")
         ]
         
-        for field_name, field_type, default_value in instance_fields:
-            result = await conn.execute(text(
-                "SELECT column_name FROM information_schema.columns "
-                f"WHERE table_name = 'workflow_instances' AND column_name = '{field_name}'"
-            ))
-            if result.fetchone() is None:
-                await conn.execute(text(
-                    f"ALTER TABLE workflow_instances ADD COLUMN {field_name} {field_type}"
-                ))
-                print(f"✓ 添加 {field_name} 字段到 workflow_instances 表")
-            else:
-                print(f"- {field_name} 字段已存在，跳过")
+        for field_name, field_type in instance_fields:
+            await safe_add_column("workflow_instances", field_name, field_type)
         
         # 3. 为 workflow_tasks 表添加新字段
         task_fields = [
-            ("node_config", "JSON", "{}"),
-            ("due_date", "DATETIME", "NULL"),
-            ("priority", "INTEGER", "0"),
-            ("variables", "JSON", "{}")
+            ("node_config", "JSON"),
+            ("due_date", "DATETIME"),
+            ("priority", "INTEGER"),
+            ("variables", "JSON")
         ]
         
-        for field_name, field_type, default_value in task_fields:
-            result = await conn.execute(text(
-                "SELECT column_name FROM information_schema.columns "
-                f"WHERE table_name = 'workflow_tasks' AND column_name = '{field_name}'"
-            ))
-            if result.fetchone() is None:
-                await conn.execute(text(
-                    f"ALTER TABLE workflow_tasks ADD COLUMN {field_name} {field_type}"
-                ))
-                print(f"✓ 添加 {field_name} 字段到 workflow_tasks 表")
-            else:
-                print(f"- {field_name} 字段已存在，跳过")
+        for field_name, field_type in task_fields:
+            await safe_add_column("workflow_tasks", field_name, field_type)
         
         # 4. 创建 workflow_node_instances 表
-        result = await conn.execute(text(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='workflow_node_instances'"
-        ))
-        if result.fetchone() is None:
+        try:
             await conn.execute(text("""
                 CREATE TABLE workflow_node_instances (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,14 +90,14 @@ async def migrate():
                 )
             """))
             print("✓ 创建 workflow_node_instances 表")
-        else:
-            print("- workflow_node_instances 表已存在，跳过")
+        except Exception as e:
+            if "already exists" in str(e).lower():
+                print("- workflow_node_instances 表已存在，跳过")
+            else:
+                print(f"! 创建 workflow_node_instances 表时出错: {str(e)[:100]}")
         
         # 5. 创建 workflow_variable_logs 表
-        result = await conn.execute(text(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='workflow_variable_logs'"
-        ))
-        if result.fetchone() is None:
+        try:
             await conn.execute(text("""
                 CREATE TABLE workflow_variable_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -121,14 +111,14 @@ async def migrate():
                 )
             """))
             print("✓ 创建 workflow_variable_logs 表")
-        else:
-            print("- workflow_variable_logs 表已存在，跳过")
+        except Exception as e:
+            if "already exists" in str(e).lower():
+                print("- workflow_variable_logs 表已存在，跳过")
+            else:
+                print(f"! 创建 workflow_variable_logs 表时出错: {str(e)[:100]}")
         
         # 6. 创建 workflow_task_candidates 表
-        result = await conn.execute(text(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='workflow_task_candidates'"
-        ))
-        if result.fetchone() is None:
+        try:
             await conn.execute(text("""
                 CREATE TABLE workflow_task_candidates (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -140,8 +130,11 @@ async def migrate():
                 )
             """))
             print("✓ 创建 workflow_task_candidates 表")
-        else:
-            print("- workflow_task_candidates 表已存在，跳过")
+        except Exception as e:
+            if "already exists" in str(e).lower():
+                print("- workflow_task_candidates 表已存在，跳过")
+            else:
+                print(f"! 创建 workflow_task_candidates 表时出错: {str(e)[:100]}")
         
         print("\n工作流模块升级迁移完成！")
 

@@ -181,42 +181,81 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { aiAPI } from '@/common/api/index'
 
 const timeRange = ref('24h')
 
 const stats = ref({
-  totalRequests: 124567,
-  todayRequests: 2345,
-  avgLatency: 342,
-  latencyTrend: -12,
-  successRate: 98.7,
+  totalRequests: 0,
+  todayRequests: 0,
+  avgLatency: 0,
+  latencyTrend: 0,
+  successRate: 0,
 })
 
-const endpoints = ref([
-  { path: '/api/v1/ai/chat', method: 'POST', status: '正常' },
-  { path: '/api/v1/ai/embed', method: 'POST', status: '正常' },
-  { path: '/api/v1/ai/rag', method: 'POST', status: '正常' },
-  { path: '/api/v1/ai/conversations', method: 'GET', status: '正常' },
-  { path: '/api/v1/ai/tools', method: 'POST', status: '正常' },
-  { path: '/api/v1/ai/models', method: 'GET', status: '正常' },
-])
+const endpoints = ref([])
+const routingStrategies = ref([])
+const rateLimits = ref([])
 
-const routingStrategies = ref([
-  { pattern: '/chat/general', model: 'gpt-4', priority: 1, enabled: true },
-  { pattern: '/chat/code', model: 'deepseek-coder', priority: 1, enabled: true },
-  { pattern: '/chat/chinese', model: 'qwen-plus', priority: 2, enabled: true },
-  { pattern: '/chat/fast', model: 'gpt-3.5-turbo', priority: 3, enabled: false },
-  { pattern: '/embed/*', model: 'text-embedding-v2', priority: 1, enabled: true },
-])
+// 加载网关统计数据
+async function loadGatewayStats() {
+  try {
+    const response = await aiAPI.getGatewayStats()
+    if (response.success && response.data) {
+      stats.value = response.data
+    }
+  } catch (error) {
+    console.error('加载网关统计失败:', error)
+    ElMessage.error('加载网关统计失败，请检查网络连接')
+  }
+}
 
-const rateLimits = ref([
-  { scope: '用户', limit: 100, unit: '分钟', description: '普通用户聊天频率限制', enabled: true },
-  { scope: '用户', limit: 1000, unit: '天', description: '每日总请求限制', enabled: true },
-  { scope: 'IP', limit: 50, unit: '秒', description: 'IP防刷限制', enabled: true },
-  { scope: '应用', limit: 500, unit: '分钟', description: '应用级限制', enabled: false },
-])
+// 加载端点数据
+async function loadEndpoints() {
+  // TODO: 调用真实API获取端点列表
+  // 暂时保留模拟数据
+  endpoints.value = [
+    { path: '/api/v1/ai/chat', method: 'POST', status: '正常' },
+    { path: '/api/v1/ai/embed', method: 'POST', status: '正常' },
+    { path: '/api/v1/ai/rag', method: 'POST', status: '正常' },
+    { path: '/api/v1/ai/conversations', method: 'GET', status: '正常' },
+    { path: '/api/v1/ai/tools', method: 'POST', status: '正常' },
+    { path: '/api/v1/ai/models', method: 'GET', status: '正常' },
+  ]
+}
+
+// 加载路由策略
+async function loadRoutingStrategies() {
+  // TODO: 调用真实API获取路由策略
+  routingStrategies.value = [
+    { pattern: '/chat/general', model: 'gpt-4', priority: 1, enabled: true },
+    { pattern: '/chat/code', model: 'deepseek-coder', priority: 1, enabled: true },
+    { pattern: '/chat/chinese', model: 'qwen-plus', priority: 2, enabled: true },
+    { pattern: '/chat/fast', model: 'gpt-3.5-turbo', priority: 3, enabled: false },
+    { pattern: '/embed/*', model: 'text-embedding-v2', priority: 1, enabled: true },
+  ]
+}
+
+// 加载限流配置
+async function loadRateLimits() {
+  // TODO: 调用真实API获取限流配置
+  rateLimits.value = [
+    { scope: '用户', limit: 100, unit: '分钟', description: '普通用户聊天频率限制', enabled: true },
+    { scope: '用户', limit: 1000, unit: '天', description: '每日总请求限制', enabled: true },
+    { scope: 'IP', limit: 50, unit: '秒', description: 'IP防刷限制', enabled: true },
+    { scope: '应用', limit: 500, unit: '分钟', description: '应用级限制', enabled: false },
+  ]
+}
+
+// 初始化加载数据
+onMounted(() => {
+  loadGatewayStats()
+  loadEndpoints()
+  loadRoutingStrategies()
+  loadRateLimits()
+})
 
 function formatNumber(num: number) {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'

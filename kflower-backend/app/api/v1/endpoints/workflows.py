@@ -52,7 +52,12 @@ async def list_workflows(
             nodes=w.nodes or [],
             edges=w.edges or [],
             is_active=w.is_active,
-            created_at=w.created_at
+            created_at=w.created_at,
+            # 斑斑低代码平台扩展字段
+            node_definitions=w.node_definitions,
+            edge_definitions=w.edge_definitions,
+            variables=w.variables,
+            form_template_id=w.form_template_id
         )
         for w in workflows
     ]
@@ -80,7 +85,12 @@ async def get_workflow(
         nodes=workflow.nodes or [],
         edges=workflow.edges or [],
         is_active=workflow.is_active,
-        created_at=workflow.created_at
+        created_at=workflow.created_at,
+        # 斑斑低代码平台扩展字段
+        node_definitions=workflow.node_definitions,
+        edge_definitions=workflow.edge_definitions,
+        variables=workflow.variables,
+        form_template_id=workflow.form_template_id
     )
 
 
@@ -100,6 +110,11 @@ async def create_workflow(
         flow_type=request.flow_type,
         nodes=[n.dict() for n in request.nodes],
         edges=[e.dict() for e in request.edges],
+        # 斑斑低代码平台扩展字段
+        node_definitions=request.node_definitions or [],
+        edge_definitions=request.edge_definitions or [],
+        variables=request.variables or {},
+        form_template_id=request.form_template_id,
         organization_id=current_user.organization_id,
         created_by=current_user.id
     )
@@ -117,7 +132,12 @@ async def create_workflow(
         nodes=workflow.nodes or [],
         edges=workflow.edges or [],
         is_active=workflow.is_active,
-        created_at=workflow.created_at
+        created_at=workflow.created_at,
+        # 斑斑低代码平台扩展字段
+        node_definitions=workflow.node_definitions,
+        edge_definitions=workflow.edge_definitions,
+        variables=workflow.variables,
+        form_template_id=workflow.form_template_id
     )
 
 
@@ -145,6 +165,15 @@ async def update_workflow(
         workflow.edges = request.edges
     if request.is_active is not None:
         workflow.is_active = request.is_active
+    # 斑斑低代码平台扩展字段
+    if request.node_definitions is not None:
+        workflow.node_definitions = request.node_definitions
+    if request.edge_definitions is not None:
+        workflow.edge_definitions = request.edge_definitions
+    if request.variables is not None:
+        workflow.variables = request.variables
+    if request.form_template_id is not None:
+        workflow.form_template_id = request.form_template_id
     
     await db.commit()
     await db.refresh(workflow)
@@ -158,7 +187,12 @@ async def update_workflow(
         nodes=workflow.nodes or [],
         edges=workflow.edges or [],
         is_active=workflow.is_active,
-        created_at=workflow.created_at
+        created_at=workflow.created_at,
+        # 斑斑低代码平台扩展字段
+        node_definitions=workflow.node_definitions,
+        edge_definitions=workflow.edge_definitions,
+        variables=workflow.variables,
+        form_template_id=workflow.form_template_id
     )
 
 
