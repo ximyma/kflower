@@ -241,6 +241,21 @@ class WorkflowResponse(BaseModel):
     created_at: datetime
 
 
+class WorkflowExecuteRequest(BaseModel):
+    """工作流执行请求"""
+    title: str
+    variables: Dict[str, Any] = {}
+    form_data_id: Optional[int] = None
+
+
+class WorkflowTaskActionRequest(BaseModel):
+    """工作流任务操作请求"""
+    action: str  # approve, reject, transfer
+    opinion: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+    transfer_to_user_id: Optional[int] = None
+
+
 # ============ AI对话 ============
 class ChatMessage(BaseModel):
     role: str  # user/assistant/system

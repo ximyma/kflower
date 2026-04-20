@@ -2,7 +2,7 @@
 API v1 路由汇总
 """
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, ai, templates, workflows, analytics, knowledge, dashboard, system, organizations, users, permissions, agent, import_, local_ai
+from app.api.v1.endpoints import auth, ai, templates, workflows, analytics, knowledge, dashboard, system, organizations, users, permissions, agent, import_, local_ai, ai_capability, ai_digital_base, ai_agent_engine
 from app.api.v1 import migration
 from app.modules.my_apps import router as apps_router
 
@@ -10,6 +10,9 @@ api_router = APIRouter()
 
 api_router.include_router(auth.router)
 api_router.include_router(ai.router)
+api_router.include_router(ai_capability.router)
+api_router.include_router(ai_digital_base.router)
+api_router.include_router(ai_agent_engine.router)
 api_router.include_router(templates.router)
 api_router.include_router(workflows.router)
 api_router.include_router(analytics.router)

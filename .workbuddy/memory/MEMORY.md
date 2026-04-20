@@ -48,3 +48,16 @@
   - 在路由配置中添加对应路由 (`/ai-digital-base`, `/ai-agent-engine`, `/ai-gateway`, `/ai-tools`, `/agent-orchestrator`, `/memory-management`, `/data-integration`, `/migration`)
   - 修改MainLayout侧边栏，添加新菜单项并配置合适图标
   - 所有模块显示开发进度，便于查看现状和进展
+- **AI数字底座能力系统升级**：根据dd3chat.txt方案，实现AI能力注册中心和统一API
+  - 新增数据库模型：AITask、AIUsageLog、AIRecommendationCache
+  - 创建能力注册中心 (`capability_registry.py`) 和能力实现 (`capabilities.py`)
+  - 创建统一API端点 (`ai_capability.py`) 提供能力执行和列表接口
+  - 扩展AI数字底座状态API (`ai_digital_base.py`) 提供网关、模型、推理服务状态
+  - 创建AI智能体引擎API (`ai_agent_engine.py`) 提供智能体、工具、任务状态
+  - 所有API已集成到主路由 (`api.py`)
+- **工作流引擎升级**：根据dd4chat.txt方案，开始实现工作流引擎全面升级
+  - **数据库模型扩展**：为Workflow、WorkflowInstance、WorkflowTask添加新字段，创建WorkflowNodeInstance、WorkflowVariableLog、WorkflowTaskCandidates新表
+  - **核心引擎实现**：创建节点类型枚举、条件表达式求值器、审批人解析器、工作流引擎核心类
+  - **API端点扩展**：新增 `/workflows/{id}/start` 和 `/tasks/{id}/action` 端点，支持高级工作流功能
+  - **前端API集成**：扩展AI API接口，更新AIAgentEngine页面从后端加载动态数据
+  - **数据库迁移**：创建迁移脚本 `migrations/add_workflow_upgrade_fields.py`

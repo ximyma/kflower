@@ -1,0 +1,323 @@
+"""
+流程引擎核心类
+"""
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+import json
+import asyncio
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.workflow import (
+    Workflow, WorkflowInstance, WorkflowTask, WorkflowNodeInstance,
+    WorkflowVariableLog, WorkflowTaskCandidates
+)
+from app.core.workflow.node_types import NodeType
+from app.core.workflow.condition_evaluator import ConditionEvaluator
+from app.core.workflow.assignee_resolver import AssigneeResolver
+
+
+class WorkflowEngine:
+    """流程引擎核心"""
+    
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.condition_evaluator = ConditionEvaluator()
+        self.assignee_resolver = AssigneeResolver()
+    
+    async def start_instance(self, workflow_id: int, title: str, starter_id: int, 
+                              variables: Dict[str, Any], form_data_id: int = None) -> WorkflowInstance:
+        """启动流程实例"""
+        # 获取流程定义
+        result = await self.db.execute(select(Workflow).where(Workflow.id == workflow_id))
+        workflow = result.scalar_one()
+        
+        # 创建实例
+        instance = WorkflowInstance(
+            workflow_id=workflow_id,
+            title=title,
+            status="running",
+            variables=variables,
+            form_data_id=form_data_id,
+            created_by=starter_id,
+            current_node_id=workflow.nodes[0]["id"] if workflow.nodes else None
+        )
+        self.db.add(instance)
+        await self.db.flush()
+        
+        # 记录变量日志
+        await self._log_variables(instance.id, variables, starter_id)
+        
+        # 启动第一个节点
+        if workflow.nodes:
+            start_node = workflow.nodes[0]
+            await self._enter_node(instance.id, start_node, variables)
+        
+        await self.db.commit()
+        await self.db.refresh(instance)
+        return instance
+    
+    async def complete_task(self, task_id: int, user_id: int, action: str, 
+                            opinion: str = None, data: Dict[str, Any] = None):
+        """完成任务（审批/办理）"""
+        result = await self.db.execute(select(WorkflowTask).where(WorkflowTask.id == task_id))
+        task = result.scalar_one()
+        if not task or task.status != "pending":
+            raise ValueError("任务不存在或已完成")
+        
+        # 更新任务
+        task.status = "approved" if action == "approve" else "rejected"
+        task.opinion = opinion
+        task.completed_at = datetime.now()
+        
+        # 获取流程实例
+        inst_result = await self.db.execute(select(WorkflowInstance).where(WorkflowInstance.id == task.instance_id))
+        instance = inst_result.scalar_one()
+        
+        # 获取流程定义
+        wf_result = await self.db.execute(select(Workflow).where(Workflow.id == instance.workflow_id))
+        workflow = wf_result.scalar_one()
+        
+        # 执行节点后置插件
+        node_config = task.node_config or {}
+        if node_config.get("config", {}).get("plugins", {}).get("after"):
+            await self._run_plugin(node_config["config"]["plugins"]["after"], {
+                "task": task, "instance": instance, "user_id": user_id, "data": data
+            })
+        
+        if action == "reject":
+            # 拒绝：结束流程
+            instance.status = "rejected"
+            instance.completed_at = datetime.now()
+            await self.db.commit()
+            return
+        
+        # 查找下一个节点
+        next_node = await self._find_next_node(workflow, task.node_id, instance.variables)
+        if next_node:
+            await self._enter_node(instance.id, next_node, instance.variables)
+        else:
+            # 流程结束
+            instance.status = "approved"
+            instance.completed_at = datetime.now()
+        
+        await self.db.commit()
+    
+    async def _enter_node(self, instance_id: int, node: Dict, variables: Dict):
+        """进入节点"""
+        node_type = node.get("type", "task")
+        
+        # 记录节点实例
+        node_instance = WorkflowNodeInstance(
+            instance_id=instance_id,
+            node_id=node["id"],
+            node_name=node.get("name", ""),
+            node_type=node_type,
+            status="running",
+            start_time=datetime.now(),
+            variables=variables
+        )
+        self.db.add(node_instance)
+        await self.db.flush()
+        
+        # 执行节点前置插件
+        if node.get("config", {}).get("plugins", {}).get("before"):
+            await self._run_plugin(node["config"]["plugins"]["before"], {
+                "instance_id": instance_id, "node": node, "variables": variables
+            })
+        
+        # 根据节点类型处理
+        if node_type == NodeType.APPROVAL:
+            await self._handle_approval_node(instance_id, node, variables)
+        elif node_type == NodeType.TASK:
+            await self._handle_task_node(instance_id, node, variables)
+        elif node_type == NodeType.CC:
+            await self._handle_cc_node(instance_id, node, variables)
+        elif node_type == NodeType.DATA_FILL:
+            await self._handle_data_fill_node(instance_id, node, variables)
+        elif node_type == NodeType.CONDITION:
+            await self._handle_condition_node(instance_id, node, variables)
+        elif node_type == NodeType.PARALLEL:
+            await self._handle_parallel_node(instance_id, node, variables)
+        elif node_type == NodeType.DATA_CHANGE:
+            await self._handle_data_change_node(instance_id, node, variables)
+        elif node_type == NodeType.TRIGGER:
+            await self._handle_trigger_node(instance_id, node, variables)
+        elif node_type == NodeType.DELAY:
+            await self._handle_delay_node(instance_id, node, variables)
+        elif node_type == NodeType.SUB_PROCESS:
+            await self._handle_sub_process_node(instance_id, node, variables)
+        elif node_type == NodeType.END:
+            await self._end_instance(instance_id)
+        
+        # 更新节点实例完成时间
+        node_instance.end_time = datetime.now()
+        node_instance.status = "completed"
+        await self.db.flush()
+    
+    async def _handle_approval_node(self, instance_id: int, node: Dict, variables: Dict):
+        """处理审批节点：创建任务"""
+        config = node.get("config", {})
+        assignees = await self.assignee_resolver.resolve(config, variables, self.db)
+        
+        for assignee in assignees:
+            task = WorkflowTask(
+                instance_id=instance_id,
+                node_id=node["id"],
+                node_name=node.get("name", ""),
+                status="pending",
+                assignee_id=assignee["user_id"],
+                node_config=node
+            )
+            self.db.add(task)
+            
+            # 抄送或通知
+            await self._send_notification(assignee["user_id"], node.get("name", ""), instance_id)
+    
+    async def _handle_condition_node(self, instance_id: int, node: Dict, variables: Dict):
+        """条件分支：根据表达式选择出口"""
+        config = node.get("config", {})
+        expression = config.get("expression", "true")
+        result = await self.condition_evaluator.evaluate(expression, variables)
+        
+        # 查找对应的边
+        # 实际需要从 workflow.edges 中根据 source 和条件 label 获取 target
+        # 这里简化：根据结果选择下一个节点
+        pass
+    
+    async def _handle_parallel_node(self, instance_id: int, node: Dict, variables: Dict):
+        """并行分支：创建多个分支任务，等待所有完成"""
+        # 记录并行网关实例，等待所有分支完成后触发 join
+        pass
+    
+    async def _handle_data_change_node(self, instance_id: int, node: Dict, variables: Dict):
+        """数据变化节点：增/改/删数据"""
+        config = node.get("config", {})
+        action = config.get("action")
+        target_template_id = config.get("target_template_id")
+        data_mapping = config.get("data_mapping", {})
+        
+        # 渲染数据映射中的表达式
+        rendered_data = {}
+        for target_field, expr in data_mapping.items():
+            rendered_data[target_field] = await self.condition_evaluator.render_expression(expr, variables)
+        
+        # 执行数据操作
+        # 实际需要调用对应服务
+        # ...
+        
+        # 自动进入下一节点
+        await self._auto_goto_next(instance_id, node)
+    
+    async def _handle_trigger_node(self, instance_id: int, node: Dict, variables: Dict):
+        """触发节点：执行 Python 插件"""
+        config = node.get("config", {})
+        plugin_id = config.get("plugin_id")
+        if plugin_id:
+            # 这里需要调用插件执行器
+            # 暂时留空
+            pass
+        
+        await self._auto_goto_next(instance_id, node)
+    
+    async def _handle_delay_node(self, instance_id: int, node: Dict, variables: Dict):
+        """延迟节点：定时触发下一节点"""
+        config = node.get("config", {})
+        delay_seconds = config.get("delay_seconds", 0)
+        # 使用 asyncio 延迟或 Celery 任务
+        asyncio.create_task(self._delayed_next(instance_id, node, delay_seconds))
+    
+    async def _delayed_next(self, instance_id: int, node: Dict, delay_seconds: int):
+        await asyncio.sleep(delay_seconds)
+        await self._auto_goto_next(instance_id, node)
+    
+    async def _auto_goto_next(self, instance_id: int, current_node: Dict):
+        """自动进入下一节点"""
+        # 获取流程实例和定义
+        inst_result = await self.db.execute(select(WorkflowInstance).where(WorkflowInstance.id == instance_id))
+        instance = inst_result.scalar_one()
+        wf_result = await self.db.execute(select(Workflow).where(Workflow.id == instance.workflow_id))
+        workflow = wf_result.scalar_one()
+        
+        next_node = await self._find_next_node(workflow, current_node["id"], instance.variables)
+        if next_node:
+            await self._enter_node(instance_id, next_node, instance.variables)
+        else:
+            instance.status = "approved"
+            instance.completed_at = datetime.now()
+            await self.db.commit()
+    
+    async def _find_next_node(self, workflow: Workflow, current_node_id: str, variables: Dict) -> Optional[Dict]:
+        """查找下一个节点（支持条件分支）"""
+        edges = workflow.edges or []
+        outgoing = [e for e in edges if e.get("source") == current_node_id]
+        if not outgoing:
+            return None
+        
+        # 如果有条件分支，需要评估条件
+        for edge in outgoing:
+            condition = edge.get("label") or edge.get("condition", "true")
+            if await self.condition_evaluator.evaluate(condition, variables):
+                target_id = edge.get("target")
+                for node in workflow.nodes:
+                    if node.get("id") == target_id:
+                        return node
+        return None
+    
+    async def _run_plugin(self, plugin_id: str, context_data: Dict):
+        """执行插件"""
+        # 这里需要调用插件执行器
+        # 暂时留空
+        pass
+    
+    async def _send_notification(self, user_id: int, node_name: str, instance_id: int):
+        """发送通知（站内信/邮件）"""
+        # 复用现有通知服务
+        pass
+    
+    async def _log_variables(self, instance_id: int, variables: Dict, user_id: int):
+        for name, value in variables.items():
+            log = WorkflowVariableLog(
+                instance_id=instance_id,
+                var_name=name,
+                var_value=json.dumps(value, ensure_ascii=False),
+                changed_by=user_id
+            )
+            self.db.add(log)
+    
+    async def _handle_task_node(self, instance_id: int, node: Dict, variables: Dict):
+        """处理办理节点"""
+        await self._auto_goto_next(instance_id, node)
+    
+    async def _handle_cc_node(self, instance_id: int, node: Dict, variables: Dict):
+        """处理抄送节点"""
+        await self._auto_goto_next(instance_id, node)
+    
+    async def _handle_data_fill_node(self, instance_id: int, node: Dict, variables: Dict):
+        """处理数据填报节点"""
+        await self._auto_goto_next(instance_id, node)
+    
+    async def _handle_sub_process_node(self, instance_id: int, node: Dict, variables: Dict):
+        """处理子流程节点"""
+        config = node.get("config", {})
+        sub_workflow_id = config.get("sub_workflow_id")
+        
+        # 启动子流程
+        sub_instance = await self.start_instance(
+            workflow_id=sub_workflow_id,
+            title=f"子流程-{node.get('name', '')}",
+            starter_id=variables.get("starter_id"),
+            variables=variables,
+            form_data_id=None
+        )
+        # 记录父子关系
+        sub_instance.parent_instance_id = instance_id
+        await self.db.commit()
+    
+    async def _end_instance(self, instance_id: int):
+        """结束流程实例"""
+        result = await self.db.execute(select(WorkflowInstance).where(WorkflowInstance.id == instance_id))
+        instance = result.scalar_one()
+        instance.status = "approved"
+        instance.completed_at = datetime.now()
+        await self.db.commit()

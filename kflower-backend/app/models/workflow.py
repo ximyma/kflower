@@ -90,6 +90,12 @@ class Workflow(Base):
     nodes = Column(JSON, default=list, comment="节点定义")
     edges = Column(JSON, default=list, comment="连线定义")
     
+    # 升级扩展字段（按照 dd4chat.txt 方案）
+    node_definitions = Column(JSON, default=list, comment="节点详细配置")
+    edge_definitions = Column(JSON, default=list, comment="连线条件")
+    variables = Column(JSON, default=dict, comment="流程变量定义")
+    form_template_id = Column(Integer, nullable=True, comment="主表单模板ID")
+    
     # AI辅助
     ai_optimized = Column(Boolean, default=False)
     ai_suggestions = Column(JSON, default=list)
@@ -125,6 +131,11 @@ class WorkflowInstance(Base):
     title = Column(String(200), nullable=False)
     data = Column(JSON, default=dict)
     
+    # 升级扩展字段（按照 dd4chat.txt 方案）
+    variables = Column(JSON, default=dict, comment="运行时变量")
+    parent_instance_id = Column(Integer, nullable=True, comment="子流程父实例")
+    form_data_id = Column(Integer, nullable=True, comment="主表单数据ID")
+    
     # 流程状态
     status = Column(String(50), default="draft", comment="draft/running/approved/rejected/cancelled")
     current_node_id = Column(String(100), nullable=True)
@@ -159,6 +170,12 @@ class WorkflowTask(Base):
     node_id = Column(String(100), nullable=False)
     node_name = Column(String(200), nullable=False)
     
+    # 升级扩展字段（按照 dd4chat.txt 方案）
+    node_config = Column(JSON, default=dict, comment="节点配置快照")
+    due_date = Column(DateTime, nullable=True, comment="截止时间")
+    priority = Column(Integer, default=0, comment="优先级")
+    variables = Column(JSON, default=dict, comment="任务级变量")
+    
     # 处理人
     assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
@@ -192,3 +209,52 @@ class WorkflowLog(Base):
     # 关系
     instance = relationship("WorkflowInstance", back_populates="logs")
     operator = relationship("User")
+
+
+class WorkflowNodeInstance(Base):
+    """工作流节点实例（记录每个节点执行历史）"""
+    __tablename__ = "workflow_node_instances"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    instance_id = Column(Integer, ForeignKey("workflow_instances.id"), nullable=False)
+    node_id = Column(String(100), nullable=False)
+    node_name = Column(String(200), nullable=True)
+    node_type = Column(String(50), nullable=True)
+    status = Column(String(20), default="pending", comment="pending, running, completed, skipped")
+    start_time = Column(DateTime, nullable=True)
+    end_time = Column(DateTime, nullable=True)
+    variables = Column(JSON, default=dict)
+    created_at = Column(DateTime, server_default=func.now())
+    
+    # 关系
+    instance = relationship("WorkflowInstance")
+
+
+class WorkflowVariableLog(Base):
+    """工作流变量日志（用于历史追踪）"""
+    __tablename__ = "workflow_variable_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    instance_id = Column(Integer, ForeignKey("workflow_instances.id"), nullable=True)
+    var_name = Column(String(100), nullable=False)
+    var_value = Column(Text, nullable=True)
+    changed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    changed_at = Column(DateTime, server_default=func.now())
+    
+    # 关系
+    instance = relationship("WorkflowInstance")
+    changer = relationship("User")
+
+
+class WorkflowTaskCandidates(Base):
+    """工作流任务候选人表（支持多候选人/组）"""
+    __tablename__ = "workflow_task_candidates"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("workflow_tasks.id"), nullable=False)
+    candidate_type = Column(String(20), comment="user, role, dept")
+    candidate_id = Column(Integer, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    
+    # 关系
+    task = relationship("WorkflowTask")

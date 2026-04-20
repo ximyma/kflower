@@ -170,6 +170,10 @@ class AIModelManager:
             {"id": "custom", "name": "自定义", "description": "自定义OpenAI兼容API", "default_base_url": ""},
         ]
 
+    def get_all_available_models(self) -> Dict[str, List[Dict]]:
+        """获取所有可用模型（默认预设）"""
+        return self.DEFAULT_MODELS
+
 
 # 全局模型管理器实例
 ai_model_manager = AIModelManager()

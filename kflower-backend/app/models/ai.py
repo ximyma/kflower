@@ -1,7 +1,7 @@
 """
 数据库模型 - AI对话和知识库
 """
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, ForeignKey, Float, Numeric
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -229,3 +229,55 @@ class AuditLog(Base):
     # 关系
     user = relationship("User", foreign_keys="AuditLog.user_id", lazy="selectin")
     organization = relationship("Organization", lazy="selectin")
+
+
+class AITask(Base):
+    """AI 任务记录表（异步任务）"""
+    __tablename__ = "ai_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_type = Column(String(50), nullable=False, comment="recommend_fields / data_query / anomaly_detection / ...")
+    status = Column(String(20), default="pending", comment="pending / processing / completed / failed")
+    input_data = Column(JSON, nullable=False)
+    output_data = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    completed_at = Column(DateTime, nullable=True)
+
+    # 关系
+    creator = relationship("User", foreign_keys=[created_by], lazy="selectin")
+
+
+class AIUsageLog(Base):
+    """AI 模型调用日志（成本追踪）"""
+    __tablename__ = "ai_usage_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    model_id = Column(String(100), nullable=False)
+    provider = Column(String(50), nullable=False)
+    capability = Column(String(50), nullable=False, comment="调用的能力类型")
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
+    estimated_cost = Column(Numeric(10, 6), nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    # 可选：关联用户
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # 关系
+    user = relationship("User", foreign_keys=[user_id], lazy="selectin")
+
+
+class AIRecommendationCache(Base):
+    """智能推荐缓存（避免重复调用）"""
+    __tablename__ = "ai_recommendation_cache"
+
+    id = Column(Integer, primary_key=True, index=True)
+    context_hash = Column(String(64), unique=True, nullable=False)
+    context_type = Column(String(50), nullable=True, comment="field_recommendation / approver_recommendation")
+    result = Column(JSON, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(DateTime, nullable=True)

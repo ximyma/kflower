@@ -77,7 +77,19 @@ export const aiAPI = {
   }, config?: AxiosRequestConfig) => api.post('/ai/chat', data, config),
   getHistory: (conversation_id: string) => api.get(`/ai/history?conversation_id=${conversation_id}`),
   deleteHistory: (conversation_id: string) => api.delete(`/ai/history/${conversation_id}`),
-  listProviders: () => api.get('/ai/providers')
+  listProviders: () => api.get('/ai/providers'),
+  getDigitalBaseStatus: () => api.get('/ai/digital-base/status'),
+  getDigitalBaseProviders: () => api.get('/ai/digital-base/providers/detailed'),
+  getDigitalBaseModels: (provider?: string) => api.get('/ai/digital-base/models/available', { params: { provider } }),
+  getDigitalBaseUsageStats: (days?: number) => api.get('/ai/digital-base/usage/stats', { params: { days } }),
+  // AI智能体引擎API
+  getAgentEngineStatus: () => api.get('/ai/agent-engine/status'),
+  getAgentEngineAgents: () => api.get('/ai/agent-engine/agents'),
+  getAgentEngineTools: () => api.get('/ai/agent-engine/tools'),
+  getAgentEngineTasks: () => api.get('/ai/agent-engine/tasks'),
+  // AI能力API
+  executeCapability: (capability: string, input_data: any) => api.post('/ai/capability/execute', { capability, input_data }),
+  listCapabilities: () => api.get('/ai/capability/list')
 }
 
 export const agentAPI = {

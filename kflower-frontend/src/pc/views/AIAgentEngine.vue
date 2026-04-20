@@ -10,7 +10,7 @@
         <div class="stat-card">
           <div class="stat-icon agent"><el-icon><User /></el-icon></div>
           <div class="stat-info">
-            <div class="stat-value">12</div>
+            <div class="stat-value">{{ stats.agents_count }}</div>
             <div class="stat-label">智能体数量</div>
           </div>
         </div>
@@ -19,7 +19,7 @@
         <div class="stat-card">
           <div class="stat-icon task"><el-icon><List /></el-icon></div>
           <div class="stat-info">
-            <div class="stat-value">156</div>
+            <div class="stat-value">{{ stats.tasks_total }}</div>
             <div class="stat-label">任务执行</div>
           </div>
         </div>
@@ -28,7 +28,7 @@
         <div class="stat-card">
           <div class="stat-icon tool"><el-icon><Tools /></el-icon></div>
           <div class="stat-info">
-            <div class="stat-value">8</div>
+            <div class="stat-value">{{ stats.tools_count }}</div>
             <div class="stat-label">可用工具</div>
           </div>
         </div>
@@ -37,7 +37,7 @@
         <div class="stat-card">
           <div class="stat-icon memory"><el-icon><Collection /></el-icon></div>
           <div class="stat-info">
-            <div class="stat-value">2.4K</div>
+            <div class="stat-value">{{ formatMemory(stats.memory_items) }}</div>
             <div class="stat-label">记忆条目</div>
           </div>
         </div>
@@ -161,9 +161,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { User, List, Tools, Collection, Avatar } from '@element-plus/icons-vue'
+import { aiAPI } from '@/common/api'
 
 const agents = ref([
   { id: 1, name: '模板设计智能体', type: '专业', status: '在线', tasks: 42 },
@@ -190,6 +191,33 @@ const recentTasks = ref([
   { id: 5, time: '2026-04-20 12:30', title: '用户查询处理', agent: '查询智能体', status: '成功' },
 ])
 
+// 统计卡片数据
+const stats = ref({
+  agents_count: 12,
+  tasks_total: 156,
+  tools_count: 8,
+  memory_items: 2400
+})
+
+// 加载智能体引擎状态
+async function loadAgentEngineStatus() {
+  try {
+    const res = await aiAPI.getAgentEngineStatus()
+    if (res.success && res.data) {
+      stats.value.agents_count = res.data.agents_count || 12
+      stats.value.tasks_total = res.data.tasks_total || 156
+      stats.value.tools_count = res.data.tools_count || 8
+      stats.value.memory_items = res.data.memory_items || 2400
+    }
+  } catch (error) {
+    console.error('加载智能体引擎状态失败:', error)
+  }
+}
+
+onMounted(() => {
+  loadAgentEngineStatus()
+})
+
 function createAgent() {
   ElMessage.info('创建智能体功能开发中')
 }
@@ -204,6 +232,14 @@ function viewLogs(row: any) {
 
 function addTool() {
   ElMessage.info('添加工具功能开发中')
+}
+
+// 格式化记忆条目数量
+function formatMemory(count: number): string {
+  if (count >= 1000) {
+    return (count / 1000).toFixed(1) + 'K'
+  }
+  return count.toString()
 }
 
 function toggleTool(row: any) {

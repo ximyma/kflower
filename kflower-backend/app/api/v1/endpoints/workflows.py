@@ -13,8 +13,10 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.models.workflow import Workflow, WorkflowInstance, WorkflowTask, WorkflowLog
 from app.schemas.schemas import (
-    WorkflowCreate, WorkflowUpdate, WorkflowResponse, BaseResponse
+    WorkflowCreate, WorkflowUpdate, WorkflowResponse, BaseResponse,
+    WorkflowExecuteRequest, WorkflowTaskActionRequest
 )
+from app.core.workflow.engine import WorkflowEngine
 
 router = APIRouter(prefix="/workflows", tags=["流程审批"])
 
@@ -434,3 +436,78 @@ async def execute_workflow(
     await db.commit()
     
     return BaseResponse(message="工作流已启动", data={"instance_id": instance.id})
+
+
+@router.post("/{workflow_id}/start")
+async def start_workflow_instance(
+    workflow_id: int,
+    request: WorkflowExecuteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """启动工作流实例（使用新引擎）"""
+    result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
+    workflow = result.scalar_one_or_none()
+    
+    if not workflow:
+        raise HTTPException(status_code=404, detail="工作流不存在")
+    
+    # 使用新引擎启动实例
+    engine = WorkflowEngine(db)
+    try:
+        instance = await engine.start_instance(
+            workflow_id=workflow_id,
+            title=request.title,
+            starter_id=current_user.id,
+            variables=request.variables,
+            form_data_id=request.form_data_id
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"启动工作流失败: {str(e)}")
+    
+    return BaseResponse(
+        message="工作流实例已启动",
+        data={
+            "instance_id": instance.id,
+            "title": instance.title,
+            "status": instance.status,
+            "current_node_id": instance.current_node_id
+        }
+    )
+
+
+@router.post("/tasks/{task_id}/action")
+async def workflow_task_action(
+    task_id: int,
+    request: WorkflowTaskActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """工作流任务操作（审批/拒绝/转交）"""
+    engine = WorkflowEngine(db)
+    try:
+        if request.action == "approve":
+            await engine.complete_task(
+                task_id=task_id,
+                user_id=current_user.id,
+                action="approve",
+                opinion=request.opinion,
+                data=request.data
+            )
+            message = "任务已批准"
+        elif request.action == "reject":
+            await engine.complete_task(
+                task_id=task_id,
+                user_id=current_user.id,
+                action="reject",
+                opinion=request.opinion
+            )
+            message = "任务已拒绝"
+        else:
+            raise HTTPException(status_code=400, detail="不支持的操作类型")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"操作失败: {str(e)}")
+    
+    return BaseResponse(message=message)
