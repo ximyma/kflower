@@ -3,20 +3,26 @@ AI数字底座 - RAG检索模块
 基于向量数据库的检索增强生成
 统一使用 local_services.EmbeddingService 进行向量化
 """
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Callable
 import json
+import logging
 from app.core.ai_digital_base.gateway import ai_gateway
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class RAGEmbeddingAdapter:
     """
     向量化服务适配器
     统一使用 local_services 的 EmbeddingService，避免重复配置
+    支持 KB 级别模型覆盖
     """
     
     def __init__(self):
         self._embedding_service = None
+        # KB 级别的 embedding 配置（覆盖全局）
+        self._kb_embedding_config: Dict[str, Any] = {}
     
     def _get_service(self):
         """懒加载 embedding_service"""
@@ -25,28 +31,129 @@ class RAGEmbeddingAdapter:
             self._embedding_service = get_embedding_service()
         return self._embedding_service
     
-    async def embed_text(self, text: str) -> Optional[List[float]]:
-        """将文本转换为向量"""
+    def set_kb_embedding_config(self, kb_id: int, config: Dict[str, Any]):
+        """
+        设置指定知识库的 embedding 配置
+        向量化时会优先使用 KB 配置的模型，而不是全局默认模型
+        
+        Args:
+            kb_id: 知识库 ID
+            config: 知识库 embedding 配置，包含:
+                - embedding_model: 模型名称
+                - embedding_model_type: api | local
+                - embedding_model_path: 本地模型路径（可选）
+                - embedding_api_key: API密钥（可选）
+                - embedding_api_base: API地址（可选）
+        """
+        self._kb_embedding_config[kb_id] = config
+        logger.info(f"设置 KB#{kb_id} embedding 配置: model={config.get('embedding_model')}, "
+                    f"type={config.get('embedding_model_type')}, path={config.get('embedding_model_path')}")
+    
+    def clear_kb_embedding_config(self, kb_id: int):
+        """清除指定知识库的 embedding 配置，恢复全局默认"""
+        self._kb_embedding_config.pop(kb_id, None)
+    
+    def _resolve_kb_config(self, kb_id: int) -> Optional[Dict[str, Any]]:
+        """获取 KB 的 embedding 配置"""
+        return self._kb_embedding_config.get(kb_id)
+    
+    async def embed_text(
+        self,
+        text: str,
+        kb_id: int = None,
+        kb_config: Dict[str, Any] = None,
+    ) -> Optional[List[float]]:
+        """将文本转换为向量
+        
+        Args:
+            text: 待向量化文本
+            kb_id: 知识库 ID（优先使用）
+            kb_config: 知识库配置 dict（直接传入，覆盖 kb_id 查询）
+        """
         try:
             service = self._get_service()
-            result = await service.embed_text(text)
-            if result and result.get("success"):
-                return result.get("embedding")
-            return None
+            
+            # 优先使用传入的 kb_config，其次查询 kb_id
+            resolved_config = kb_config
+            if not resolved_config and kb_id:
+                resolved_config = self._resolve_kb_config(kb_id)
+            
+            if resolved_config:
+                # 使用 KB 指定的模型
+                model = resolved_config.get("embedding_model", service.embedding_model)
+                model_type = resolved_config.get("embedding_model_type", "api")
+                model_path = resolved_config.get("embedding_model_path")
+                
+                if model_type == "local":
+                    result = await service._embed_text_local(text, model, model_path)
+                else:
+                    # API 模型：需要先切换配置
+                    service.set_kb_embedding_config(
+                        embedding_model=model,
+                        embedding_model_type=model_type,
+                        embedding_api_key=resolved_config.get("embedding_api_key"),
+                        embedding_api_base=resolved_config.get("embedding_api_base"),
+                    )
+                    result = await service.embed_text(text)
+                
+                if result and result.get("success"):
+                    logger.debug(f"KB#{kb_id} embed_text 成功，使用模型: {result.get('model')}")
+                    return result.get("embedding")
+                elif result:
+                    logger.error(f"KB#{kb_id} embed_text 失败: {result.get('error')}")
+                    return None
+            else:
+                # 无 KB 配置，使用全局默认
+                result = await service.embed_text(text)
+                if result and result.get("success"):
+                    return result.get("embedding")
+                return None
         except Exception as e:
-            print(f"RAG Embedding error: {e}")
+            logger.error(f"RAG Embedding error: {e}")
             return None
     
-    async def embed_texts(self, texts: List[str]) -> List[Optional[List[float]]]:
+    async def embed_texts(
+        self,
+        texts: List[str],
+        kb_id: int = None,
+        kb_config: Dict[str, Any] = None,
+    ) -> List[Optional[List[float]]]:
         """批量将文本转换为向量"""
         try:
             service = self._get_service()
-            result = await service.embed_batch(texts)
-            if result and result.get("success"):
-                return result.get("embeddings", [None] * len(texts))
-            return [None] * len(texts)
+            
+            # 优先使用传入的 kb_config
+            resolved_config = kb_config
+            if not resolved_config and kb_id:
+                resolved_config = self._resolve_kb_config(kb_id)
+            
+            if resolved_config:
+                model = resolved_config.get("embedding_model", service.embedding_model)
+                model_type = resolved_config.get("embedding_model_type", "api")
+                model_path = resolved_config.get("embedding_model_path")
+                
+                if model_type == "local":
+                    result = await service._embed_batch_local(texts, model, model_path)
+                else:
+                    service.set_kb_embedding_config(
+                        embedding_model=model,
+                        embedding_model_type=model_type,
+                        embedding_api_key=resolved_config.get("embedding_api_key"),
+                        embedding_api_base=resolved_config.get("embedding_api_base"),
+                    )
+                    result = await service.embed_batch(texts)
+                
+                if result and result.get("success"):
+                    logger.debug(f"KB#{kb_id} embed_texts 成功，使用模型: {result.get('model')}")
+                    return result.get("embeddings", [None] * len(texts))
+                return [None] * len(texts)
+            else:
+                result = await service.embed_batch(texts)
+                if result and result.get("success"):
+                    return result.get("embeddings", [None] * len(texts))
+                return [None] * len(texts)
         except Exception as e:
-            print(f"RAG Batch embedding error: {e}")
+            logger.error(f"RAG Batch embedding error: {e}")
             return [None] * len(texts)
 
 
@@ -71,18 +178,26 @@ class RAGRetriever:
             from qdrant_client import QdrantClient
             self.qdrant_client = QdrantClient(url=settings.QDRANT_URL)
         except Exception as e:
-            print(f"Qdrant client init error: {e}")
+            logger.warning(f"Qdrant client init error: {e}")
     
     async def add_document(
         self,
         collection_name: str,
         doc_id: str,
         text: str,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
+        kb_id: int = None,
+        kb_config: Dict[str, Any] = None,
     ) -> bool:
-        """添加文档到向量库"""
-        embedding = await self.embedding_service.embed_text(text)
+        """添加文档到向量库
+        
+        Args:
+            kb_id: 知识库 ID（用于选择正确的 embedding 模型）
+            kb_config: 知识库 embedding 配置（直接传入，优先于 kb_id）
+        """
+        embedding = await self.embedding_service.embed_text(text, kb_id=kb_id, kb_config=kb_config)
         if not embedding:
+            logger.error(f"KB#{kb_id} 向量化失败，无法添加文档 {doc_id}")
             return False
         
         doc = {
@@ -107,7 +222,7 @@ class RAGRetriever:
                     ]
                 )
             except Exception as e:
-                print(f"Qdrant upsert error: {e}")
+                logger.error(f"Qdrant upsert error: {e}")
                 return False
         else:
             # 使用本地向量存储
@@ -120,11 +235,19 @@ class RAGRetriever:
         collection_name: str,
         query: str,
         top_k: int = 5,
-        filter_metadata: Optional[Dict] = None
+        filter_metadata: Optional[Dict] = None,
+        kb_id: int = None,
+        kb_config: Dict[str, Any] = None,
     ) -> List[Dict[str, Any]]:
-        """检索相关文档"""
-        query_embedding = await self.embedding_service.embed_text(query)
+        """检索相关文档
+        
+        Args:
+            kb_id: 知识库 ID（用于选择正确的 embedding 模型）
+            kb_config: 知识库 embedding 配置（直接传入，优先于 kb_id）
+        """
+        query_embedding = await self.embedding_service.embed_text(query, kb_id=kb_id, kb_config=kb_config)
         if not query_embedding:
+            logger.error(f"KB#{kb_id} 查询向量化失败")
             return []
         
         if settings.QDRANT_ENABLED and self.qdrant_client:
@@ -145,7 +268,7 @@ class RAGRetriever:
                     for result in results
                 ]
             except Exception as e:
-                print(f"Qdrant search error: {e}")
+                logger.error(f"Qdrant search error: {e}")
                 return []
         else:
             # 使用本地向量检索（简单余弦相似度）

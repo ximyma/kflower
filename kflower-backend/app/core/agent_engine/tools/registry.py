@@ -143,6 +143,40 @@ class ToolRegistry:
                 {"name": "channel", "type": "string", "required": False}
             ]
         ))
+
+        # 文档转换工具
+        self.register(Tool(
+            name="convert_document",
+            description="文档格式转换：doc→docx、xls→xlsx、ppt→pptx、任意→pdf",
+            tool_type=ToolType.FILE,
+            parameters=[
+                {"name": "input_path", "type": "string", "required": True},
+                {"name": "target_format", "type": "string", "required": True},
+                {"name": "output_dir", "type": "string", "required": False},
+            ]
+        ))
+
+        self.register(Tool(
+            name="extract_excel_json",
+            description="将 Excel/CSV 文件提取为 JSON 数据，用于模板导入和数据分析",
+            tool_type=ToolType.FILE,
+            parameters=[
+                {"name": "input_path", "type": "string", "required": True},
+                {"name": "sheet_name", "type": "string", "required": False},
+                {"name": "header_row", "type": "integer", "required": False},
+                {"name": "max_rows", "type": "integer", "required": False},
+            ]
+        ))
+
+        self.register(Tool(
+            name="auto_convert_upload",
+            description="自动将旧格式文档（doc/xls/ppt）转换为新格式（docx/xlsx/pptx），供上传使用",
+            tool_type=ToolType.FILE,
+            parameters=[
+                {"name": "input_path", "type": "string", "required": True},
+                {"name": "output_dir", "type": "string", "required": False},
+            ]
+        ))
     
     def register(self, tool: Tool) -> None:
         """注册工具"""

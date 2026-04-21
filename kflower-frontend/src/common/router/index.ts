@@ -3,10 +3,11 @@
  */
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import { useUserStore } from '../store/user'
+import { checkDevice } from '../utils/device'
 
 // 路由配置
 const routes: RouteRecordRaw[] = [
-  // 公共路由
+  // 公共路由（PC端）
   {
     path: '/login',
     name: 'Login',
@@ -19,7 +20,21 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/Register.vue'),
     meta: { requiresAuth: false }
   },
-  
+
+  // 公共路由（移动端）
+  {
+    path: '/app/login',
+    name: 'AppLogin',
+    component: () => import('../mobile/views/Login.vue'),
+    meta: { requiresAuth: false, layout: 'mobile' }
+  },
+  {
+    path: '/app/register',
+    name: 'AppRegister',
+    component: () => import('../mobile/views/Register.vue'),
+    meta: { requiresAuth: false, layout: 'mobile' }
+  },
+
   // PC端路由
   {
     path: '/',
@@ -157,6 +172,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '数据迁移' }
       },
       {
+        path: 'doc-converter',
+        name: 'DocConverter',
+        component: () => import('../../pc/views/DocConverter.vue'),
+        meta: { title: '文档转换' }
+      },
+      {
         path: 'form/:id',
         name: 'FormFill',
         component: () => import('../../pc/views/FormFill.vue'),
@@ -198,7 +219,7 @@ const routes: RouteRecordRaw[] = [
     ]
   },
 
-  // 移动端路由
+  // 移动端路由（已登录后的布局）
   {
     path: '/app',
     component: () => import('../../app/layouts/AppLayout.vue'),
@@ -215,10 +236,76 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '首页' }
       },
       {
-        path: 'work',
-        name: 'AppWork',
-        component: () => import('../../app/views/Work.vue'),
-        meta: { title: '工作' }
+        path: 'templates',
+        name: 'AppTemplates',
+        component: () => import('../../app/views/Templates.vue'),
+        meta: { title: '模板设计' }
+      },
+      {
+        path: 'template-designer/:id?',
+        name: 'AppTemplateDesigner',
+        component: () => import('../../app/views/TemplateDesigner.vue'),
+        meta: { title: '模板设计器', hideInTabbar: true }
+      },
+      {
+        path: 'workflows',
+        name: 'AppWorkflows',
+        component: () => import('../../app/views/Workflows.vue'),
+        meta: { title: '流程审批' }
+      },
+      {
+        path: 'workflow-designer/:id?',
+        name: 'AppWorkflowDesigner',
+        component: () => import('../../app/views/WorkflowDesigner.vue'),
+        meta: { title: '流程设计', hideInTabbar: true }
+      },
+      {
+        path: 'knowledge',
+        name: 'AppKnowledge',
+        component: () => import('../../app/views/Knowledge.vue'),
+        meta: { title: '知识库' }
+      },
+      {
+        path: 'workspace',
+        name: 'AppWorkspace',
+        component: () => import('../../app/views/Workspace.vue'),
+        meta: { title: '工作区' }
+      },
+      {
+        path: 'my-apps',
+        name: 'AppMyApps',
+        component: () => import('../../app/views/MyApps.vue'),
+        meta: { title: '我的应用' }
+      },
+      {
+        path: 'app-designer/:appId?',
+        name: 'AppAppDesigner',
+        component: () => import('../../app/views/AppDesigner.vue'),
+        meta: { title: '应用设计', hideInTabbar: true }
+      },
+      {
+        path: 'agents',
+        name: 'AppAgents',
+        component: () => import('../../app/views/Agents.vue'),
+        meta: { title: '我的智能体' }
+      },
+      {
+        path: 'ai-base',
+        name: 'AppAIBase',
+        component: () => import('../../app/views/AIBase.vue'),
+        meta: { title: 'AI数字底座' }
+      },
+      {
+        path: 'ai-tools',
+        name: 'AppAITools',
+        component: () => import('../../app/views/AITools.vue'),
+        meta: { title: 'AI工具集' }
+      },
+      {
+        path: 'chat',
+        name: 'AppChat',
+        component: () => import('../../app/views/Chat.vue'),
+        meta: { title: 'AI助手' }
       },
       {
         path: 'profile',
@@ -247,18 +334,41 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth !== false)
+  const isMobile = checkDevice()
 
+  // ===== 设备检测与重定向 =====
+  const toPath = to.path
+  const isMobileRoute = toPath.startsWith('/app')
+  const isPublicRoute = ['/login', '/register', '/app/login', '/app/register'].includes(toPath)
+  const isRootRoute = toPath === '/'
+
+  // 手机访问PC端根路径，跳转到手机版登录
+  if (isMobile && (isRootRoute || (!isMobileRoute && !isPublicRoute))) {
+    next('/app/login')
+    return
+  }
+
+  // PC访问手机端路径，跳转到PC首页
+  if (!isMobile && isMobileRoute && !isPublicRoute) {
+    next('/home')
+    return
+  }
+
+  // ===== 认证检查 =====
   // 需要认证
   if (requiresAuth && !userStore.isLoggedIn) {
     // 尝试自动登录（token存在但页面刷新后userInfo丢失）
     if (localStorage.getItem('kflower_token')) {
       const loggedIn = await userStore.autoLogin()
       if (!loggedIn) {
-        next({ name: 'Login', query: { redirect: to.fullPath } })
+        // 根据设备类型跳转到对应登录页
+        const loginPath = isMobile ? '/app/login' : '/login'
+        next({ path: loginPath, query: { redirect: to.fullPath } })
         return
       }
     } else {
-      next({ name: 'Login', query: { redirect: to.fullPath } })
+      const loginPath = isMobile ? '/app/login' : '/login'
+      next({ path: loginPath, query: { redirect: to.fullPath } })
       return
     }
   }
@@ -270,9 +380,17 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  // 已登录访问登录页
-  if (to.name === 'Login' && userStore.isLoggedIn) {
-    next({ name: 'Home' })
+  // 已登录访问登录页，根据设备类型重定向
+  if ((to.name === 'Login' || to.name === 'AppLogin') && userStore.isLoggedIn) {
+    const homePath = isMobile ? '/app/home' : '/home'
+    next(homePath)
+    return
+  }
+
+  // 已登录用户访问根路径，根据设备类型跳转
+  if (isRootRoute && userStore.isLoggedIn) {
+    const homePath = isMobile ? '/app/home' : '/home'
+    next(homePath)
     return
   }
 

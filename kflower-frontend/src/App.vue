@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from './common/store/user'
 import AIChatButton from './common/components/AIChatButton.vue'
+import { checkDevice } from './common/utils/device'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
+const isMobile = checkDevice()
 
 onMounted(async () => {
   // 仅在 token 存在但 userInfo 为空时才尝试自动登录
@@ -19,6 +22,9 @@ onMounted(async () => {
     router.push('/home')
   }
 })
+
+// PC端才显示AI聊天按钮
+const showAIButton = computed(() => userStore.isLoggedIn && !isMobile)
 </script>
 
 <template>
@@ -28,7 +34,7 @@ onMounted(async () => {
         <component :is="Component" />
       </transition>
     </router-view>
-    <AIChatButton v-if="userStore.isLoggedIn" />
+    <AIChatButton v-if="showAIButton" />
   </div>
 </template>
 

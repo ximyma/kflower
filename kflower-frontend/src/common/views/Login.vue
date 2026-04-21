@@ -3,7 +3,7 @@
     <div class="login-box">
       <h1 class="title">Kflower</h1>
       <p class="subtitle">企业智能管理低代码平台</p>
-      
+
       <el-form :model="form" @submit.prevent="handleLogin">
         <el-form-item>
           <el-input v-model="form.username" placeholder="用户名" size="large" />
@@ -17,7 +17,7 @@
           </el-button>
         </el-form-item>
       </el-form>
-      
+
       <div class="register-link">
         没有账户？<router-link to="/register">立即注册</router-link>
       </div>
@@ -26,22 +26,37 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '../store/user'
 import { ElMessage } from 'element-plus'
+import { checkDevice } from '../utils/device'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 const loading = ref(false)
 const form = ref({ username: 'admin', password: '123456' })
+
+onMounted(() => {
+  // 如果是移动设备，自动跳转到移动端登录页
+  if (checkDevice()) {
+    router.replace('/app/login')
+  }
+})
 
 const handleLogin = async () => {
   loading.value = true
   try {
     await userStore.login(form.value.username, form.value.password)
     ElMessage.success('登录成功')
-    router.push('/home')
+    // 检查redirect参数或跳转到首页
+    const redirect = route.query.redirect as string
+    if (redirect) {
+      router.push(redirect)
+    } else {
+      router.push('/home')
+    }
   } catch (e: any) {
     ElMessage.error(e.message || '登录失败')
   } finally {

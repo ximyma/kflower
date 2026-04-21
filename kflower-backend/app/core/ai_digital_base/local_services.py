@@ -6,9 +6,13 @@ import re
 import io
 import uuid
 import json
+import os
+import logging
 from typing import Optional, Dict, Any, List
 from PIL import Image
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # Tesseract OCR
 try:
@@ -41,6 +45,9 @@ except ImportError:
 
 # sentence-transformers 本地模型
 try:
+    # 禁止自动从 HuggingFace 下载模型
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
     from sentence_transformers import SentenceTransformer
     ST_AVAILABLE = True
 except ImportError:
@@ -738,6 +745,76 @@ class EmbeddingService:
         
         return {"success": False, "error": f"模型 {model_id} 不存在"}
 
+    def set_kb_embedding_config(
+        self,
+        embedding_model: str,
+        embedding_model_type: str = "api",
+        embedding_model_path: str = None,
+        embedding_api_key: str = None,
+        embedding_api_base: str = None,
+    ) -> Dict[str, Any]:
+        """
+        根据知识库配置设置当前使用的 embedding 模型
+        用于向量化时切换到 KB 指定的模型
+        
+        Args:
+            embedding_model: 模型名称（如 all-MiniLM-L6-v2）
+            embedding_model_type: 模型类型 api | local
+            embedding_model_path: 本地模型路径（如 E:\\models\\all-MiniLM-L6-v2）
+            embedding_api_key: API密钥（可选）
+            embedding_api_base: API地址（可选）
+        
+        Returns:
+            {"success": True, "model": "...", "provider": "local/api", "model_path": "..."}
+        """
+        self.embedding_model = embedding_model
+        self.embedding_provider = embedding_model_type
+        
+        if embedding_model_type == "local":
+            # 本地模型：优先用用户配置的路径，其次用模型名（SentenceTransformer自动从缓存加载）
+            if embedding_model_path:
+                resolved_path = embedding_model_path
+            else:
+                # 模型名作为路径：如果本地存在则直接加载，否则报错提示
+                resolved_path = embedding_model
+
+            if resolved_path and not os.path.exists(resolved_path):
+                logger.warning(
+                    f"本地 embedding 模型路径不存在: {resolved_path}，"
+                    f"嵌入时将报错，请确保路径正确。"
+                )
+            
+            self.st_device = "cpu"
+            self._current_model_config = {
+                "model": embedding_model,
+                "model_path": resolved_path,
+                "provider": "local",
+                "dimension": self._get_model_info(embedding_model).get("dimension", 384),
+            }
+            logger.info(f"设置知识库 embedding 为本地模型: {embedding_model}, 路径: {resolved_path}")
+            return {
+                "success": True,
+                "model": embedding_model,
+                "provider": "local",
+                "model_path": resolved_path,
+            }
+        else:
+            # API 模型
+            self.embedding_api_key = embedding_api_key or self.embedding_api_key
+            self.embedding_api_base = embedding_api_base or self.embedding_api_base
+            self._current_model_config = {
+                "model": embedding_model,
+                "provider": "api",
+                "api_key": self.embedding_api_key,
+                "api_base": self.embedding_api_base,
+            }
+            logger.info(f"设置知识库 embedding 为 API 模型: {embedding_model}")
+            return {
+                "success": True,
+                "model": embedding_model,
+                "provider": "api",
+            }
+
     def _get_model_info(self, model_name: str) -> Dict[str, Any]:
         """获取模型信息"""
         # 先检查自定义模型
@@ -758,13 +835,37 @@ class EmbeddingService:
             return info.get("provider", "api")
         return self.embedding_provider
 
-    def _load_local_model(self, model_name: str):
-        """加载本地sentence-transformers模型"""
+    def _load_local_model(self, model_name: str, model_path: str = None):
+        """
+        加载本地sentence-transformers模型（禁止自动下载，必须本地存在）
+
+        Args:
+            model_name: 模型名称（如 all-MiniLM-L6-v2）
+            model_path: 本地模型路径（优先使用，如 E:\\models\\all-MiniLM-L6-v2）
+        """
         if not ST_AVAILABLE:
             raise RuntimeError("sentence-transformers 未安装，请运行: pip install sentence-transformers")
-        if model_name not in self._local_models:
-            self._local_models[model_name] = SentenceTransformer(model_name, device=self.st_device)
-        return self._local_models[model_name]
+
+        # 确定加载路径：必须使用 model_path，且路径必须存在
+        if model_path:
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(
+                    f"本地 embedding 模型路径不存在: {model_path}\n"
+                    f"请先下载模型到该路径，或修改配置使用 API 嵌入服务。"
+                )
+            load_path = model_path
+        else:
+            raise FileNotFoundError(
+                f"未配置本地 embedding 模型路径 (model_path)。\n"
+                f"请在知识库设置中配置本地模型路径，或切换为 API 嵌入服务。"
+            )
+
+        cache_key = load_path
+
+        if cache_key not in self._local_models:
+            logger.info(f"加载本地 embedding 模型: {load_path}")
+            self._local_models[cache_key] = SentenceTransformer(load_path, device=self.st_device)
+        return self._local_models[cache_key]
 
     def configure(self, api_key: str = None, api_base: str = None, model: str = None, provider: str = None, st_device: str = None):
         """配置嵌入服务"""
@@ -828,22 +929,26 @@ class EmbeddingService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def _embed_text_local(self, text: str, model_name: str) -> Dict[str, Any]:
-        """通过本地sentence-transformers获取嵌入向量"""
+    async def _embed_text_local(self, text: str, model_name: str, model_path: str = None) -> Dict[str, Any]:
+        """通过本地sentence-transformers获取嵌入向量（禁止下载，必须本地存在）"""
         if not ST_AVAILABLE:
             return {"success": False, "error": "sentence-transformers 未安装，请运行: pip install sentence-transformers"}
 
         try:
-            model = self._load_local_model(model_name)
+            model = self._load_local_model(model_name, model_path)
             embedding = model.encode(text[:8000], show_progress_bar=False).tolist()
             model_info = self._get_model_info(model_name)
+            # 如果传了 model_path，用它作为显示名称
+            display_name = model_path if model_path else model_name
             return {
                 "success": True,
                 "embedding": embedding,
-                "model": model_name,
+                "model": display_name,
                 "provider": "local",
                 "dimension": model_info.get("dimension", len(embedding))
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": str(e)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -891,23 +996,26 @@ class EmbeddingService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def _embed_batch_local(self, texts: List[str], model_name: str) -> Dict[str, Any]:
-        """通过本地sentence-transformers批量获取嵌入向量"""
+    async def _embed_batch_local(self, texts: List[str], model_name: str, model_path: str = None) -> Dict[str, Any]:
+        """通过本地sentence-transformers批量获取嵌入向量（禁止下载，必须本地存在）"""
         if not ST_AVAILABLE:
             return {"success": False, "error": "sentence-transformers 未安装，请运行: pip install sentence-transformers"}
 
         try:
-            model = self._load_local_model(model_name)
+            model = self._load_local_model(model_name, model_path)
             embeddings = model.encode([t[:4000] for t in texts], show_progress_bar=False).tolist()
             model_info = self._get_model_info(model_name)
+            display_name = model_path if model_path else model_name
             return {
                 "success": True,
                 "embeddings": embeddings,
-                "model": model_name,
+                "model": display_name,
                 "provider": "local",
                 "count": len(texts),
                 "dimension": model_info.get("dimension", len(embeddings[0]) if embeddings else 0)
             }
+        except FileNotFoundError as e:
+            return {"success": False, "error": str(e)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

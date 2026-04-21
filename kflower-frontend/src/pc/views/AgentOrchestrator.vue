@@ -616,18 +616,6 @@ function onDragStart(event: DragEvent, type: string, data: any) {
   ElMessage.info(`开始拖拽 ${type}: ${data.name || data.type}`)
 }
 
-function createWorkflow() {
-  ElMessage.info('创建新工作流')
-}
-
-function saveWorkflow() {
-  ElMessage.success('工作流已保存')
-}
-
-function exportWorkflow() {
-  ElMessage.info('导出工作流')
-}
-
 function editWorkflow(row: any) {
   ElMessage.info(`编辑工作流: ${row.name}`)
 }

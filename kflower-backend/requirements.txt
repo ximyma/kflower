@@ -21,6 +21,7 @@ qdrant-client>=1.8.0
 # 认证
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.0,<4.1.0  # passlib兼容版本，bcrypt 4.x/5.x不兼容
 
 # 配置
 pydantic>=2.6.0

@@ -51,15 +51,23 @@ async def get_digital_base_status(
     
     # 4. 对话管理器状态
     conversation_status = {
-        "active_conversations": len(conversation_manager._conversations),
-        "total_messages": sum(len(conv["messages"]) for conv in conversation_manager._conversations.values()),
+        "active_conversations": len(conversation_manager.conversations),
+        "total_messages": sum(len(conv) for conv in conversation_manager.conversations.values()),
     }
     
     # 5. 智能体编排器状态
-    orchestrator_status = {
-        "available_agents": [agent.value for agent in agent_orchestrator.AgentType],
-        "active_tasks": len([task for task in agent_orchestrator._tasks if task.status == "running"]),
-    }
+    try:
+        from app.core.agent_engine.orchestrator import AgentType
+        orchestrator_status = {
+            "available_agents": [agent.value for agent in AgentType],
+            "active_tasks": len([task for task in agent_orchestrator.task_queue if task.status == "running"]),
+        }
+    except Exception as e:
+        orchestrator_status = {
+            "available_agents": [],
+            "active_tasks": 0,
+            "error": str(e)
+        }
     
     # 6. 系统健康状态
     health_status = {

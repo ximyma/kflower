@@ -160,9 +160,9 @@ async def update_workflow(
     if request.description is not None:
         workflow.description = request.description
     if request.nodes is not None:
-        workflow.nodes = request.nodes
+        workflow.nodes = [n.dict() for n in request.nodes]
     if request.edges is not None:
-        workflow.edges = request.edges
+        workflow.edges = [e.dict() for e in request.edges]
     if request.is_active is not None:
         workflow.is_active = request.is_active
     # 斑斑低代码平台扩展字段

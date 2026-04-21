@@ -1,12 +1,15 @@
 """
 API路由 - 知识库管理
 """
+import os
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func as sql_func
 from typing import List, Optional, Dict, Any
 import uuid
-import os
 import json
 import logging
 from datetime import datetime
@@ -104,6 +107,7 @@ async def create_knowledge_base(
         embedding_model=request.embedding_model,
         rerank_model=request.rerank_model,
         rerank_enabled=request.rerank_enabled or False,
+        config=request.config or {},
         organization_id=current_user.organization_id,
         created_by=current_user.id
     )
@@ -117,6 +121,7 @@ async def create_knowledge_base(
         "name": kb.name,
         "code": kb.code,
         "embedding_model": kb.embedding_model,
+        "config": kb.config,
     })
 
 
@@ -145,6 +150,9 @@ async def update_knowledge_base(
         kb.rerank_model = request.rerank_model
     if request.rerank_enabled is not None:
         kb.rerank_enabled = request.rerank_enabled
+    if request.config is not None:
+        # 合并配置
+        kb.config = {**(kb.config or {}), **request.config}
 
     await db.commit()
     await db.refresh(kb)
@@ -153,6 +161,7 @@ async def update_knowledge_base(
         "id": kb.id,
         "name": kb.name,
         "embedding_model": kb.embedding_model,
+        "config": kb.config,
     })
 
 
@@ -208,6 +217,9 @@ async def list_documents(
             "chunk_count": doc.chunk_count,
             "parsing_status": doc.parsing_status,
             "parsing_error": doc.parsing_error,
+            "keywords": doc.keywords if isinstance(doc.keywords, list) else [],
+            "summary": doc.summary or "",
+            "tags": [],
             "created_at": doc.created_at,
             "updated_at": doc.updated_at,
         }
@@ -259,8 +271,11 @@ async def upload_document(
     await db.commit()
     await db.refresh(doc)
 
-    # 上传不自动解析，避免阻塞请求（用户可手动或批量解析）
-    # 解析会加载embedding模型，耗时较长
+    # 上传后立即解析（仅文本提取+关键词+摘要，不向量化）
+    try:
+        await _parse_document(doc.id, db)
+    except Exception as e:
+        logger.warning(f"自动解析失败: {e}")
 
     return DocumentUploadResponse(
         id=doc.id,
@@ -320,13 +335,25 @@ async def upload_documents_batch(
 
     await db.commit()
 
-    # 上传不自动解析，避免阻塞请求（用户可手动或批量解析）
+    # 批量上传后自动解析（仅文本提取+关键词+摘要，不向量化）
+    parse_errors = []
+    for item in uploaded:
+        try:
+            doc_result = await db.execute(
+                select(KnowledgeDocument).where(KnowledgeDocument.id == item["id"])
+            )
+            doc = doc_result.scalar_one_or_none()
+            if doc:
+                await _parse_document(doc.id, db)
+        except Exception as e:
+            parse_errors.append({"title": item["title"], "error": str(e)})
 
     return BaseResponse(
         message=f"成功上传 {len(uploaded)} 个文档",
         data={
             "count": len(uploaded),
             "documents": uploaded,
+            "parse_errors": parse_errors if parse_errors else None,
         }
     )
 
@@ -369,10 +396,11 @@ async def delete_document(
 @router.post("/parse/{doc_id}", response_model=BaseResponse)
 async def parse_document(
     doc_id: int,
+    vectorize: bool = Query(False, description="是否同时向量化"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """解析单个文档"""
+    """解析单个文档（默认仅文本解析，vectorize=true时同时向量化）"""
     result = await db.execute(
         select(KnowledgeDocument).where(KnowledgeDocument.id == doc_id)
     )
@@ -385,6 +413,8 @@ async def parse_document(
 
     try:
         await _parse_document(doc_id, db)
+        if vectorize:
+            await _vectorize_document(doc_id, db)
         return BaseResponse(message="文档解析完成", data={"doc_id": doc_id, "status": doc.parsing_status})
     except Exception as e:
         logger.error(f"解析文档失败: {e}")
@@ -439,6 +469,77 @@ async def parse_all_documents(
     )
 
 
+@router.post("/vectorize/{doc_id}", response_model=BaseResponse)
+async def vectorize_document(
+    doc_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """对已解析文档执行向量化"""
+    doc_result = await db.execute(
+        select(KnowledgeDocument).where(KnowledgeDocument.id == doc_id)
+    )
+    doc = doc_result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    if doc.parsing_status == "completed":
+        return BaseResponse(message="文档已向量化", data={"doc_id": doc_id})
+    if doc.parsing_status not in ("parsed", "failed"):
+        return BaseResponse(message="文档尚未完成文本解析，请先解析", data={"doc_id": doc_id, "status": doc.parsing_status})
+
+    try:
+        await _vectorize_document(doc_id, db)
+        return BaseResponse(message="向量化完成", data={"doc_id": doc_id, "status": doc.parsing_status})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"向量化失败: {str(e)}")
+
+
+@router.post("/vectorize-all/{kb_id}", response_model=BaseResponse)
+async def vectorize_all_documents(
+    kb_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """一键批量向量化知识库中所有已解析但未向量化的文档"""
+    kb_result = await db.execute(
+        select(KnowledgeBase).where(KnowledgeBase.id == kb_id, KnowledgeBase.is_active == True)
+    )
+    kb = kb_result.scalar_one_or_none()
+    if not kb:
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    query = select(KnowledgeDocument).where(
+        KnowledgeDocument.knowledge_base_id == kb_id,
+        KnowledgeDocument.is_active == True,
+        KnowledgeDocument.parsing_status.in_(["parsed", "failed"])
+    )
+    result = await db.execute(query)
+    docs = result.scalars().all()
+
+    success_count = 0
+    fail_count = 0
+    errors = []
+
+    for doc in docs:
+        try:
+            await _vectorize_document(doc.id, db)
+            success_count += 1
+        except Exception as e:
+            fail_count += 1
+            errors.append({"doc_id": doc.id, "title": doc.title, "error": str(e)})
+            logger.error(f"向量化文档 {doc.id} 失败: {e}")
+
+    return BaseResponse(
+        message=f"批量向量化完成: 成功 {success_count} 个, 失败 {fail_count} 个",
+        data={
+            "total": len(docs),
+            "success": success_count,
+            "failed": fail_count,
+            "errors": errors if errors else None,
+        }
+    )
+
+
 # ============ 查询知识库 ============
 
 @router.get("/documents/{doc_id}")
@@ -484,12 +585,23 @@ async def query_knowledge(
 
     collection_name = f"kb_{kb_id}" if kb_id else "global"
 
+    # 获取 KB embedding 配置（支持 KB 指定的本地/API 模型）
+    kb_config = None
+    if kb_id:
+        kb_result = await db.execute(
+            select(KnowledgeBase).where(KnowledgeBase.id == kb_id, KnowledgeBase.is_active == True)
+        )
+        kb = kb_result.scalar_one_or_none()
+        if kb:
+            kb_config = _build_kb_embedding_config(kb)
+
     # 初始检索多取一些结果，便于后续重排
     search_top_k = top_k * 3 if kb_id else top_k
     results = await rag_retriever.search(
         collection_name=collection_name,
         query=query,
-        top_k=search_top_k
+        top_k=search_top_k,
+        kb_config=kb_config,
     )
 
     # Rerank：使用知识库配置的重排模型
@@ -512,10 +624,9 @@ async def query_knowledge(
 
 async def _parse_document(doc_id: int, db: AsyncSession):
     """
-    解析文档：提取文字 -> jieba分词/关键词/摘要 -> embedding -> 向量存储
-    TODO: 后续优化为Celery异步任务
+    快速解析文档：提取文字 → jieba分词/关键词/摘要
+    上传后自动调用，不包含向量化（向量化由用户手动触发）
     """
-    # 重新查询文档
     result = await db.execute(
         select(KnowledgeDocument).where(KnowledgeDocument.id == doc_id)
     )
@@ -523,7 +634,6 @@ async def _parse_document(doc_id: int, db: AsyncSession):
     if not doc:
         return
 
-    # 标记为处理中
     doc.parsing_status = "processing"
     await db.commit()
 
@@ -540,62 +650,25 @@ async def _parse_document(doc_id: int, db: AsyncSession):
         # 2. jieba分词、关键词、摘要
         keywords = []
         summary = ""
-        from app.core.ai_digital_base.local_services import text_parser_service
+        try:
+            from app.core.ai_digital_base.local_services import text_parser_service
 
-        kw_result = text_parser_service.extract_keywords(text, top_k=10, method="tfidf")
-        if kw_result.get("success"):
-            keywords = [k["word"] for k in kw_result.get("keywords", [])]
+            kw_result = text_parser_service.extract_keywords(text, top_k=10, method="tfidf")
+            if kw_result.get("success"):
+                keywords = [k["word"] for k in kw_result.get("keywords", [])]
 
-        summary_result = text_parser_service.extract_summary(text, max_length=200)
-        if summary_result.get("success"):
-            summary = summary_result.get("summary", "")
+            summary_result = text_parser_service.extract_summary(text, max_length=200)
+            if summary_result.get("success"):
+                summary = summary_result.get("summary", "")
+        except Exception as kw_err:
+            logger.warning(f"关键词/摘要提取失败(不影响解析): {kw_err}")
 
-        # 3. 更新文档内容
+        # 3. 更新文档内容和状态
         doc.content = text
-        doc.parsing_status = "completed"
-
-        # 将关键词和摘要存入config
-        doc_meta = {
-            "keywords": keywords,
-            "summary": summary,
-        }
-
-        # 4. 文本分块 + embedding + 向量存储
-        chunks = _split_text(text, chunk_size=500, overlap=50)
-        doc.chunk_count = len(chunks)
-
-        # 获取知识库的embedding模型
-        kb_result = await db.execute(
-            select(KnowledgeBase).where(KnowledgeBase.id == doc.knowledge_base_id)
-        )
-        kb = kb_result.scalar_one_or_none()
-
-        from app.core.ai_digital_base import rag_retriever
-
-        collection_name = f"kb_{doc.knowledge_base_id}"
-        vector_count = 0
-
-        for i, chunk in enumerate(chunks):
-            chunk_id = f"doc_{doc.id}_chunk_{i}"
-            chunk_metadata = {
-                "doc_id": doc.id,
-                "doc_title": doc.title,
-                "chunk_index": i,
-                "keywords": keywords[:5],
-                "summary": summary,
-            }
-            success = await rag_retriever.add_document(
-                collection_name=collection_name,
-                doc_id=chunk_id,
-                text=chunk,
-                metadata=chunk_metadata
-            )
-            if success:
-                vector_count += 1
-
-        # 更新向量计数
-        if kb:
-            kb.vector_count = (kb.vector_count or 0) + vector_count
+        doc.keywords = keywords
+        doc.summary = summary
+        doc.parsing_status = "parsed"  # parsed = 已解析文本，未向量化
+        doc.chunk_count = len(_split_text(text, chunk_size=500, overlap=50))
 
         await db.commit()
 
@@ -605,6 +678,152 @@ async def _parse_document(doc_id: int, db: AsyncSession):
         await db.commit()
         logger.error(f"文档解析异常 doc_id={doc_id}: {e}")
         raise
+
+
+async def _vectorize_document(doc_id: int, db: AsyncSession):
+    """
+    向量化文档：文本分块 → embedding → 向量存储
+    由用户手动触发，耗时较长
+    根据知识库配置选择正确的 embedding 模型（本地或API）
+    """
+    result = await db.execute(
+        select(KnowledgeDocument).where(KnowledgeDocument.id == doc_id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        return False
+
+    if not doc.content or not doc.content.strip():
+        logger.warning(f"文档 {doc_id} 无内容，跳过向量化")
+        return False
+
+    # 获取知识库配置（包含 embedding 模型配置）
+    kb_result = await db.execute(
+        select(KnowledgeBase).where(KnowledgeBase.id == doc.knowledge_base_id)
+    )
+    kb = kb_result.scalar_one_or_none()
+    if not kb:
+        logger.error(f"知识库 {doc.knowledge_base_id} 不存在，跳过向量化")
+        return False
+
+    # 构建 KB 的 embedding 配置
+    kb_config = _build_kb_embedding_config(kb)
+    logger.info(f"文档 {doc_id} 使用 embedding 模型: {kb_config.get('embedding_model')}, "
+                f"类型: {kb_config.get('embedding_model_type')}")
+
+    doc.parsing_status = "vectorizing"
+    await db.commit()
+
+    try:
+        chunks = _split_text(doc.content, chunk_size=500, overlap=50)
+        doc.chunk_count = len(chunks)
+
+        from app.core.ai_digital_base import rag_retriever
+
+        collection_name = f"kb_{doc.knowledge_base_id}"
+        vector_count = 0
+
+        keywords = doc.keywords if isinstance(doc.keywords, list) else []
+
+        for i, chunk in enumerate(chunks):
+            chunk_id = f"doc_{doc.id}_chunk_{i}"
+            chunk_metadata = {
+                "doc_id": doc.id,
+                "doc_title": doc.title,
+                "chunk_index": i,
+                "keywords": keywords[:5] if keywords else [],
+                "summary": doc.summary or "",
+            }
+            success = await rag_retriever.add_document(
+                collection_name=collection_name,
+                doc_id=chunk_id,
+                text=chunk,
+                metadata=chunk_metadata,
+                kb_config=kb_config,
+            )
+            if success:
+                vector_count += 1
+
+        # 更新知识库向量计数
+        kb.vector_count = (kb.vector_count or 0) + vector_count
+
+        doc.parsing_status = "completed"  # completed = 已向量化
+        await db.commit()
+        logger.info(f"文档 {doc_id} 向量化完成（共 {vector_count}/{len(chunks)} 个向量），模型: {kb_config.get('embedding_model')}")
+        return True
+
+    except Exception as e:
+        doc.parsing_status = "parsed"  # 向量化失败但文本解析保留
+        doc.parsing_error = f"向量化失败: {str(e)}"
+        await db.commit()
+        logger.error(f"文档向量化异常 doc_id={doc_id}: {e}")
+        raise
+
+
+def _build_kb_embedding_config(kb) -> Dict[str, Any]:
+    """
+    根据知识库配置构建 embedding 配置字典
+    优先使用 KB.embedding_model 字段，再合并 config 中的详细配置
+    """
+    # embedding_model 字段是基础模型名称
+    embedding_model = kb.embedding_model or "text-embedding-v2"
+    
+    # config 中有更详细的配置（模型类型、路径等）
+    kb_config = kb.config or {}
+    
+    config = {
+        "embedding_model": embedding_model,
+        # 优先读 config 中的类型配置，否则根据模型名推断
+        "embedding_model_type": kb_config.get("embedding_model_type") or _infer_embedding_type(embedding_model),
+        "embedding_model_path": kb_config.get("embedding_model_path"),
+        "embedding_api_key": kb_config.get("embedding_api_key"),
+        "embedding_api_base": kb_config.get("embedding_api_base"),
+    }
+    
+    # 如果 config 中有 API 密钥覆盖全局设置
+    if kb_config.get("embedding_api_key"):
+        config["embedding_api_key"] = kb_config["embedding_api_key"]
+    if kb_config.get("embedding_api_base"):
+        config["embedding_api_base"] = kb_config["embedding_api_base"]
+    
+    return config
+
+
+def _infer_embedding_type(model_name: str) -> str:
+    """
+    根据模型名称推断 embedding 类型
+    """
+    if not model_name:
+        return "api"
+    
+    model_lower = model_name.lower()
+    
+    # 明确是本地路径
+    if model_name.startswith(("E:\\", "C:\\", "/", "D:\\")):
+        return "local"
+    
+    # sentence-transformers 内置轻量模型
+    local_models = [
+        "all-MiniLM-L6-v2",
+        "paraphrase-multilingual-MiniLM-L12-v2",
+        "paraphrase-multilingual-mpnet-base-v2",
+        "shibing624/text2vec-base-chinese",
+        "DMetaSoul/sbert-chinese-qmc-domain-v1",
+        "moka-ai/m3e-small",
+        "moka-ai/m3e-base",
+        "moka-ai/m3e-large",
+        "BAAI/bge-small-zh-v1.5",
+        "BAAI/bge-base-zh-v1.5",
+        "BAAI/bge-large-zh-v1.5",
+        "sentence-transformers/",
+    ]
+    
+    for lm in local_models:
+        if lm in model_lower or model_lower in lm:
+            return "local"
+    
+    # API 模型通常是 dashscope/openai 等服务
+    return "api"
 
 
 def _extract_text(file_path: str, file_type: str) -> str:
@@ -806,15 +1025,13 @@ LOCAL_RERANKER_MODEL_PATHS = [
 
 def _get_reranker_model_path(model_name: str) -> str:
     """
-    获取 reranker 模型的路径
-    优先使用本地模型，如果本地不存在则返回模型名称（让 CrossEncoder 自动下载）
+    获取 reranker 模型的本地路径（禁止自动下载，必须本地存在）
+    如果找不到，抛出 FileNotFoundError，不尝试下载。
     """
     # 检查是否是 bge-reranker-v2-m3 模型
     if "bge-reranker-v2-m3" in model_name:
-        # 检查多个本地路径
         for local_path in LOCAL_RERANKER_MODEL_PATHS:
             if os.path.exists(local_path):
-                # 检查是否有模型权重文件
                 has_weights = (
                     os.path.exists(os.path.join(local_path, "model.safetensors")) or
                     os.path.exists(os.path.join(local_path, "pytorch_model.bin"))
@@ -823,72 +1040,72 @@ def _get_reranker_model_path(model_name: str) -> str:
                     logger.info(f"使用本地 reranker 模型: {local_path}")
                     return local_path
                 else:
-                    logger.warning(f"本地模型目录存在但缺少权重文件: {local_path}")
-        
-        logger.warning("未找到本地 reranker 模型，将尝试从 HuggingFace 下载")
-    
+                    raise FileNotFoundError(
+                        f"本地 reranker 模型目录存在但缺少权重文件: {local_path}"
+                    )
+
+        raise FileNotFoundError(
+            f"未找到本地 reranker 模型: {model_name}\n"
+            f"请先下载模型到以下路径之一:\n" +
+            "\n".join(f"  - {p}" for p in LOCAL_RERANKER_MODEL_PATHS) +
+            "\n或切换为 LLM 重排模式。"
+        )
+
     # 如果 model_name 本身就是一个存在的本地路径
     if os.path.exists(model_name):
         return model_name
-    
-    # 返回原始模型名称（CrossEncoder 会自动下载）
-    return model_name
+
+    raise FileNotFoundError(
+        f"未找到本地 reranker 模型: {model_name}\n"
+        f"请确保模型文件存在于本地，或切换为 LLM 重排模式。"
+    )
 
 
 async def _rerank_results(query: str, results: List[Dict], rerank_model: str, top_k: int) -> List[Dict]:
     """
     使用AI模型对检索结果进行重排
     支持两种模式：
-    1. rerank_model 为已知 rerank 模型名（如 BAAI/bge-reranker-v2-m3）→ 使用 sentence-transformers CrossEncoder
+    1. rerank_model 为已知 rerank 模型名（如 BAAI/bge-reranker-v2-m3）→ 使用 sentence-transformers CrossEncoder（必须本地存在，禁止下载）
     2. rerank_model 为系统配置的AI模型ID → 调用 LLM 对结果重新打分排序
     """
     if not results:
         return results
-    
-    # 尝试使用 CrossEncoder 本地 rerank
+
+    # 尝试使用 CrossEncoder 本地 rerank（禁止自动下载）
     try:
         from sentence_transformers import CrossEncoder
-        
-        # 获取模型路径（本地或远程）
+
+        # 获取模型路径（必须本地存在）
         model_path = _get_reranker_model_path(rerank_model)
-        cache_key = model_path if os.path.exists(model_path) else rerank_model
-        
-        # 使用缓存的模型实例
-        if cache_key not in _cross_encoder_cache:
-            logger.info(f"加载 CrossEncoder rerank 模型: {cache_key}")
-            if os.path.exists(model_path):
-                logger.info("使用本地模型文件")
-            else:
-                logger.info("首次加载需要从 HuggingFace 下载，请耐心等待...")
-            
-            try:
-                _cross_encoder_cache[cache_key] = CrossEncoder(
-                    model_path,
-                    max_length=512,
-                    device="cpu"  # 可根据实际情况改为 "cuda" 如果有GPU
-                )
-                logger.info("CrossEncoder 模型加载成功")
-            except Exception as load_err:
-                logger.error(f"CrossEncoder 模型加载失败: {load_err}")
-                raise
-        
-        ce = _cross_encoder_cache[cache_key]
+
+        if model_path not in _cross_encoder_cache:
+            logger.info(f"加载 CrossEncoder rerank 模型: {model_path}")
+            _cross_encoder_cache[model_path] = CrossEncoder(
+                model_path,
+                max_length=512,
+                device="cpu"
+            )
+            logger.info("CrossEncoder 模型加载成功")
+
+        ce = _cross_encoder_cache[model_path]
         pairs = [(query, r.get("text", r.get("content", ""))) for r in results]
-        
+
         logger.debug(f"Reranking {len(pairs)} documents...")
         scores = ce.predict(pairs)
-        
+
         for i, r in enumerate(results):
             r["rerank_score"] = float(scores[i])
-        
+
         results.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
-        logger.info(f"CrossEncoder rerank 完成，模型: {cache_key}")
+        logger.info(f"CrossEncoder rerank 完成，模型: {model_path}")
         return results[:top_k]
-        
+
+    except FileNotFoundError as e:
+        logger.warning(f"CrossEncoder 本地模型未找到，降级到 LLM 重排: {e}")
     except ImportError:
         logger.warning("sentence-transformers 未安装，CrossEncoder 不可用，尝试 LLM rerank")
     except Exception as e:
-        logger.warning(f"CrossEncoder rerank 失败: {e}，尝试 LLM rerank")
+        logger.warning(f"CrossEncoder rerank 失败，降级到 LLM 重排: {e}")
     
     # 使用系统配置的AI模型进行LLM重排
     try:
@@ -965,12 +1182,17 @@ def _extract_tags_from_json(tags_json: Any) -> List[str]:
     return []
 
 
-async def _do_vector_search(query: str, kb_id: Optional[int], top_k: int) -> List[Dict[str, Any]]:
-    """独立的向量搜索函数，支持懒加载模型"""
+async def _do_vector_search(query: str, kb_id: Optional[int], top_k: int, kb_config: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    """独立的向量搜索函数，支持 KB 指定的 embedding 模型"""
     try:
         from app.core.ai_digital_base import rag_retriever
         collection_name = f"kb_{kb_id}" if kb_id else "global"
-        return await rag_retriever.search(collection_name=collection_name, query=query, top_k=top_k)
+        return await rag_retriever.search(
+            collection_name=collection_name,
+            query=query,
+            top_k=top_k,
+            kb_config=kb_config,
+        )
     except Exception as e:
         logger.warning(f"向量检索异常: {e}")
         return []
@@ -1067,8 +1289,21 @@ async def advanced_search(
     
     # ========== 3. 向量检索 ==========
     if type in ("vector", "hybrid"):
+        # 获取 KB embedding 配置（支持 KB 指定的本地/API 模型）
+        kb_config = None
+        if kb_id:
+            kb_result = await db.execute(
+                select(KnowledgeBase).where(KnowledgeBase.id == kb_id, KnowledgeBase.is_active == True)
+            )
+            kb = kb_result.scalar_one_or_none()
+            if kb:
+                kb_config = _build_kb_embedding_config(kb)
+        
         try:
-            vec_results = await asyncio.wait_for(_do_vector_search(q, kb_id, top_k * 2), timeout=8.0)
+            vec_results = await asyncio.wait_for(
+                _do_vector_search(q, kb_id, top_k * 2, kb_config=kb_config),
+                timeout=8.0
+            )
             if vec_results:
                 for rank, vr in enumerate(vec_results):
                     doc_id = vr.get("metadata", {}).get("doc_id")

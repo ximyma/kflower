@@ -17,6 +17,239 @@
         </template>
       </el-page-header>
     </div>
+
+    <!-- 预览弹窗 -->
+    <el-dialog
+      v-model="previewVisible"
+      title="流程预览"
+      width="900px"
+      :close-on-click-modal="true"
+    >
+      <div v-if="previewSteps.length === 0" class="preview-empty">
+        <el-empty description="暂无流程数据，请先设计流程" />
+      </div>
+      <div v-else class="preview-container">
+        <!-- 流程概览卡片 -->
+        <el-card class="preview-overview" shadow="never">
+          <template #header>
+            <div class="overview-header">
+              <span>📋 流程概览</span>
+              <el-tag type="success">{{ previewSteps.length }} 个步骤</el-tag>
+            </div>
+          </template>
+          <div class="overview-stats">
+            <div class="stat-item">
+              <span class="stat-label">流程名称</span>
+              <span class="stat-value">{{ workflowName }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">节点总数</span>
+              <span class="stat-value">{{ nodes.length }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">连接线</span>
+              <span class="stat-value">{{ connections.length }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">绑定表单</span>
+              <span class="stat-value">{{ previewFormTemplate || '未绑定' }}</span>
+            </div>
+          </div>
+        </el-card>
+
+        <!-- 流程步骤时序图 -->
+        <el-card class="preview-flow" shadow="never">
+          <template #header>
+            <span>🔀 流程时序</span>
+          </template>
+          <div class="flow-steps">
+            <div
+              v-for="(step, idx) in previewSteps"
+              :key="idx"
+              class="flow-step"
+            >
+              <!-- 步骤编号 -->
+              <div class="step-number">
+                <el-tag :type="getStepTagType(step.type)" size="large" effect="dark">
+                  {{ idx + 1 }}
+                </el-tag>
+              </div>
+
+              <!-- 连接线（除最后一个） -->
+              <div v-if="idx < previewSteps.length - 1" class="step-connector">
+                <div class="connector-line" />
+                <div class="connector-arrow">↓</div>
+              </div>
+
+              <!-- 步骤内容 -->
+              <div class="step-content">
+                <div class="step-header">
+                  <el-icon :size="16" :color="getNodeColor(step.type)">
+                    <component :is="getNodeIcon(step.type)" />
+                  </el-icon>
+                  <span class="step-name">{{ step.name }}</span>
+                  <el-tag size="small" :type="getStepTagType(step.type)">
+                    {{ getNodeTypeLabel(step.type) }}
+                  </el-tag>
+                </div>
+
+                <div class="step-details">
+                  <!-- 开始/结束节点 -->
+                  <template v-if="step.type === 'start' || step.type === 'end'">
+                    <span class="step-desc">{{ step.type === 'start' ? '流程起点' : '流程终点' }}</span>
+                  </template>
+
+                  <!-- 审批节点 -->
+                  <template v-else-if="step.type === 'approval'">
+                    <div class="detail-row" v-if="step.approvalType">
+                      <span class="detail-label">审批类型：</span>
+                      <span class="detail-value">{{ getApprovalTypeLabel(step.approvalType) }}</span>
+                    </div>
+                    <div class="detail-row" v-if="step.approver">
+                      <span class="detail-label">审批人：</span>
+                      <span class="detail-value">{{ step.approver }}</span>
+                    </div>
+                    <div class="detail-row" v-if="step.formTemplate">
+                      <span class="detail-label">表单：</span>
+                      <span class="detail-value">{{ step.formTemplate }}</span>
+                    </div>
+                    <div class="detail-row" v-if="step.timeout">
+                      <span class="detail-label">超时：</span>
+                      <span class="detail-value">{{ step.timeout }} 小时</span>
+                    </div>
+                  </template>
+
+                  <!-- 办理节点 -->
+                  <template v-else-if="step.type === 'task'">
+                    <div class="detail-row" v-if="step.assignee">
+                      <span class="detail-label">办理人：</span>
+                      <span class="detail-value">{{ step.assignee }}</span>
+                    </div>
+                    <div class="detail-row" v-if="step.formTemplate">
+                      <span class="detail-label">表单：</span>
+                      <span class="detail-value">{{ step.formTemplate }}</span>
+                    </div>
+                  </template>
+
+                  <!-- 数据填报节点 -->
+                  <template v-else-if="step.type === 'data_fill'">
+                    <div class="detail-row" v-if="step.assignee">
+                      <span class="detail-label">填报人：</span>
+                      <span class="detail-value">{{ step.assignee }}</span>
+                    </div>
+                    <div class="detail-row" v-if="step.formTemplate">
+                      <span class="detail-label">表单：</span>
+                      <span class="detail-value">{{ step.formTemplate }}</span>
+                    </div>
+                    <div class="detail-row" v-if="step.finishCondition">
+                      <span class="detail-label">结束条件：</span>
+                      <span class="detail-value">{{ step.finishCondition }}</span>
+                    </div>
+                  </template>
+
+                  <!-- 条件分支 -->
+                  <template v-else-if="step.type === 'condition'">
+                    <div v-if="step.conditions && step.conditions.length > 0" class="condition-list">
+                      <div v-for="(cond, ci) in step.conditions.slice(0, 3)" :key="ci" class="condition-item">
+                        <el-tag size="small" type="warning">条件 {{ ci + 1 }}</el-tag>
+                        <span>{{ cond }}</span>
+                      </div>
+                      <div v-if="step.conditions.length > 3" class="condition-more">
+                        还有 {{ step.conditions.length - 3 }} 个条件组
+                      </div>
+                    </div>
+                    <span v-else class="step-desc">按条件判断分流</span>
+                  </template>
+
+                  <!-- 触发节点 -->
+                  <template v-else-if="step.type === 'trigger'">
+                    <div class="detail-row" v-if="step.triggerType">
+                      <span class="detail-label">触发方式：</span>
+                      <span class="detail-value">{{ step.triggerType }}</span>
+                    </div>
+                    <div class="detail-row" v-if="step.changeTypes">
+                      <span class="detail-label">监听事件：</span>
+                      <span class="detail-value">{{ step.changeTypes }}</span>
+                    </div>
+                  </template>
+
+                  <!-- 抄送节点 -->
+                  <template v-else-if="step.type === 'cc'">
+                    <div class="detail-row" v-if="step.ccPerson">
+                      <span class="detail-label">抄送人：</span>
+                      <span class="detail-value">{{ step.ccPerson }}</span>
+                    </div>
+                  </template>
+
+                  <!-- 并行分支 -->
+                  <template v-else-if="step.type === 'parallel'">
+                    <span class="step-desc">并行执行多个分支</span>
+                  </template>
+
+                  <!-- 数据操作节点 -->
+                  <template v-else-if="['add_data', 'update_data', 'delete_data'].includes(step.type)">
+                    <div class="detail-row" v-if="step.targetForm">
+                      <span class="detail-label">目标表单：</span>
+                      <span class="detail-value">{{ step.targetForm }}</span>
+                    </div>
+                    <div class="detail-row" v-if="step.operation">
+                      <span class="detail-label">操作：</span>
+                      <span class="detail-value">{{ step.operation }}</span>
+                    </div>
+                  </template>
+
+                  <!-- 延迟节点 -->
+                  <template v-else-if="step.type === 'delay'">
+                    <div class="detail-row" v-if="step.delay">
+                      <span class="detail-label">延迟时间：</span>
+                      <span class="detail-value">{{ step.delay }}</span>
+                    </div>
+                  </template>
+
+                  <!-- 子流程 -->
+                  <template v-else-if="step.type === 'sub_process'">
+                    <div class="detail-row" v-if="step.subWorkflow">
+                      <span class="detail-label">子流程：</span>
+                      <span class="detail-value">{{ step.subWorkflow }}</span>
+                    </div>
+                  </template>
+
+                  <!-- 默认描述 -->
+                  <template v-else>
+                    <span class="step-desc">{{ step.description || '无附加配置' }}</span>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-card>
+
+        <!-- 节点统计 -->
+        <el-card class="preview-stats-card" shadow="never">
+          <template #header>
+            <span>📊 节点统计</span>
+          </template>
+          <div class="node-stats">
+            <div
+              v-for="stat in nodeStats"
+              :key="stat.type"
+              class="node-stat-item"
+            >
+              <div class="stat-dot" :style="{ background: stat.color }" />
+              <span class="stat-name">{{ stat.label }}</span>
+              <span class="stat-count">{{ stat.count }}</span>
+            </div>
+          </div>
+        </el-card>
+      </div>
+
+      <template #footer>
+        <el-button @click="previewVisible = false">关闭</el-button>
+        <el-button type="primary" @click="startSimulation">
+          <el-icon><VideoPlay /></el-icon> 模拟运行
+        </el-button>
+      </template>
+    </el-dialog>
     
     <div class="designer-body">
       <!-- 左侧工具栏 -->
@@ -1418,6 +1651,225 @@ const previewPath = ref('')
 const mousePosition = ref({ x: 0, y: 0 })
 
 // 计算选中的节点数据
+// 预览弹窗
+const previewVisible = ref(false)
+
+// 预览步骤（按拓扑顺序排列）
+const previewSteps = computed(() => {
+  if (nodes.value.length === 0) return []
+
+  // 构建邻接表
+  const adj: Record<string, string[]> = {}
+  const inDeg: Record<string, number> = {}
+  nodes.value.forEach(n => { adj[n.id] = []; inDeg[n.id] = 0 })
+  connections.value.forEach(c => {
+    if (adj[c.from]) { adj[c.from].push(c.to); inDeg[c.to] = (inDeg[c.to] || 0) + 1 }
+  })
+
+  // 找起点（入度为0的节点）
+  const startNodes = nodes.value.filter(n => !inDeg[n.id] || inDeg[n.id] === 0)
+  if (startNodes.length === 0 && nodes.value.length > 0) {
+    // 没有连线时按原顺序
+    return buildStepInfo(nodes.value)
+  }
+
+  // Kahn算法拓扑排序
+  const queue = startNodes.map(n => n.id)
+  const order: string[] = []
+  while (queue.length > 0) {
+    const id = queue.shift()!
+    order.push(id)
+    ;(adj[id] || []).forEach(target => {
+      inDeg[target]--
+      if (inDeg[target] === 0) queue.push(target)
+    })
+  }
+  // 处理孤立节点
+  nodes.value.forEach(n => { if (!order.includes(n.id)) order.push(n.id) })
+
+  return buildStepInfo(order.map(id => nodes.value.find(n => n.id === id)!))
+})
+
+// 构建步骤详情
+const buildStepInfo = (nodeList: WorkflowNode[]) => {
+  return nodeList.map(node => {
+    const cfg = node.config || {}
+    const step: any = {
+      id: node.id,
+      type: node.type,
+      name: node.name,
+      description: node.description || '',
+    }
+
+    // 审批/办理/抄送节点
+    if (['approval', 'task', 'cc'].includes(node.type)) {
+      step.approvalType = cfg.approval_type || 'manual'
+      step.approver = resolveAssignee(cfg)
+      step.formTemplate = resolveTemplate(cfg.form_template_id)
+      step.timeout = cfg.timeout_hours
+    }
+
+    // 数据填报节点
+    if (node.type === 'data_fill') {
+      step.assignee = resolveAssignee(cfg)
+      step.formTemplate = resolveTemplate(cfg.form_template_id)
+      if (cfg.enable_finish_condition && cfg.finish_condition_groups?.length > 0) {
+        step.finishCondition = `已配置 ${cfg.finish_condition_groups.length} 个条件组`
+      }
+    }
+
+    // 条件分支
+    if (node.type === 'condition') {
+      const conditions: string[] = []
+      ;(cfg.condition_groups || []).forEach((g: any, gi: number) => {
+        g.conditions?.forEach((c: any) => {
+          if (c.type === 'field' && c.field) {
+            const op = { eq: '=', ne: '≠', gt: '>', lt: '<', contains: '包含' }[c.operator] || c.operator
+            conditions.push(`${c.field} ${op} ${c.value || '?'}`)
+          } else if (c.type === 'formula' && c.formula) {
+            conditions.push(c.formula)
+          }
+        })
+      })
+      step.conditions = conditions
+    }
+
+    // 触发节点
+    if (node.type === 'trigger') {
+      step.triggerType = cfg.trigger_type === 'timer' ? '定时触发' : '数据变化'
+      step.changeTypes = (cfg.change_types || []).join('、')
+    }
+
+    // 抄送
+    if (node.type === 'cc') {
+      step.ccPerson = resolveAssignee(cfg) || '未设置'
+    }
+
+    // 数据操作
+    if (['add_data', 'update_data', 'delete_data'].includes(node.type)) {
+      step.targetForm = resolveTemplate(cfg.target_template_id)
+      step.operation = { add_data: '添加数据', update_data: '修改数据', delete_data: '删除数据' }[node.type]
+    }
+
+    // 延迟
+    if (node.type === 'delay') {
+      const s = cfg.delay_seconds || 0
+      if (s >= 3600) step.delay = `${Math.floor(s / 3600)} 小时`
+      else if (s >= 60) step.delay = `${Math.floor(s / 60)} 分钟`
+      else step.delay = `${s} 秒`
+    }
+
+    // 子流程
+    if (node.type === 'sub_process') {
+      step.subWorkflow = `流程ID: ${cfg.sub_workflow_id || '未设置'}`
+    }
+
+    return step
+  })
+}
+
+// 解析审批人/办理人
+const resolveAssignee = (cfg: any): string => {
+  if (!cfg) return ''
+  const src = cfg.assignee_source
+  if (src === 'submitter') return '提交人自己'
+  if (src === 'specified' && cfg.assignee_ids?.length > 0) {
+    return cfg.assignee_ids.map((id: string) => {
+      if (id.startsWith('user:')) {
+        const uid = parseInt(id.replace('user:', ''))
+        const u = users.value.find(u => u.id === uid)
+        return u ? (u.full_name || u.username) : id
+      }
+      if (id.startsWith('role:')) {
+        const rid = parseInt(id.replace('role:', ''))
+        const r = roles.value.find(r => r.id === rid)
+        return r ? r.name : id
+      }
+      return id
+    }).join('、')
+  }
+  if (src === 'department_manager') return '部门主管'
+  if (src === 'form_member_field') return `表单字段: ${cfg.assignee_field || '未选'}`
+  if (src === 'form_department_field') return `部门字段: ${cfg.assignee_field || '未选'}`
+  return ''
+}
+
+// 解析模板名称
+const resolveTemplate = (templateId?: number): string => {
+  if (!templateId) return ''
+  const t = templates.value.find(t => t.id === templateId)
+  return t ? t.name : `ID: ${templateId}`
+}
+
+// 预览绑定的表单
+const previewFormTemplate = computed(() => {
+  return resolveTemplate(findPrimaryFormTemplateId())
+})
+
+// 节点统计
+const nodeStats = computed(() => {
+  const map: Record<string, { count: number; label: string; color: string }> = {}
+  nodes.value.forEach(node => {
+    const info = nodeTypes.find(nt => nt.type === node.type)
+    if (info) {
+      if (!map[node.type]) map[node.type] = { count: 0, label: info.name, color: info.color }
+      map[node.type].count++
+    }
+  })
+  return Object.values(map)
+})
+
+// 辅助：获取步骤标签类型
+const getStepTagType = (type: string) => {
+  const map: Record<string, string> = {
+    start: 'success', end: 'danger', approval: 'primary', task: 'warning',
+    cc: 'info', data_fill: 'success', condition: 'warning', parallel: 'warning',
+    trigger: 'info', add_data: 'success', update_data: 'primary', delete_data: 'danger',
+    sub_process: 'primary', delay: 'info'
+  }
+  return map[type] || ''
+}
+
+// 辅助：获取节点颜色
+const getNodeColor = (type: string) => {
+  const info = nodeTypes.find(nt => nt.type === type)
+  return info ? info.color : '#909399'
+}
+
+// 辅助：获取节点类型标签
+const getNodeTypeLabel = (type: string) => {
+  const map: Record<string, string> = {
+    start: '开始', end: '结束', approval: '审批', task: '办理', cc: '抄送',
+    data_fill: '填报', condition: '条件', parallel: '并行', trigger: '触发',
+    add_data: '添加', update_data: '修改', delete_data: '删除',
+    sub_process: '子流程', delay: '延迟'
+  }
+  return map[type] || type
+}
+
+// 辅助：获取审批类型标签
+const getApprovalTypeLabel = (type: string) => {
+  const map: Record<string, string> = {
+    manual: '人工审批', auto_approve: '自动通过', auto_reject: '自动拒绝'
+  }
+  return map[type] || type
+}
+
+// 预览
+const previewWorkflow = () => {
+  if (nodes.value.length === 0) {
+    ElMessage.warning('请先添加流程节点')
+    return
+  }
+  previewVisible.value = true
+}
+
+// 模拟运行
+const startSimulation = () => {
+  ElMessage.info('模拟运行功能开发中，敬请期待')
+  previewVisible.value = false
+}
+
 const selectedNodeData = computed(() => {
   if (!selectedNode.value) return null
   return nodes.value.find(n => n.id === selectedNode.value) || null
@@ -2083,11 +2535,6 @@ const validateWorkflow = () => {
   }
 }
 
-// 预览流程
-const previewWorkflow = () => {
-  ElMessageBox.alert('流程预览功能开发中...', '提示')
-}
-
 // 更新连接线
 const updateConnections = () => {
   connections.value.forEach(conn => {
@@ -2550,6 +2997,197 @@ onUnmounted(() => {
     background: #f9f9f9;
     border-radius: 4px;
     border: 1px solid #f0f0f0;
+  }
+}
+
+// 预览弹窗样式
+.preview-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.preview-empty {
+  padding: 40px 0;
+  text-align: center;
+}
+
+.preview-overview {
+  .overview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+  }
+
+  .overview-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      .stat-label {
+        font-size: 12px;
+        color: #909399;
+      }
+
+      .stat-value {
+        font-size: 14px;
+        font-weight: bold;
+        color: #303133;
+      }
+    }
+  }
+}
+
+.preview-flow {
+  .flow-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 8px 0;
+  }
+
+  .flow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .step-number {
+    flex-shrink: 0;
+    padding-top: 4px;
+  }
+
+  .step-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 8px;
+    width: 32px;
+    gap: 0;
+
+    .connector-line {
+      width: 2px;
+      height: 16px;
+      background: #dcdfe6;
+    }
+
+    .connector-arrow {
+      font-size: 10px;
+      color: #909399;
+      line-height: 1;
+    }
+  }
+
+  .step-content {
+    flex: 1;
+    padding-bottom: 12px;
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+
+      .step-name {
+        font-weight: bold;
+        font-size: 14px;
+        color: #303133;
+      }
+    }
+
+    .step-details {
+      padding-left: 24px;
+
+      .step-desc {
+        font-size: 12px;
+        color: #909399;
+      }
+
+      .detail-row {
+        font-size: 12px;
+        color: #606266;
+        margin-bottom: 2px;
+        display: flex;
+        align-items: flex-start;
+        gap: 4px;
+
+        .detail-label {
+          color: #909399;
+          flex-shrink: 0;
+        }
+
+        .detail-value {
+          color: #303133;
+        }
+      }
+
+      .condition-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .condition-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          color: #606266;
+          background: #f5f7fa;
+          padding: 2px 8px;
+          border-radius: 4px;
+        }
+
+        .condition-more {
+          font-size: 11px;
+          color: #909399;
+        }
+      }
+    }
+  }
+}
+
+.preview-stats-card {
+  .node-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+
+    .node-stat-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: #f5f7fa;
+      border-radius: 4px;
+      min-width: 100px;
+
+      .stat-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .stat-name {
+        font-size: 12px;
+        color: #606266;
+        flex: 1;
+      }
+
+      .stat-count {
+        font-size: 14px;
+        font-weight: bold;
+        color: #303133;
+      }
+    }
   }
 }
 </style>

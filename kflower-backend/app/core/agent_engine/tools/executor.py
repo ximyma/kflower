@@ -27,6 +27,10 @@ class ToolExecutor:
             "query_data": self._query_data,
             "get_statistics": self._get_statistics,
             "send_notification": self._send_notification,
+            # 文档转换工具
+            "convert_document": self._convert_document,
+            "extract_excel_json": self._extract_excel_json,
+            "auto_convert_upload": self._auto_convert_upload,
         }
     
     async def execute(
@@ -262,6 +266,49 @@ class ToolExecutor:
             "channel": channel,
             "message": "通知已发送"
         }
+
+    async def _convert_document(
+        self,
+        args: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """文档格式转换"""
+        from app.core.doc_converter import convert_document
+        input_path = args.get("input_path", "")
+        target_format = args.get("target_format", "")
+        output_dir = args.get("output_dir")
+        if not input_path or not target_format:
+            return {"error": "input_path 和 target_format 为必填参数"}
+        return convert_document(input_path, target_format, output_dir)
+
+    async def _extract_excel_json(
+        self,
+        args: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Excel/CSV 提取为 JSON"""
+        from app.core.doc_converter import excel_to_json
+        input_path = args.get("input_path", "")
+        if not input_path:
+            return {"error": "input_path 为必填参数"}
+        return excel_to_json(
+            input_path,
+            sheet_name=args.get("sheet_name"),
+            header_row=int(args.get("header_row", 0)),
+            max_rows=int(args.get("max_rows", 2000)),
+        )
+
+    async def _auto_convert_upload(
+        self,
+        args: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """自动转换旧格式文档"""
+        from app.core.doc_converter import auto_convert_for_upload
+        input_path = args.get("input_path", "")
+        if not input_path:
+            return {"error": "input_path 为必填参数"}
+        return auto_convert_for_upload(input_path, args.get("output_dir"))
 
 
 # 全局工具执行器实例

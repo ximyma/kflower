@@ -1,19 +1,35 @@
 <template>
-  <div class="mobile-login">
-    <div class="login-header">
+  <div class="mobile-register">
+    <div class="register-header">
       <div class="logo">K</div>
-      <h1>Kflower</h1>
+      <h1>注册 Kflower</h1>
       <p>企业智能管理低代码平台</p>
     </div>
 
-    <div class="login-form">
-      <el-form :model="form" @submit.prevent="handleLogin">
+    <div class="register-form">
+      <el-form :model="form" @submit.prevent="handleRegister">
         <el-form-item>
           <el-input
             v-model="form.username"
             placeholder="用户名"
             size="large"
             prefix-icon="User"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-input
+            v-model="form.email"
+            placeholder="邮箱"
+            size="large"
+            prefix-icon="Message"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-input
+            v-model="form.full_name"
+            placeholder="姓名"
+            size="large"
+            prefix-icon="UserFilled"
           />
         </el-form-item>
         <el-form-item>
@@ -32,75 +48,66 @@
             size="large"
             style="width: 100%"
             :loading="loading"
-            @click="handleLogin"
+            @click="handleRegister"
           >
-            登录
+            注册
           </el-button>
         </el-form-item>
       </el-form>
 
-      <div class="register-link">
-        没有账户？<el-link type="primary" @click="$router.push('/app/register')">立即注册</el-link>
+      <div class="login-link">
+        已有账户？<el-link type="primary" @click="$router.push('/app/login')">立即登录</el-link>
       </div>
     </div>
 
-    <div class="login-footer">
+    <div class="register-footer">
       <p>© 2024 Kflower. All Rights Reserved.</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useUserStore } from '../../store/user'
 
 const router = useRouter()
-const userStore = useUserStore()
 const loading = ref(false)
-
-const form = reactive({
+const form = ref({
   username: '',
+  email: '',
+  full_name: '',
   password: ''
 })
 
-const handleLogin = async () => {
-  if (!form.username || !form.password) {
-    ElMessage.warning('请输入用户名和密码')
+const handleRegister = async () => {
+  if (!form.value.username || !form.value.email || !form.value.password) {
+    ElMessage.warning('请填写完整信息')
+    return
+  }
+
+  // 简单验证邮箱格式
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailRegex.test(form.value.email)) {
+    ElMessage.warning('请输入正确的邮箱格式')
     return
   }
 
   loading.value = true
 
   try {
-    const res = await fetch('/api/v1/auth/login', {
+    const res = await fetch('/api/v1/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
+      body: JSON.stringify(form.value)
     })
 
     if (res.ok) {
-      const data = await res.json()
-      // 保存 token
-      localStorage.setItem('kflower_token', data.access_token)
-      // 更新 userStore 状态
-      userStore.token = data.access_token
-      // 获取用户信息
-      try {
-        await userStore.autoLogin()
-      } catch (e) {
-        console.warn('获取用户信息失败，将继续跳转')
-      }
-      ElMessage.success('登录成功')
-      // 使用 replace 而不是 push，避免后退回到登录页
-      // 添加延迟确保响应式数据更新
-      setTimeout(() => {
-        router.replace('/app/home')
-      }, 100)
+      ElMessage.success('注册成功，请登录')
+      router.push('/app/login')
     } else {
       const err = await res.json()
-      ElMessage.error(err.detail || '登录失败')
+      ElMessage.error(err.detail || '注册失败')
     }
   } catch (e) {
     ElMessage.error('网络错误，请重试')
@@ -111,7 +118,7 @@ const handleLogin = async () => {
 </script>
 
 <style scoped>
-.mobile-login {
+.mobile-register {
   min-height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   display: flex;
@@ -121,61 +128,61 @@ const handleLogin = async () => {
   box-sizing: border-box;
 }
 
-.login-header {
+.register-header {
   text-align: center;
   color: white;
-  margin-bottom: 40px;
+  margin-bottom: 32px;
 }
 
 .logo {
-  width: 80px;
-  height: 80px;
+  width: 70px;
+  height: 70px;
   background: white;
   color: #667eea;
-  font-size: 40px;
+  font-size: 36px;
   font-weight: bold;
-  border-radius: 20px;
+  border-radius: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto 16px;
 }
 
-.login-header h1 {
-  font-size: 28px;
+.register-header h1 {
+  font-size: 24px;
   margin: 0;
 }
 
-.login-header p {
-  font-size: 14px;
+.register-header p {
+  font-size: 13px;
   opacity: 0.9;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
-.login-form {
+.register-form {
   background: white;
   border-radius: 16px;
   padding: 24px 20px;
 }
 
-.login-form :deep(.el-input__wrapper) {
+.register-form :deep(.el-input__wrapper) {
   padding: 12px 16px;
 }
 
-.login-form :deep(.el-button) {
+.register-form :deep(.el-button) {
   margin-top: 8px;
   height: 44px;
   font-size: 16px;
 }
 
-.register-link {
+.login-link {
   text-align: center;
   margin-top: 20px;
   font-size: 14px;
   color: #606266;
 }
 
-.login-footer {
+.register-footer {
   text-align: center;
   color: white;
   opacity: 0.7;

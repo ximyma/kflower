@@ -60,11 +60,17 @@
               <el-button size="small" @click="parseAllDocs" :loading="parsingAll">
                 <el-icon><MagicStick /></el-icon> 批量解析
               </el-button>
+              <el-button size="small" type="warning" @click="vectorizeAllDocs" :loading="vectorizingAll">
+                <el-icon><DataAnalysis /></el-icon> 一键向量化
+              </el-button>
               <el-button size="small" @click="batchRenameDocs">
                 <el-icon><Edit /></el-icon> 批量改名
               </el-button>
               <el-button size="small" @click="loadDocuments">
                 <el-icon><Refresh /></el-icon> 刷新
+              </el-button>
+              <el-button size="small" type="info" @click="openKBDlg" :disabled="!currentKB">
+                <el-icon><Setting /></el-icon> 配置
               </el-button>
               <div style="flex:1" />
               <el-input v-model="docSearch" placeholder="搜索文档..." clearable style="width:200px" @input="filterDocs">
@@ -102,6 +108,7 @@
                 <template #default="{ row }">
                   <el-button size="small" link @click="viewDoc(row)">查看</el-button>
                   <el-button v-if="row.parsing_status==='pending'||row.parsing_status==='failed'" size="small" link type="primary" @click="parseDoc(row)">解析</el-button>
+                  <el-button v-if="row.parsing_status==='parsed'" size="small" link type="warning" @click="vectorizeDoc(row)">向量化</el-button>
                   <el-button size="small" link type="danger" @click="deleteDoc(row)">删除</el-button>
                 </template>
               </el-table-column>
@@ -185,11 +192,22 @@
                       <span style="float:right;color:var(--el-text-color-secondary);font-size:12px">{{ kb.doc_count || 0 }} 篇</span>
                     </el-option>
                   </el-select>
-                  <el-select v-model="chatModel" size="small" style="width:140px" placeholder="模型">
-                    <el-option label="默认模型" value="" />
+                  <el-select v-model="chatModel" size="small" style="width:180px" placeholder="选择AI模型" filterable>
+                    <el-option label="使用系统默认" value="" />
                     <el-option label="通用助手" value="general" />
                     <el-option label="模板设计" value="template" />
                     <el-option label="流程审批" value="workflow" />
+                    <el-option label="决策分析" value="analytics" />
+                    <el-divider style="margin: 4px 0" />
+                    <el-option
+                      v-for="m in aiStore.models"
+                      :key="m.modelId"
+                      :label="m.modelName || m.modelId"
+                      :value="m.modelId"
+                    >
+                      <span>{{ m.modelName || m.modelId }}</span>
+                      <el-tag size="small" type="info" style="margin-left:6px">{{ m.provider }}</el-tag>
+                    </el-option>
                   </el-select>
                   <el-button size="small" text @click="chatMessages=[]; chatConversationId=null" title="清空对话">
                     <el-icon><Delete /></el-icon>
@@ -316,30 +334,65 @@
     </div>
 
     <!-- 新建知识库对话框 -->
-    <el-dialog v-model="createKBDlg" title="新建知识库" width="500px">
-      <el-form :model="newKBForm" label-width="100px">
+    <el-dialog v-model="createKBDlg" title="新建知识库" width="600px">
+      <el-form :model="newKBForm" label-width="110px">
         <el-form-item label="名称" required>
           <el-input v-model="newKBForm.name" placeholder="知识库名称" />
         </el-form-item>
         <el-form-item label="描述">
           <el-input v-model="newKBForm.description" type="textarea" :rows="2" />
         </el-form-item>
-        <el-form-item label="Embedding">
-          <el-select v-model="newKBForm.embedding_model" style="width:100%">
-            <el-option label="all-mpnet-base-v2 (本地)" value="E:\models\all-mpnet-base-v2" />
-            <el-option label="BAAI/bge-m3" value="BAAI/bge-m3" />
-            <el-option label="text-embedding-v2" value="text-embedding-v2" />
+
+        <el-divider content-position="left">检索配置</el-divider>
+
+        <el-form-item label="检索方式">
+          <el-select v-model="newKBForm.search_method" style="width:100%">
+            <el-option v-for="opt in searchMethodOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Rerank">
-          <el-switch v-model="newKBForm.rerank_enabled" />
+
+        <el-form-item label="启用向量化">
+          <el-switch v-model="newKBForm.vectorization_enabled" />
+          <span style="margin-left:8px;color:var(--el-text-color-secondary);font-size:12px">
+            {{ newKBForm.vectorization_enabled ? '使用向量检索' : '使用关键词/全文检索' }}
+          </span>
         </el-form-item>
-        <el-form-item label="Rerank模型" v-if="newKBForm.rerank_enabled">
-          <el-select v-model="newKBForm.rerank_model" style="width:100%">
-            <el-option label="bge-reranker-v2-m3 (本地)" value="E:\models\bge-reranker-v2-m3" />
-            <el-option label="BAAI/bge-reranker-v2-m3" value="BAAI/bge-reranker-v2-m3" />
-          </el-select>
-        </el-form-item>
+
+        <template v-if="newKBForm.vectorization_enabled">
+          <el-form-item label="Embedding模型">
+            <el-select v-model="newKBForm.embedding_model" style="width:100%" placeholder="选择Embedding模型">
+              <el-option-group v-for="group in [
+                { label: 'API模型', options: embeddingModelOptions.filter(o => o.type === 'api') },
+                { label: '本地模型 (需sentence-transformers)', options: embeddingModelOptions.filter(o => o.type === 'local') },
+              ]" :key="group.label" :label="group.label">
+                <el-option v-for="opt in group.options" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-option-group>
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="本地模型路径" v-if="newKBForm.embedding_model.startsWith('E:') || newKBForm.embedding_model.startsWith('C:')">
+            <el-input v-model="newKBForm.embedding_model_path" placeholder="如: E:\models\bge-m3" />
+          </el-form-item>
+
+          <el-form-item label="启用Rerank重排">
+            <el-switch v-model="newKBForm.rerank_enabled" />
+            <span style="margin-left:8px;color:var(--el-text-color-secondary);font-size:12px">
+              {{ newKBForm.rerank_enabled ? '提升检索结果相关性' : '跳过重排步骤' }}
+            </span>
+          </el-form-item>
+
+          <el-form-item label="Rerank模型" v-if="newKBForm.rerank_enabled">
+            <el-select v-model="newKBForm.rerank_model" style="width:100%" placeholder="选择Rerank模型">
+              <el-option v-for="opt in rerankModelOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
+          </el-form-item>
+        </template>
+
+        <el-alert v-if="!newKBForm.vectorization_enabled" type="info" :closable="false" style="margin-top:8px">
+          <template #title>
+            <span style="font-size:12px">未启用向量化时，将使用关键词、标签和全文检索替代方案，响应更快但语义理解能力较弱。</span>
+          </template>
+        </el-alert>
       </el-form>
       <template #footer>
         <el-button @click="createKBDlg = false">取消</el-button>
@@ -430,6 +483,60 @@
         <el-button type="primary" @click="uploadFolderFiles" :loading="folderUploading" :disabled="!folderFiles.length">
           开始上传
         </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 知识库配置对话框 -->
+    <el-dialog v-model="kbConfigDlgVisible" title="知识库配置" width="600px">
+      <el-form :model="kbConfigForm" label-width="110px">
+        <el-form-item label="知识库名称">
+          <el-input v-model="kbConfigForm.name" placeholder="知识库名称" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="kbConfigForm.description" type="textarea" :rows="2" />
+        </el-form-item>
+
+        <el-divider content-position="left">检索配置</el-divider>
+
+        <el-form-item label="检索方式">
+          <el-select v-model="kbConfigForm.search_method" style="width:100%">
+            <el-option v-for="opt in searchMethodOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="启用向量化">
+          <el-switch v-model="kbConfigForm.vectorization_enabled" />
+          <span style="margin-left:8px;color:var(--el-text-color-secondary);font-size:12px">
+            {{ kbConfigForm.vectorization_enabled ? '使用向量检索' : '使用关键词/全文检索' }}
+          </span>
+        </el-form-item>
+
+        <template v-if="kbConfigForm.vectorization_enabled">
+          <el-form-item label="Embedding模型">
+            <el-select v-model="kbConfigForm.embedding_model" style="width:100%" placeholder="选择Embedding模型">
+              <el-option-group v-for="group in [
+                { label: 'API模型', options: embeddingModelOptions.filter(o => o.type === 'api') },
+                { label: '本地模型', options: embeddingModelOptions.filter(o => o.type === 'local') },
+              ]" :key="group.label" :label="group.label">
+                <el-option v-for="opt in group.options" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-option-group>
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="启用Rerank重排">
+            <el-switch v-model="kbConfigForm.rerank_enabled" />
+          </el-form-item>
+
+          <el-form-item label="Rerank模型" v-if="kbConfigForm.rerank_enabled">
+            <el-select v-model="kbConfigForm.rerank_model" style="width:100%">
+              <el-option v-for="opt in rerankModelOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
+          </el-form-item>
+        </template>
+      </el-form>
+      <template #footer>
+        <el-button @click="kbConfigDlgVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleUpdateKBConfig" :loading="updatingKBConfig">保存</el-button>
       </template>
     </el-dialog>
 
@@ -571,10 +678,13 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import {
   Plus, Refresh, FolderOpened, Upload, Search, MagicStick, Document, MoreFilled,
-  ChatLineSquare, DataAnalysis, Collection, Edit, View, Folder, CircleCheck, CircleClose
+  ChatLineSquare, DataAnalysis, Collection, Edit, View, Folder, CircleCheck, CircleClose, Setting
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { knowledgeAPI } from '../../common/api'
+import { useAIStore } from '../../common/store/ai'
+
+const aiStore = useAIStore()
 
 const token = localStorage.getItem('kflower_token') || ''
 const uploadHeaders = { Authorization: `Bearer ${token}` }
@@ -584,7 +694,47 @@ const knowledgeBases = ref<any[]>([])
 const currentKB = ref<any>(null)
 const createKBDlg = ref(false)
 const creatingKB = ref(false)
-const newKBForm = ref({ name: '', description: '', embedding_model: 'E:\\models\\all-mpnet-base-v2', rerank_enabled: false, rerank_model: 'E:\\models\\bge-reranker-v2-m3' })
+const newKBForm = ref({
+  name: '',
+  description: '',
+  // 向量化和检索配置
+  vectorization_enabled: true,
+  embedding_model: 'text-embedding-v2',
+  embedding_model_type: 'api',  // api | local | system
+  embedding_model_path: '',
+  rerank_enabled: false,
+  rerank_model: 'BAAI/bge-reranker-v2-m3',
+  rerank_model_type: 'api',  // api | local | system
+  rerank_model_path: '',
+  search_method: 'hybrid'  // hybrid | vector | keyword | fulltext
+})
+
+// Embedding模型选项
+const embeddingModelOptions = [
+  { label: 'text-embedding-v2 (默认)', value: 'text-embedding-v2', type: 'api' },
+  { label: 'text-embedding-3-small', value: 'text-embedding-3-small', type: 'api' },
+  { label: 'text-embedding-3-large', value: 'text-embedding-3-large', type: 'api' },
+  { label: 'BAAI/bge-m3 (HuggingFace)', value: 'BAAI/bge-m3', type: 'local' },
+  { label: 'all-MiniLM-L6-v2 (轻量)', value: 'sentence-transformers/all-MiniLM-L6-v2', type: 'local' },
+  { label: 'all-mpnet-base-v2 (高精度)', value: 'sentence-transformers/all-mpnet-base-v2', type: 'local' },
+  { label: '使用系统配置', value: 'system', type: 'system' },
+]
+
+// Rerank模型选项
+const rerankModelOptions = [
+  { label: 'BAAI/bge-reranker-v2-m3 (推荐)', value: 'BAAI/bge-reranker-v2-m3', type: 'api' },
+  { label: 'BAAI/bge-reranker-base', value: 'BAAI/bge-reranker-base', type: 'api' },
+  { label: 'bge-reranker-v2-m3 (HuggingFace)', value: 'bge-reranker-v2-m3', type: 'local' },
+  { label: '使用系统配置', value: 'system', type: 'system' },
+]
+
+// 检索方法选项
+const searchMethodOptions = [
+  { label: '混合检索 (向量+关键词)', value: 'hybrid' },
+  { label: '向量检索 (语义相似度)', value: 'vector' },
+  { label: '关键词检索 (BM25)', value: 'keyword' },
+  { label: '全文检索 (FTS)', value: 'fulltext' },
+]
 
 async function loadKnowledgeBases() {
   try {
@@ -602,7 +752,19 @@ function selectKB(kb: any) {
 }
 
 function openCreateKBDlg() {
-  newKBForm.value = { name: '', description: '', embedding_model: 'E:\\models\\all-mpnet-base-v2', rerank_enabled: false, rerank_model: 'E:\\models\\bge-reranker-v2-m3' }
+  newKBForm.value = {
+    name: '',
+    description: '',
+    vectorization_enabled: true,
+    embedding_model: 'text-embedding-v2',
+    embedding_model_type: 'api',
+    embedding_model_path: '',
+    rerank_enabled: false,
+    rerank_model: 'BAAI/bge-reranker-v2-m3',
+    rerank_model_type: 'api',
+    rerank_model_path: '',
+    search_method: 'hybrid'
+  }
   createKBDlg.value = true
 }
 
@@ -610,7 +772,24 @@ async function handleCreateKB() {
   if (!newKBForm.value.name) return ElMessage.warning('请输入名称')
   creatingKB.value = true
   try {
-    await knowledgeAPI.createBase(newKBForm.value)
+    const formData = {
+      name: newKBForm.value.name,
+      description: newKBForm.value.description,
+      // 向量化配置
+      embedding_model: newKBForm.value.vectorization_enabled ? newKBForm.value.embedding_model : 'disabled',
+      rerank_enabled: newKBForm.value.vectorization_enabled && newKBForm.value.rerank_enabled,
+      rerank_model: newKBForm.value.vectorization_enabled ? newKBForm.value.rerank_model : null,
+      // 扩展配置存储在config中
+      config: {
+        vectorization_enabled: newKBForm.value.vectorization_enabled,
+        embedding_model_type: newKBForm.value.embedding_model_type,
+        embedding_model_path: newKBForm.value.embedding_model_path,
+        rerank_model_type: newKBForm.value.rerank_model_type,
+        rerank_model_path: newKBForm.value.rerank_model_path,
+        search_method: newKBForm.value.search_method
+      }
+    }
+    await knowledgeAPI.createBase(formData)
     ElMessage.success('创建成功')
     createKBDlg.value = false
     loadKnowledgeBases()
@@ -654,8 +833,35 @@ function beforeUpload(file: File) {
   return true
 }
 
-function onUploadSuccess() { ElMessage.success('上传成功'); loadDocuments() }
+function onUploadSuccess() { ElMessage.success('上传成功，正在解析...'); loadDocuments() }
 function onUploadError() { ElMessage.error('上传失败') }
+
+const vectorizingAll = ref(false)
+
+async function vectorizeDoc(doc: any) {
+  try {
+    await knowledgeAPI.vectorize(doc.id)
+    ElMessage.success(`${doc.title} 向量化完成`)
+    loadDocuments()
+  } catch (e: any) { ElMessage.error(e.message || '向量化失败') }
+}
+
+async function vectorizeAllDocs() {
+  if (!currentKB.value) return
+  const count = documents.value.filter(d => d.parsing_status === 'parsed').length
+  if (!count) return ElMessage.info('没有需要向量化的文档（已解析但未向量化）')
+  try {
+    await ElMessageBox.confirm(`将向量化 ${count} 个已解析文档，可能需要较长时间`, '一键向量化', { type: 'warning' })
+  } catch { return }
+  vectorizingAll.value = true
+  try {
+    const res: any = await knowledgeAPI.vectorizeAll(currentKB.value.id)
+    const data = res.data || res
+    ElMessage.success(`向量化完成：成功 ${data.success || 0} 个`)
+    loadDocuments()
+  } catch (e: any) { ElMessage.error(e.message || '向量化失败') }
+  finally { vectorizingAll.value = false }
+}
 
 async function parseDoc(doc: any) {
   try {
@@ -793,12 +999,22 @@ async function sendChat() {
 
     const { agentAPI, aiAPI } = await import('../../common/api')
     let response = ''
+    const modelToUse = chatModel.value
+
     try {
-      const res: any = await agentAPI.chat({
+      // 如果选择了具体模型，使用model参数；否则使用ai_type
+      const chatParams: any = {
         message: userMessage,
         conversation_id: chatConversationId.value || undefined,
-        ai_type: chatModel.value || 'general'
-      })
+      }
+      if (modelToUse && !['general', 'template', 'workflow', 'analytics', ''].includes(modelToUse)) {
+        // 选择了具体模型，传递model参数
+        chatParams.model = modelToUse
+      } else {
+        chatParams.ai_type = modelToUse || 'general'
+      }
+
+      const res: any = await agentAPI.chat(chatParams)
       if (res.conversation_id) chatConversationId.value = res.conversation_id
       response = res.response || res.message || res.content || 'AI暂无回复'
     } catch {
@@ -806,7 +1022,7 @@ async function sendChat() {
         const res: any = await aiAPI.chat({
           message: userMessage,
           conversation_id: chatConversationId.value || undefined,
-          ai_type: chatModel.value || 'general'
+          ai_type: modelToUse || 'general'
         })
         response = res.response || res.message || res.content || 'AI暂无回复'
       } catch (e: any) {
@@ -955,8 +1171,8 @@ function formatSize(s: number) {
   if (s < 1048576) return (s / 1024).toFixed(1) + ' KB'
   return (s / 1048576).toFixed(1) + ' MB'
 }
-function statusType(s: string) { return ({ completed: 'success', processing: 'warning', pending: 'info', failed: 'danger' } as any)[s] || 'info' }
-function statusText(s: string) { return ({ completed: '已完成', processing: '处理中', pending: '等待中', failed: '失败' } as any)[s] || s }
+function statusType(s: string) { return ({ completed: 'success', vectorizing: 'warning', parsed: '', processing: 'warning', pending: 'info', failed: 'danger' } as any)[s] || 'info' }
+function statusText(s: string) { return ({ completed: '已向量化', vectorizing: '向量化中', parsed: '已解析', processing: '解析中', pending: '等待中', failed: '失败' } as any)[s] || s }
 
 
 // ===== 批量改名 =====
@@ -1295,6 +1511,66 @@ const folderInputRef = ref<HTMLInputElement>()
 const folderFiles = ref<File[]>([])
 const folderUploading = ref(false)
 
+// ===== 知识库配置 =====
+const kbConfigDlgVisible = ref(false)
+const kbConfigForm = ref({
+  id: 0,
+  name: '',
+  description: '',
+  vectorization_enabled: true,
+  embedding_model: 'text-embedding-v2',
+  rerank_enabled: false,
+  rerank_model: 'BAAI/bge-reranker-v2-m3',
+  search_method: 'hybrid'
+})
+const updatingKBConfig = ref(false)
+
+function openKBDlg() {
+  if (!currentKB.value) return
+  const cfg = currentKB.value.config || {}
+  kbConfigForm.value = {
+    id: currentKB.value.id,
+    name: currentKB.value.name,
+    description: currentKB.value.description || '',
+    vectorization_enabled: cfg.vectorization_enabled !== false && currentKB.value.embedding_model !== 'disabled',
+    embedding_model: currentKB.value.embedding_model === 'disabled' ? 'text-embedding-v2' : (currentKB.value.embedding_model || 'text-embedding-v2'),
+    rerank_enabled: currentKB.value.rerank_enabled || false,
+    rerank_model: currentKB.value.rerank_model || 'BAAI/bge-reranker-v2-m3',
+    search_method: cfg.search_method || 'hybrid'
+  }
+  kbConfigDlgVisible.value = true
+}
+
+async function handleUpdateKBConfig() {
+  if (!kbConfigForm.value.id) return
+  updatingKBConfig.value = true
+  try {
+    const formData = {
+      name: kbConfigForm.value.name,
+      description: kbConfigForm.value.description,
+      embedding_model: kbConfigForm.value.vectorization_enabled ? kbConfigForm.value.embedding_model : 'disabled',
+      rerank_enabled: kbConfigForm.value.vectorization_enabled && kbConfigForm.value.rerank_enabled,
+      rerank_model: kbConfigForm.value.vectorization_enabled ? kbConfigForm.value.rerank_model : null,
+      config: {
+        vectorization_enabled: kbConfigForm.value.vectorization_enabled,
+        search_method: kbConfigForm.value.search_method
+      }
+    }
+    await knowledgeAPI.updateBase(kbConfigForm.value.id, formData)
+    ElMessage.success('配置已保存')
+    kbConfigDlgVisible.value = false
+    loadKnowledgeBases()
+    // 更新当前知识库缓存
+    if (currentKB.value?.id === kbConfigForm.value.id) {
+      currentKB.value = { ...currentKB.value, ...formData }
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败')
+  } finally {
+    updatingKBConfig.value = false
+  }
+}
+
 function showFolderUploadDlg() {
   folderFiles.value = []
   folderUploadDlgVisible.value = true
@@ -1334,7 +1610,12 @@ async function uploadFolderFiles() {
   }
 }
 
-onMounted(() => { loadKnowledgeBases() })
+onMounted(() => {
+  loadKnowledgeBases()
+  // 加载AI模型配置
+  aiStore.loadModels()
+  aiStore.loadConfigStatus?.()
+})
 </script>
 
 <style scoped>

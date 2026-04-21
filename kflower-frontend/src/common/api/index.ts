@@ -157,14 +157,22 @@ export const templateAPI = {
 }
 
 export const workflowAPI = {
-  list: (params?: { search?: string; skip?: number; limit?: number }) => 
+  list: (params?: { search?: string; skip?: number; limit?: number }) =>
     api.get('/workflows/', { params }),
   get: (id: number) => api.get(`/workflows/${id}`),
   create: (data: any) => api.post('/workflows/', data),
   update: (id: number, data: any) => api.put(`/workflows/${id}`, data),
   delete: (id: number) => api.delete(`/workflows/${id}`),
-  execute: (id: number, data: { title: string; data: any }) => 
-    api.post(`/workflows/${id}/execute`, data)
+  execute: (id: number, title: string, data: any) =>
+    api.post(`/workflows/${id}/execute`, { title, data }),
+  executeStart: (id: number, data: any) =>
+    api.post(`/workflows/${id}/start`, data),
+}
+
+export const notificationAPI = {
+  send: (data: { user_id: number; message: string; channel?: string }) =>
+    api.post('/notifications/send', data),
+  listUsers: (params?: any) => api.get('/users/', { params }),
 }
 
 export const knowledgeAPI = {
@@ -194,6 +202,8 @@ export const knowledgeAPI = {
   deleteDocument: (doc_id: number) => api.delete(`/knowledge/documents/${doc_id}`),
   parseDocument: (doc_id: number) => api.post(`/knowledge/parse/${doc_id}`),
   parseAll: (kb_id: number) => api.post(`/knowledge/parse-all/${kb_id}`),
+  vectorize: (doc_id: number) => api.post(`/knowledge/vectorize/${doc_id}`),
+  vectorizeAll: (kb_id: number) => api.post(`/knowledge/vectorize-all/${kb_id}`),
   query: (params: { query: string; kb_id?: number; top_k?: number }) => 
     api.post('/knowledge/query', null, { params }),
   // 高级检索
@@ -350,6 +360,52 @@ export const analyticsAPI = {
   getKnowledgeAnalytics: () => api.get('/analytics/knowledge-analytics'),
   query: (question: string) => api.post('/analytics/query', { question }),
   getDashboardSummary: () => api.get('/analytics/dashboard-summary'),
+}
+
+export const docConverterAPI = {
+  // 获取转换服务状态
+  getStatus: () => api.get('/doc-converter/status'),
+  // 获取支持的格式列表
+  getSupportedFormats: () => api.get('/doc-converter/supported-formats'),
+  // 单文件转换（返回 blob）
+  convert: (file: File, targetFormat: string) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('target_format', targetFormat)
+    return api.post('/doc-converter/convert', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob',
+    })
+  },
+  // Excel/CSV 提取为 JSON
+  extractJson: (file: File, headerRow?: number, maxRows?: number) => {
+    const form = new FormData()
+    form.append('file', file)
+    if (headerRow !== undefined) form.append('header_row', String(headerRow))
+    if (maxRows !== undefined) form.append('max_rows', String(maxRows))
+    return api.post('/doc-converter/extract-json', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  // 自动转换旧格式（上传前置处理）
+  autoConvert: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/doc-converter/auto-convert', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob',
+    })
+  },
+  // 批量转换（返回 zip blob）
+  batchConvert: (files: File[], targetFormat: string) => {
+    const form = new FormData()
+    files.forEach(f => form.append('files', f))
+    form.append('target_format', targetFormat)
+    return api.post('/doc-converter/batch-convert', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob',
+    })
+  },
 }
 
 export default api

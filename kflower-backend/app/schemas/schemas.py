@@ -303,6 +303,8 @@ class KnowledgeBaseCreate(BaseModel):
     embedding_model: Optional[str] = "text-embedding-v2"
     rerank_model: Optional[str] = None
     rerank_enabled: Optional[bool] = False
+    # 扩展配置
+    config: Optional[Dict[str, Any]] = None  # 包含 vectorization_enabled, search_method 等
 
 
 class KnowledgeBaseUpdate(BaseModel):
@@ -311,6 +313,8 @@ class KnowledgeBaseUpdate(BaseModel):
     embedding_model: Optional[str] = None
     rerank_model: Optional[str] = None
     rerank_enabled: Optional[bool] = None
+    # 扩展配置
+    config: Optional[Dict[str, Any]] = None
 
 
 class DocumentUploadResponse(BaseModel):
