@@ -52,6 +52,13 @@ class AppMenuBase(BaseModel):
     is_visible: bool = True
     list_page_config: Optional[Dict] = {}
     form_page_config: Optional[Dict] = {}
+    
+    # ===== 流程审批集成（升级方案 4.1） =====
+    workflow_id: Optional[int] = None
+    workflow_trigger: Optional[str] = "manual"
+    workflow_auto_approve: Optional[bool] = False
+    workflow_field_permissions: Optional[Dict] = {}
+    workflow_node_mapping: Optional[List[Dict]] = []
 
 
 class AppMenuCreate(AppMenuBase):
@@ -67,6 +74,12 @@ class AppMenuUpdate(BaseModel):
     is_visible: Optional[bool] = None
     list_page_config: Optional[Dict] = None
     form_page_config: Optional[Dict] = None
+    # ===== 流程审批集成 =====
+    workflow_id: Optional[int] = None
+    workflow_trigger: Optional[str] = None
+    workflow_auto_approve: Optional[bool] = None
+    workflow_field_permissions: Optional[Dict] = None
+    workflow_node_mapping: Optional[List[Dict]] = None
 
 
 class AppMenuResponse(AppMenuBase):
@@ -179,6 +192,10 @@ class MenuTreeNode(BaseModel):
     icon: Optional[str] = None
     path: str
     template_id: int
+    workflow_id: Optional[int] = None
+    workflow_trigger: Optional[str] = None
+    workflow_auto_approve: Optional[bool] = None
+    workflow_node_mapping: Optional[List[Dict]] = None
     children: List["MenuTreeNode"] = []
 
 

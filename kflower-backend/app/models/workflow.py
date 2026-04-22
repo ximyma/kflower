@@ -176,6 +176,12 @@ class WorkflowTask(Base):
     priority = Column(Integer, default=0, comment="优先级")
     variables = Column(JSON, default=dict, comment="任务级变量")
     
+    # ===== SLA 超时管理（升级方案 4.4） =====
+    sla_config = Column(JSON, default=dict, comment="SLA配置: {deadline_hours, reminder_at, escalate_to}")
+    sla_deadline = Column(DateTime, nullable=True, comment="SLA截止时间")
+    sla_status = Column(String(20), default="normal", comment="SLA状态: normal/warning/overdue/escalated")
+    reminder_sent = Column(JSON, default=list, comment="已发送的提醒时间")
+    
     # 处理人
     assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
@@ -258,3 +264,22 @@ class WorkflowTaskCandidates(Base):
     
     # 关系
     task = relationship("WorkflowTask")
+
+
+class SubTableData(Base):
+    """子表/明细表数据 — 存储主表记录的子表行"""
+    __tablename__ = "subtable_data"
+
+    id = Column(Integer, primary_key=True, index=True)
+    parent_record_id = Column(Integer, nullable=False, comment="主表记录ID（动态表中的 id）")
+    parent_table_name = Column(String(200), nullable=False, comment="主表动态表名（如 form_data_1）")
+    parent_field_name = Column(String(100), nullable=False, comment="主表中子表字段名")
+    row_index = Column(Integer, default=0, comment="行序号（从0开始）")
+    row_data = Column(JSON, default=dict, comment="子表行数据 JSON")
+    template_id = Column(Integer, ForeignKey("templates.id"), nullable=True, comment="关联模板ID")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # 关系
+    template = relationship("Template")

@@ -16,6 +16,13 @@
 - 完成模板列表的 CRUD + 发布按钮改造
 - 移除模板设计器中的编码和描述输入框
 - 修复模板自动标记为已发布的问题（61个模板重置为草稿）
+- **智能表单全面升级**：
+  - 公式引擎：`app/core/formula_engine.py`（20+ 函数，AST 安全求值）
+  - ModuleField 扩展：formula/depends_on/validation_rules/visibility_rule/cascade_source/subtable_fields/relation/aggregate 等
+  - 前端公式编辑器、条件显示/隐藏、级联选项、高级校验规则
+  - 子表/明细表：SubTableData 模型 + 动态建表 + 前端 el-table 表格
+  - 关联字段：Lookup 搜索 + 自动填充（/templates/lookup API）
+  - 数据聚合：列表页 sum/avg/count/max/min 统计（/data/aggregations API）
 
 **2026-04-18**
 - 创建用户管理页面 `src/pc/views/Users.vue`，包含用户列表、搜索、新增、编辑、删除、禁用/启用功能

@@ -107,9 +107,51 @@ class RoleResponse(BaseModel):
 
 
 # ============ 模板 ============
+class ValidationRule(BaseModel):
+    """字段校验规则"""
+    type: str  # required/min_value/max_value/min_length/max_length/regex/in_list/not_in_list/custom_formula
+    value: Optional[Any] = None  # 规则参数值
+    message: Optional[str] = None  # 自定义错误消息
+
+    class Config:
+        extra = "allow"
+
+
+class CascadeSource(BaseModel):
+    """级联选项配置"""
+    parent_field: str  # 父字段名
+    options_map: Dict[str, List[str]] = {}  # 父字段值 -> 子选项列表
+
+    class Config:
+        extra = "allow"
+
+
+class VisibilityRule(BaseModel):
+    """条件显示/隐藏规则"""
+    type: str = "simple"  # simple / formula
+    formula: Optional[str] = None  # 公式模式
+    field: Optional[str] = None  # 简单模式：目标字段
+    operator: Optional[str] = "eq"  # eq/neq/gt/lt/gte/lte/contains/in/not_in/is_empty/not_empty
+    value: Optional[Any] = None  # 期望值
+
+    class Config:
+        extra = "allow"
+
+
+class SubTableConfig(BaseModel):
+    """子表/明细表配置"""
+    enabled: bool = False  # 是否是子表字段
+    parent_template_id: Optional[int] = None  # 父模板ID（在明细表中使用）
+    foreign_key: Optional[str] = None  # 外键字段名
+    display_fields: Optional[List[str]] = None  # 列表显示的字段名
+
+    class Config:
+        extra = "allow"
+
+
 class ModuleField(BaseModel):
     name: str
-    type: str  # text/number/date/select/radio/checkbox
+    type: str  # text/number/date/select/radio/checkbox/formula/subform/relation/...
     label: Optional[str] = None
     required: bool = False
     readonly: bool = False
@@ -125,6 +167,46 @@ class ModuleField(BaseModel):
     step: Optional[float] = None
     maxLength: Optional[int] = None
     format: Optional[str] = None
+
+    # === 公式/计算 ===
+    formula: Optional[str] = None  # 公式表达式，例如 "{单价} * {数量}"
+    formula_type: Optional[str] = None  # "calculated" | "aggregate"
+    is_formula: Optional[bool] = False  # 是否为公式字段（计算字段，只读）
+
+    # === 字段依赖与联动 ===
+    depends_on: Optional[List[str]] = None  # 依赖的字段名列表（依赖字段变化时自动重算）
+    cascade_update: bool = False  # 依赖字段变化时自动重算此字段
+
+    # === 聚合计算 ===
+    aggregate: Optional[Dict] = None  # {"type": "sum"|"avg"|"count"|"max"|"min", "source_field": str, "filter": "..."}
+
+    # === 校验规则 ===
+    validation_rules: Optional[List[Dict]] = None  # 高级校验规则组
+
+    # === 条件显示/隐藏 ===
+    visibility_rule: Optional[Dict] = None  # 条件显示规则
+
+    # === 条件必填 ===
+    required_when: Optional[Dict] = None  # {"field": "type", "op": "eq", "value": "VIP"} — 满足条件时变为必填
+
+    # === 默认值公式 ===
+    default_formula: Optional[str] = None  # "NOW()" | "CONCAT({prefix}, '-', {seq})" 等
+
+    # === 级联选项 ===
+    cascade_source: Optional[Dict] = None  # 级联选项配置
+
+    # === 子表/明细表 ===
+    # type=subform 时生效
+    subtable_fields: Optional[List[Dict]] = None  # 子表字段定义列表（递归 ModuleField 结构）
+    subtable_of: Optional[str] = None  # 所属主表字段名（在子表字段上标记）
+
+    # === 字段权限 ===
+    field_permissions: Optional[Dict] = None  # {角色/用户: "read"|"write"|"hidden"}
+
+    # === 字段关联（跨模板自动填充 / Lookup） ===
+    relation: Optional[Dict] = None  # {"target_template": "customers", "display_field": "name", "link_field": "customer_id", "auto_fill_fields": ["address", "phone"]}
+    auto_fill: Optional[Dict] = None  # 兼容旧名：{"source_template_id": int, "source_field": str, "match_by": str}
+
     # Allow extra fields from frontend (e.g. _key, etc)
     class Config:
         extra = "allow"

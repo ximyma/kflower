@@ -26,6 +26,11 @@ class AICapability(str, Enum):
     SUMMARIZE_APPROVAL = "summarize_approval"
     OPTIMIZE_WORKFLOW = "optimize_workflow"
     
+    # ===== AI 审批能力（升级方案 4.2） =====
+    AI_APPROVE = "ai_approve"           # AI 自动审批
+    AI_CLASSIFY = "ai_classify"         # AI 内容分类
+    AI_SUMMARIZE_WORKFLOW = "ai_summarize_workflow"  # 总结流程执行情况
+    
     # 仪表盘
     RECOMMEND_CHART = "recommend_chart"
     GENERATE_INSIGHT = "generate_insight"

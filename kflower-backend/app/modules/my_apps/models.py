@@ -23,6 +23,22 @@ class Application(Base):
     is_public = Column(Boolean, default=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    
+    # ===== 流程审批集成（升级方案 4.1） =====
+    workflow_ids = Column(JSON, default=list, comment="应用关联的多个工作流列表: [{workflow_id, trigger, config}]")
+    workflow_config = Column(JSON, default=dict, comment="全局流程配置: 全局超时时间、通知方式等")
+    
+    # ===== 知识库集成（升级方案 7.1） =====
+    knowledge_base_ids = Column(JSON, default=list, comment="应用绑定的知识库ID列表")
+    knowledge_config = Column(JSON, default=dict, comment="知识库配置: auto_index, search_scope, chunk_size")
+    
+    # ===== 智能体集成（升级方案 5.2） =====
+    bound_agents = Column(JSON, default=list, comment="应用绑定的智能体: [{agent_id, context, trigger}]")
+    
+    # ===== 版本管理（升级方案 5.4） =====
+    current_version = Column(String(20), default="1.0.0", comment="当前版本号")
+    changelog = Column(Text, nullable=True)
+    
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -47,6 +63,14 @@ class AppMenu(Base):
     is_visible = Column(Boolean, default=True)
     list_page_config = Column(JSON, default=dict)
     form_page_config = Column(JSON, default=dict)
+    
+    # ===== 流程审批集成（升级方案 4.1） =====
+    workflow_id = Column(Integer, ForeignKey("workflows.id"), nullable=True, comment="关联的工作流ID")
+    workflow_trigger = Column(String(20), default="manual", comment="触发方式: manual/submit/update")
+    workflow_field_permissions = Column(JSON, default=dict, comment="流程中字段权限: {node_id: {field: readonly/hidden/edit}}")
+    workflow_auto_approve = Column(Boolean, default=False, comment="提交后自动发起流程")
+    workflow_node_mapping = Column(JSON, default=dict, comment="表单字段到流程变量的映射")
+    
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -54,6 +78,7 @@ class AppMenu(Base):
     app = relationship("Application", back_populates="menus")
     parent = relationship("AppMenu", remote_side=[id], backref="children")
     template = relationship("Template")
+    workflow = relationship("Workflow")
 
 
 class FormRelation(Base):

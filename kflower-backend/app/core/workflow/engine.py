@@ -149,6 +149,15 @@ class WorkflowEngine:
             await self._handle_delay_node(instance_id, node, variables)
         elif node_type == NodeType.SUB_PROCESS:
             await self._handle_sub_process_node(instance_id, node, variables)
+        # ===== AI 审批节点处理（升级方案 4.2） =====
+        elif node_type == NodeType.AI_APPROVAL:
+            await self._handle_ai_approval_node(instance_id, node, variables)
+        elif node_type == NodeType.AI_REVIEW:
+            await self._handle_ai_review_node(instance_id, node, variables)
+        elif node_type == NodeType.AI_CLASSIFY:
+            await self._handle_ai_classify_node(instance_id, node, variables)
+        elif node_type == NodeType.NOTIFICATION:
+            await self._handle_notification_node(instance_id, node, variables)
         elif node_type == NodeType.END:
             await self._end_instance(instance_id)
         

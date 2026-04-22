@@ -169,6 +169,43 @@
           <el-form-item label="可见">
             <el-switch v-model="menuForm.is_visible" />
           </el-form-item>
+
+          <!-- ===== 流程审批配置（升级方案 4.1） ===== -->
+          <h4 style="margin-top:20px">流程审批</h4>
+          <el-form-item label="绑定工作流">
+            <el-select v-model="menuForm.workflow_id" placeholder="不绑定工作流" clearable>
+              <el-option
+                v-for="wf in allWorkflows"
+                :key="wf.id"
+                :label="wf.name"
+                :value="wf.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="触发方式" v-if="menuForm.workflow_id">
+            <el-select v-model="menuForm.workflow_trigger" placeholder="选择触发方式">
+              <el-option label="手动发起" value="manual" />
+              <el-option label="提交后自动发起" value="submit" />
+              <el-option label="修改后发起" value="update" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="自动发起" v-if="menuForm.workflow_id">
+            <el-switch v-model="menuForm.workflow_auto_approve" />
+            <div style="font-size:12px;color:var(--el-text-color-secondary);margin-top:4px">开启后提交表单时自动触发审批流程</div>
+          </el-form-item>
+          <el-form-item label="变量映射" v-if="menuForm.workflow_id">
+            <div class="field-mapping-list">
+              <div v-for="(map, idx) in (menuForm.workflow_node_mapping || [])" :key="idx" class="field-mapping-item">
+                <el-input v-model="map.form_field" placeholder="表单字段" style="width:120px" />
+                <span style="padding:0 8px">→</span>
+                <el-input v-model="map.workflow_var" placeholder="流程变量" style="width:120px" />
+                <el-button size="small" text type="danger" @click="removeMapping(idx)"><el-icon><Delete /></el-icon></el-button>
+              </div>
+              <el-button size="small" @click="addMapping" :disabled="!menuForm.workflow_id">
+                <el-icon><Plus /></el-icon> 添加映射
+              </el-button>
+            </div>
+          </el-form-item>
         </el-form>
       </div>
     </div>
@@ -244,6 +281,7 @@ const appData = ref<any>({
 const menuTree = ref<any[]>([])
 const allMenus = ref<any[]>([])
 const templates = ref<any[]>([])
+const allWorkflows = ref<any[]>([])
 const publishedTemplates = computed(() => templates.value.filter(t => t.is_published))
 const templateSearch = ref('')
 const filteredTemplates = computed(() => {
@@ -260,7 +298,11 @@ const menuForm = ref({
   parent_id: null as number | null,
   menu_icon: 'Document',
   menu_order: 0,
-  is_visible: true
+  is_visible: true,
+  workflow_id: null as number | null,
+  workflow_trigger: 'manual',
+  workflow_auto_approve: false,
+  workflow_node_mapping: [] as Array<{form_field: string; workflow_var: string}>
 })
 const showMenuDialog = ref(false)
 const isEditMenu = ref(false)
@@ -295,6 +337,32 @@ async function loadTemplates() {
     templates.value = res
   } catch (e: any) {
     ElMessage.error('加载模板失败：' + (e.message || ''))
+  }
+}
+
+// 加载工作流列表
+async function loadWorkflows() {
+  try {
+    const res: any = await fetch('/api/v1/workflows/', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+    }).then(r => r.json())
+    allWorkflows.value = Array.isArray(res) ? res : (res.data || [])
+  } catch (e: any) {
+    console.error('加载工作流失败', e)
+  }
+}
+
+// 添加/移除字段映射
+function addMapping() {
+  if (!menuForm.value.workflow_node_mapping) {
+    menuForm.value.workflow_node_mapping = []
+  }
+  menuForm.value.workflow_node_mapping.push({ form_field: '', workflow_var: '' })
+}
+
+function removeMapping(idx: number) {
+  if (menuForm.value.workflow_node_mapping) {
+    menuForm.value.workflow_node_mapping.splice(idx, 1)
   }
 }
 
@@ -472,6 +540,7 @@ onMounted(() => {
   loadAppData()
   loadMenuTree()
   loadTemplates()
+  loadWorkflows()
 })
 </script>
 

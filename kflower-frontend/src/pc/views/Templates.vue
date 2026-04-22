@@ -436,6 +436,266 @@
                   </el-form-item>
                 </template>
 
+                <!-- ===== 子表字段配置（subform 类型） ===== -->
+                <template v-if="currentTemplate.fields[selectedField].type === 'subform'">
+                  <el-divider>子表字段配置</el-divider>
+                  <p style="font-size:12px;color:#909399;margin:0 0 8px">配置子表（明细表）包含的字段，提交时每个子表字段独立存一行。</p>
+                  <div class="subform-fields-editor">
+                    <div
+                      v-for="(sf, sfIdx) in (currentTemplate.fields[selectedField].subtable_fields || [])"
+                      :key="sfIdx"
+                      class="subform-field-item"
+                    >
+                      <el-input v-model="sf.name" placeholder="字段名" size="small" style="width:90px" />
+                      <el-input v-model="sf.label" placeholder="显示名" size="small" style="width:90px" />
+                      <el-select v-model="sf.type" size="small" style="width:100px">
+                        <el-option value="text" label="文本" />
+                        <el-option value="number" label="数字" />
+                        <el-option value="money" label="金额" />
+                        <el-option value="date" label="日期" />
+                        <el-option value="select" label="下拉" />
+                      </el-select>
+                      <el-button type="danger" text size="small" @click="removeSubFormField(selectedField, sfIdx)">
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </div>
+                    <el-button type="primary" text size="small" @click="addSubFormField(selectedField)" style="margin-top:4px">
+                      <el-icon><Plus /></el-icon> 添加子字段
+                    </el-button>
+                  </div>
+                </template>
+
+                <!-- ===== 关联数据配置（relation 类型） ===== -->
+                <template v-if="currentTemplate.fields[selectedField].type === 'relation'">
+                  <el-divider>关联数据配置</el-divider>
+                  <p style="font-size:12px;color:#909399;margin:0 0 8px">选择关联的目标模板，用户可通过搜索选择关联记录。</p>
+                  <el-form-item label="目标模板ID">
+                    <el-input-number
+                      v-model="currentTemplate.fields[selectedField]._relation_template_id"
+                      :min="1"
+                      style="width:100%"
+                      placeholder="输入目标模板ID"
+                      @change="updateRelationConfig(selectedField)"
+                    />
+                  </el-form-item>
+                  <el-form-item label="显示字段名">
+                    <el-input
+                      v-model="currentTemplate.fields[selectedField]._relation_display_field"
+                      placeholder="如：name、title"
+                      size="small"
+                      @change="updateRelationConfig(selectedField)"
+                    />
+                  </el-form-item>
+                  <el-form-item label="自动填充字段">
+                    <el-input
+                      v-model="currentTemplate.fields[selectedField]._relation_auto_fill"
+                      type="textarea"
+                      :rows="2"
+                      placeholder="选择后自动填充的字段名（逗号分隔）&#10;如：address,phone,email"
+                      @change="updateRelationConfig(selectedField)"
+                    />
+                  </el-form-item>
+                </template>
+
+                <!-- ===== 公式/计算字段设置 ===== -->
+                <el-divider>公式与计算</el-divider>
+                <el-form-item>
+                  <template #label>
+                    <span>计算公式</span>
+                    <el-tooltip placement="top">
+                      <template #content>
+                        用 {字段名} 引用其他字段值<br/>
+                        支持：+ - * / ** %<br/>
+                        内置函数：ROUND、SUM、IF 等<br/>
+                        示例：{单价} * {数量}<br/>
+                        ROUND({金额} * 0.13, 2)
+                      </template>
+                      <el-icon style="margin-left:4px;color:#909399;cursor:pointer"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
+                  <el-input
+                    v-model="currentTemplate.fields[selectedField].formula"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="例如：{单价} * {数量} 或 ROUND({金额} * 0.13, 2)"
+                    @blur="validateFieldFormula"
+                  />
+                  <div v-if="formulaValidation[selectedField]" style="margin-top:4px">
+                    <el-tag v-if="formulaValidation[selectedField].valid" type="success" size="small">
+                      ✓ 公式正确
+                    </el-tag>
+                    <el-tag v-else type="danger" size="small">
+                      ✗ {{ formulaValidation[selectedField].error }}
+                    </el-tag>
+                  </div>
+                  <div v-if="currentTemplate.fields[selectedField].formula" style="margin-top:4px">
+                    <el-switch
+                      v-model="currentTemplate.fields[selectedField].is_formula"
+                      active-text="标记为计算字段（只读）"
+                      size="small"
+                    />
+                  </div>
+                </el-form-item>
+
+                <!-- ===== 条件显示/隐藏 ===== -->
+                <el-divider>条件显示</el-divider>
+                <el-form-item>
+                  <template #label>
+                    <span>显示条件</span>
+                    <el-tooltip placement="top">
+                      <template #content>
+                        满足条件时才显示此字段<br/>
+                        示例：{身份类型} == '个人'<br/>
+                        当"身份类型"字段值等于"个人"时才显示
+                      </template>
+                      <el-icon style="margin-left:4px;color:#909399;cursor:pointer"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </template>
+                  <el-select
+                    v-model="currentTemplate.fields[selectedField]._visibility_mode"
+                    style="width:100%;margin-bottom:8px"
+                    placeholder="选择条件模式"
+                    @change="onVisibilityModeChange"
+                  >
+                    <el-option value="" label="始终显示（无条件）" />
+                    <el-option value="simple" label="简单条件" />
+                    <el-option value="formula" label="公式条件" />
+                  </el-select>
+
+                  <!-- 简单模式 -->
+                  <template v-if="currentTemplate.fields[selectedField]._visibility_mode === 'simple'">
+                    <div style="display:flex;gap:4px;flex-wrap:wrap">
+                      <el-input
+                        v-model="currentTemplate.fields[selectedField]._vis_field"
+                        placeholder="字段名"
+                        style="width:100px"
+                        size="small"
+                        @change="buildVisibilityRule(selectedField)"
+                      />
+                      <el-select
+                        v-model="currentTemplate.fields[selectedField]._vis_op"
+                        style="width:90px"
+                        size="small"
+                        @change="buildVisibilityRule(selectedField)"
+                      >
+                        <el-option value="eq" label="等于" />
+                        <el-option value="neq" label="不等于" />
+                        <el-option value="gt" label="大于" />
+                        <el-option value="lt" label="小于" />
+                        <el-option value="contains" label="包含" />
+                        <el-option value="is_empty" label="为空" />
+                        <el-option value="not_empty" label="不为空" />
+                      </el-select>
+                      <el-input
+                        v-model="currentTemplate.fields[selectedField]._vis_value"
+                        placeholder="值"
+                        style="width:80px"
+                        size="small"
+                        @change="buildVisibilityRule(selectedField)"
+                      />
+                    </div>
+                  </template>
+
+                  <!-- 公式模式 -->
+                  <template v-else-if="currentTemplate.fields[selectedField]._visibility_mode === 'formula'">
+                    <el-input
+                      v-model="currentTemplate.fields[selectedField]._vis_formula"
+                      type="textarea"
+                      :rows="2"
+                      placeholder="例如：{身份类型} == '个人'"
+                      @change="buildVisibilityRule(selectedField)"
+                    />
+                  </template>
+                </el-form-item>
+
+                <!-- ===== 高级校验规则 ===== -->
+                <el-divider>校验规则</el-divider>
+                <el-form-item label="校验规则">
+                  <div class="validation-rules-editor">
+                    <div
+                      v-for="(rule, ruleIdx) in (currentTemplate.fields[selectedField].validation_rules || [])"
+                      :key="ruleIdx"
+                      class="rule-item"
+                    >
+                      <el-select v-model="rule.type" style="width:110px" size="small">
+                        <el-option value="required" label="必填" />
+                        <el-option value="min_value" label="最小值" />
+                        <el-option value="max_value" label="最大值" />
+                        <el-option value="min_length" label="最少字符" />
+                        <el-option value="max_length" label="最多字符" />
+                        <el-option value="regex" label="正则格式" />
+                        <el-option value="custom_formula" label="自定义公式" />
+                      </el-select>
+                      <el-input
+                        v-if="!['required'].includes(rule.type)"
+                        v-model="rule.value"
+                        placeholder="值"
+                        style="width:80px"
+                        size="small"
+                      />
+                      <el-input
+                        v-model="rule.message"
+                        placeholder="错误提示"
+                        size="small"
+                        style="flex:1"
+                      />
+                      <el-button
+                        type="danger"
+                        text
+                        size="small"
+                        @click="removeValidationRule(selectedField, ruleIdx)"
+                      >
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </div>
+                    <el-button
+                      type="primary"
+                      text
+                      size="small"
+                      @click="addValidationRule(selectedField)"
+                      style="margin-top:4px"
+                    >
+                      <el-icon><Plus /></el-icon> 添加规则
+                    </el-button>
+                  </div>
+                </el-form-item>
+
+                <!-- ===== 级联选项设置 ===== -->
+                <template v-if="['select','radio','checkbox'].includes(currentTemplate.fields[selectedField].type)">
+                  <el-divider>级联选项</el-divider>
+                  <el-form-item>
+                    <template #label>
+                      <span>启用级联</span>
+                      <el-tooltip placement="top" content="选项随另一字段的值变化而变化">
+                        <el-icon style="margin-left:4px;color:#909399;cursor:pointer"><QuestionFilled /></el-icon>
+                      </el-tooltip>
+                    </template>
+                    <el-switch
+                      v-model="currentTemplate.fields[selectedField]._cascade_enabled"
+                      @change="toggleCascade(selectedField)"
+                    />
+                  </el-form-item>
+                  <template v-if="currentTemplate.fields[selectedField]._cascade_enabled">
+                    <el-form-item label="父字段名">
+                      <el-input
+                        v-model="currentTemplate.fields[selectedField]._cascade_parent"
+                        placeholder="输入父字段的 name"
+                        size="small"
+                        @change="updateCascadeSource(selectedField)"
+                      />
+                    </el-form-item>
+                    <el-form-item label="级联数据（JSON格式）">
+                      <el-input
+                        v-model="currentTemplate.fields[selectedField]._cascade_map_text"
+                        type="textarea"
+                        :rows="4"
+                        placeholder='{"广东":["广州","深圳"],"浙江":["杭州","宁波"]}'
+                        @blur="updateCascadeSource(selectedField)"
+                      />
+                    </el-form-item>
+                  </template>
+                </template>
+
               </el-form>
             </el-scrollbar>
           </template>
@@ -984,7 +1244,8 @@ import {
   Folder, FolderOpened, List, Connection, DataLine, Ticket, Location,
   Brush, PictureFilled, User, OfficeBuilding, Link, Message, Phone,
   Lock, Timer, Alarm, DateRange, Share, Star, Notebook, Download,
-  ArrowLeft, MoreFilled, Rank, RefreshRight
+  ArrowLeft, MoreFilled, Rank, RefreshRight, QuestionFilled, Promotion,
+  InfoFilled
 } from '@element-plus/icons-vue'
 import { templateAPI, userAPI } from '../../common/api'
 import { useAIStore } from '../../common/store/ai'
@@ -1205,6 +1466,135 @@ function applyOptions() {
   if (selectedField.value === null) return
   const f = currentTemplate.fields[selectedField.value]
   f.options = (f.optionsText||'').split(/[,\n]/).map((s:string)=>s.trim()).filter(Boolean)
+}
+
+// ============ 公式编辑器相关 ============
+
+const formulaValidation = ref<Record<number, {valid: boolean; error: string | null}>>({})
+
+function validateFieldFormula() {
+  if (selectedField.value === null) return
+  const f = currentTemplate.fields[selectedField.value]
+  const formula = f.formula
+  if (!formula) {
+    delete formulaValidation.value[selectedField.value]
+    return
+  }
+  // 简单前端语法检查
+  const fieldPattern = /\{([^}]+)\}/g
+  let expr = formula.replace(fieldPattern, '1')
+  // 替换函数名
+  expr = expr.replace(/\b(ROUND|FLOOR|CEIL|ABS|SQRT|POWER|MAX|MIN|SUM|AVG|IF|AND|OR|NOT|LEN|CONCAT|DATEDIFF|TODAY|NOW)\b/gi, 'f')
+  try {
+    // eslint-disable-next-line no-new-func
+    new Function(`return (${expr})`)
+    formulaValidation.value[selectedField.value] = { valid: true, error: null }
+  } catch (e: any) {
+    formulaValidation.value[selectedField.value] = { valid: false, error: '语法错误' }
+  }
+}
+
+// ============ 条件显示/隐藏相关 ============
+
+function onVisibilityModeChange() {
+  if (selectedField.value === null) return
+  const f = currentTemplate.fields[selectedField.value]
+  if (!f._visibility_mode) {
+    f.visibility_rule = null
+  }
+}
+
+function buildVisibilityRule(idx: number) {
+  const f = currentTemplate.fields[idx]
+  if (!f) return
+  if (f._visibility_mode === 'simple') {
+    f.visibility_rule = {
+      type: 'simple',
+      field: f._vis_field || '',
+      operator: f._vis_op || 'eq',
+      value: f._vis_value
+    }
+  } else if (f._visibility_mode === 'formula') {
+    f.visibility_rule = {
+      type: 'formula',
+      formula: f._vis_formula || ''
+    }
+  } else {
+    f.visibility_rule = null
+  }
+}
+
+// ============ 校验规则相关 ============
+
+function addValidationRule(idx: number) {
+  const f = currentTemplate.fields[idx]
+  if (!f) return
+  if (!f.validation_rules) f.validation_rules = []
+  f.validation_rules.push({ type: 'required', value: '', message: '' })
+}
+
+function removeValidationRule(idx: number, ruleIdx: number) {
+  const f = currentTemplate.fields[idx]
+  if (!f || !f.validation_rules) return
+  f.validation_rules.splice(ruleIdx, 1)
+}
+
+// ============ 级联选项相关 ============
+
+function toggleCascade(idx: number) {
+  const f = currentTemplate.fields[idx]
+  if (!f) return
+  if (!f._cascade_enabled) {
+    f.cascade_source = null
+  }
+}
+
+function updateCascadeSource(idx: number) {
+  const f = currentTemplate.fields[idx]
+  if (!f || !f._cascade_enabled) return
+  try {
+    const optionsMap = JSON.parse(f._cascade_map_text || '{}')
+    f.cascade_source = {
+      parent_field: f._cascade_parent || '',
+      options_map: optionsMap
+    }
+  } catch {
+    // JSON 解析失败，暂时不更新
+  }
+}
+
+// ============ 子表字段配置相关 ============
+
+function addSubFormField(idx: number) {
+  const f = currentTemplate.fields[idx]
+  if (!f) return
+  if (!f.subtable_fields) f.subtable_fields = []
+  f.subtable_fields.push({
+    name: `col_${f.subtable_fields.length + 1}`,
+    label: `列${f.subtable_fields.length + 1}`,
+    type: 'text',
+    placeholder: ''
+  })
+}
+
+function removeSubFormField(idx: number, sfIdx: number) {
+  const f = currentTemplate.fields[idx]
+  if (!f || !f.subtable_fields) return
+  f.subtable_fields.splice(sfIdx, 1)
+}
+
+// ============ 关联数据配置相关 ============
+
+function updateRelationConfig(idx: number) {
+  const f = currentTemplate.fields[idx]
+  if (!f) return
+  const autoFillText = f._relation_auto_fill || ''
+  const autoFillFields = autoFillText.split(/[,，]/).map((s: string) => s.trim()).filter(Boolean)
+  f.relation = {
+    target_template_id: f._relation_template_id || null,
+    display_field: f._relation_display_field || '',
+    auto_fill_fields: autoFillFields
+  }
 }
 
 // 模板操作
@@ -2777,6 +3167,27 @@ onMounted(async () => {
     h4 { margin: 0; font-size: 14px; }
   }
   .panel-body { flex: 1; overflow-y: auto; padding: 12px; }
+}
+/* 校验规则编辑器 */
+.validation-rules-editor {
+  width: 100%;
+  .rule-item {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+}
+/* 子表字段编辑器 */
+.subform-fields-editor {
+  width: 100%;
+  .subform-field-item {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
 }
 /* 导入弹窗样式 */
 .import-container { min-height: 300px; }

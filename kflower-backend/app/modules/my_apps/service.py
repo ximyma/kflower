@@ -309,6 +309,10 @@ class MyAppsService:
                 icon=menu.menu_icon,
                 path=f"/app/{app_id}/form/{menu.template_id}",
                 template_id=menu.template_id,
+                workflow_id=menu.workflow_id,
+                workflow_trigger=menu.workflow_trigger,
+                workflow_auto_approve=menu.workflow_auto_approve,
+                workflow_node_mapping=menu.workflow_node_mapping or [],
                 children=[]
             )
             menu_map[menu.id] = node
