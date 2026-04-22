@@ -15,11 +15,10 @@ onMounted(async () => {
   // 避免刚登录成功后又重复请求 /auth/me
   if (userStore.isLoggedIn && !userStore.userInfo) {
     const ok = await userStore.autoLogin()
-    if (ok) {
-      router.push('/home')
+    if (ok && route.path === '/') {
+      // 根据设备类型跳转到对应首页，避免移动端跳到 /home 触发守卫重定向链
+      router.replace(isMobile ? '/app/home' : '/home')
     }
-  } else if (userStore.isLoggedIn) {
-    router.push('/home')
   }
 })
 

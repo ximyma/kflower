@@ -126,7 +126,7 @@ function handleLogout() {
     type: 'warning'
   }).then(() => {
     userStore.logout()
-    router.push('/login')
+    router.push('/app/login')
   }).catch(() => {})
 }
 </script>

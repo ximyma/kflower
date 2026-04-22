@@ -338,7 +338,9 @@ router.beforeEach(async (to, from, next) => {
 
   // ===== 设备检测与重定向 =====
   const toPath = to.path
-  const isMobileRoute = toPath.startsWith('/app')
+  // 通过路由 meta.layout 判断是否为移动端路由，而非简单的前缀匹配
+  // 避免将 /app/:appId（PC应用容器）和 /app-designer/:appId（PC应用设计器）误判为移动端路由
+  const isMobileRoute = to.matched.some(r => r.meta.layout === 'mobile')
   const isPublicRoute = ['/login', '/register', '/app/login', '/app/register'].includes(toPath)
   const isRootRoute = toPath === '/'
 
