@@ -674,7 +674,7 @@ const uploadDocs = async () => {
         // 参考模板设计的上传逻辑，使用fetch直接调用API
         const res = await (window as any).fetch(`/api/v1/knowledge/upload/${uploadForm.kb_id}`, {
           method: 'POST',
-          headers: { Authorization: 'Bearer ' + (localStorage.getItem('kflower_token') || '') },
+          headers: { Authorization: 'Bearer ' + (localStorage.getItem('access_token') || '') },
           body: formData
         })
         

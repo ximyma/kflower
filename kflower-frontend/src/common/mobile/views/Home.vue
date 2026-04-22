@@ -161,7 +161,7 @@ const getStatusType = (status: string) => {
 const loadUserInfo = async () => {
   try {
     const res = await fetch('/api/v1/users/me', {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const data = await res.json()
@@ -175,7 +175,7 @@ const loadUserInfo = async () => {
 const loadStats = async () => {
   try {
     const res = await fetch('/api/v1/dashboard/stats', {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const data = await res.json()
@@ -189,7 +189,7 @@ const loadStats = async () => {
 const loadTodos = async () => {
   try {
     const res = await fetch('/api/v1/dashboard/pending-tasks', {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const data = await res.json()
@@ -245,7 +245,7 @@ const sendChat = async () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + localStorage.getItem('kflower_token')
+        Authorization: 'Bearer ' + localStorage.getItem('access_token')
       },
       body: JSON.stringify({ message: userMsg })
     })
@@ -264,7 +264,7 @@ const doSearch = async () => {
   
   try {
     const res = await fetch(`/api/v1/search?q=${encodeURIComponent(searchKeyword.value)}`, {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const data = await res.json()

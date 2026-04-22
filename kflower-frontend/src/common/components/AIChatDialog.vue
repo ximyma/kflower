@@ -242,7 +242,7 @@ async function handleFileChange(file: any) {
     form.append('operations', JSON.stringify(['ocr', 'segment', 'keywords']))
     const res: any = await (window as any).fetch('/api/v1/local-ai/process-attachment', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('kflower_token') || '') },
+      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('access_token') || '') },
       body: form
     })
     const json = await res.json()

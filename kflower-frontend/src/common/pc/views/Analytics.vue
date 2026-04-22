@@ -419,7 +419,7 @@ const templateOption = computed(() => ({
 async function loadOverview() {
   try {
     const res = await fetch('/api/v1/analytics/overview', {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const json = await res.json()
@@ -438,7 +438,7 @@ async function loadOverview() {
 async function loadSummary() {
   try {
     const res = await fetch('/api/v1/analytics/dashboard-summary', {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const json = await res.json()
@@ -460,7 +460,7 @@ async function loadWorkflowPerformance() {
       params.append('end_date', dateRange.value[1].toISOString().slice(0, 10))
     }
     const res = await fetch('/api/v1/analytics/workflow-performance?' + params, {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const json = await res.json()
@@ -474,7 +474,7 @@ async function loadWorkflowPerformance() {
 async function loadUserActivity() {
   try {
     const res = await fetch('/api/v1/analytics/user-activity?days=30', {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const json = await res.json()
@@ -489,7 +489,7 @@ async function loadUserActivity() {
 async function loadOrgPerformance() {
   try {
     const res = await fetch('/api/v1/analytics/org-performance', {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const json = await res.json()
@@ -503,7 +503,7 @@ async function loadOrgPerformance() {
 async function loadTemplateAnalytics() {
   try {
     const res = await fetch('/api/v1/analytics/template-analytics', {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const json = await res.json()
@@ -525,7 +525,7 @@ async function handleAnalyze() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + localStorage.getItem('kflower_token')
+        Authorization: 'Bearer ' + localStorage.getItem('access_token')
       },
       body: JSON.stringify({ question: analysisQuery.value })
     })

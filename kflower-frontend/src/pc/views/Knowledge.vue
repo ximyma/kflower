@@ -686,7 +686,7 @@ import { useAIStore } from '../../common/store/ai'
 
 const aiStore = useAIStore()
 
-const token = localStorage.getItem('kflower_token') || ''
+const token = localStorage.getItem('access_token') || ''
 const uploadHeaders = { Authorization: `Bearer ${token}` }
 
 // ===== 知识库 =====

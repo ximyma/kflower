@@ -360,7 +360,7 @@ router.beforeEach(async (to, from, next) => {
   // 需要认证
   if (requiresAuth && !userStore.isLoggedIn) {
     // 尝试自动登录（token存在但页面刷新后userInfo丢失）
-    if (localStorage.getItem('kflower_token')) {
+    if (localStorage.getItem('access_token')) {
       const loggedIn = await userStore.autoLogin()
       if (!loggedIn) {
         // 根据设备类型跳转到对应登录页

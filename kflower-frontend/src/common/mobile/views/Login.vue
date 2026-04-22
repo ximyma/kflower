@@ -83,7 +83,7 @@ const handleLogin = async () => {
     if (res.ok) {
       const data = await res.json()
       // 保存 token
-      localStorage.setItem('kflower_token', data.access_token)
+      localStorage.setItem('access_token', data.access_token)
       // 更新 userStore 状态
       userStore.token = data.access_token
       // 获取用户信息

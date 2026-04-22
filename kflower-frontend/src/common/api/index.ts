@@ -17,7 +17,7 @@ const api: AxiosInstance = axios.create({
 api.interceptors.request.use(
   (config: AxiosRequestConfig) => {
     // 添加Token
-    const token = localStorage.getItem('kflower_token')
+    const token = localStorage.getItem('access_token')
     if (token) {
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${token}`
@@ -39,7 +39,7 @@ api.interceptors.response.use(
     
     if (status === 401) {
       // Token过期或无效
-      localStorage.removeItem('kflower_token')
+      localStorage.removeItem('access_token')
       ElMessage.error('登录已过期，请重新登录')
       // 避免在登录页重复跳转
       if (!window.location.pathname.includes('/login')) {

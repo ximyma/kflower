@@ -15,7 +15,7 @@ interface User {
 }
 
 export const useUserStore = defineStore('user', () => {
-  const token = ref<string | null>(localStorage.getItem('kflower_token'))
+  const token = ref<string | null>(localStorage.getItem('access_token'))
   const userInfo = ref<User | null>(null)
   const loading = ref(false)
 
@@ -45,7 +45,7 @@ export const useUserStore = defineStore('user', () => {
       const res: any = await authAPI.login({ username, password })
       token.value = res.access_token
       userInfo.value = res.user
-      localStorage.setItem('kflower_token', res.access_token)
+      localStorage.setItem('access_token', res.access_token)
       return true
     } catch (e: any) {
       ElMessage.error(e.response?.data?.detail || '登录失败')
@@ -72,7 +72,7 @@ export const useUserStore = defineStore('user', () => {
   function logout() {
     token.value = null
     userInfo.value = null
-    localStorage.removeItem('kflower_token')
+    localStorage.removeItem('access_token')
   }
 
   return {

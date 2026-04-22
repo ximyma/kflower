@@ -89,7 +89,7 @@ const editForm = reactive({
 const loadUserInfo = async () => {
   try {
     const res = await fetch('/api/v1/users/me', {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const data = await res.json()
@@ -104,7 +104,7 @@ const loadUserInfo = async () => {
 const loadStats = async () => {
   try {
     const res = await fetch('/api/v1/dashboard/stats', {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const data = await res.json()
@@ -121,7 +121,7 @@ const saveProfile = async () => {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + localStorage.getItem('kflower_token')
+        Authorization: 'Bearer ' + localStorage.getItem('access_token')
       },
       body: JSON.stringify(editForm)
     })
@@ -138,7 +138,7 @@ const saveProfile = async () => {
 const handleLogout = async () => {
   try {
     await showConfirmDialog({ title: '提示', message: '确定退出登录吗？' })
-    localStorage.removeItem('kflower_token')
+    localStorage.removeItem('access_token')
     router.push('/login')
   } catch (e) {
     // 取消

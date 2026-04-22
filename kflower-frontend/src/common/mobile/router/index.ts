@@ -76,7 +76,7 @@ const router = createRouter({
 
 // 路由守卫
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('kflower_token')
+  const token = localStorage.getItem('access_token')
   if (!token && to.path !== '/login') {
     next('/login')
   } else {

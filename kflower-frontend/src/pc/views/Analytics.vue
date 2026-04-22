@@ -209,7 +209,7 @@ const categoryOption = computed(() => ({
 async function loadAnalytics() {
   try {
     const res = await fetch('/api/v1/analytics/overview', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('kflower_token')}` }
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
     })
     if (res.ok) {
       const json = await res.json()
@@ -234,7 +234,7 @@ async function handleAnalyze() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('kflower_token')}`
+        Authorization: `Bearer ${localStorage.getItem('access_token')}`
       },
       body: JSON.stringify({ question: analysisQuery.value })
     })

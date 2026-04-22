@@ -2065,7 +2065,7 @@ const importDependenciesStatus = ref<any>(null)  // 依赖状态
 async function fetchImportDependenciesStatus() {
   try {
     const res = await (window as any).fetch('/api/v1/import/status', {
-      headers: { Authorization: 'Bearer ' + (localStorage.getItem('kflower_token') || '') }
+      headers: { Authorization: 'Bearer ' + (localStorage.getItem('access_token') || '') }
     })
     const json = await res.json()
     if (json.success) {
@@ -2145,7 +2145,7 @@ async function doParseFile(rawFile: File, headerRow: number, sheetName: string) 
   try {
     const res = await (window as any).fetch('/api/v1/import/parse', {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + (localStorage.getItem('kflower_token') || '') },
+      headers: { Authorization: 'Bearer ' + (localStorage.getItem('access_token') || '') },
       body: formData
     })
     const json = await res.json()
@@ -2191,7 +2191,7 @@ async function applyHeaderRow(headerRow: number) {
     const res = await (window as any).fetch('/api/v1/import/apply-header', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ' + (localStorage.getItem('kflower_token') || ''),
+        'Authorization': 'Bearer ' + (localStorage.getItem('access_token') || ''),
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -2373,7 +2373,7 @@ async function confirmCreateTemplate() {
 
     const res = await (window as any).fetch('/api/v1/import/create-template', {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + (localStorage.getItem('kflower_token') || '') },
+      headers: { Authorization: 'Bearer ' + (localStorage.getItem('access_token') || '') },
       body: formData
     })
     const json = await res.json()
@@ -2474,7 +2474,7 @@ async function generateWithAI() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('kflower_token')
+        'Authorization': 'Bearer ' + localStorage.getItem('access_token')
       },
       body: JSON.stringify({
         message: systemPrompt + '\n\n用户需求：' + aiPrompt.value,

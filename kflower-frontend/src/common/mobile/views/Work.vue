@@ -103,7 +103,7 @@ const loadWorkflows = async () => {
     }
     
     const res = await fetch(`/api/v1/workflows/?${params}`, {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('kflower_token') }
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('access_token') }
     })
     if (res.ok) {
       const data = await res.json()

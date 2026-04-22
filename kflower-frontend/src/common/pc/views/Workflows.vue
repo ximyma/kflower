@@ -258,7 +258,7 @@ async function loadPendingTasks() {
   try {
     // 调用后端待办接口，不存在时显示空
     const res: any = await (window as any).fetch('/api/v1/workflows/instances/pending', {
-      headers: { Authorization: 'Bearer ' + (localStorage.getItem('kflower_token') || '') }
+      headers: { Authorization: 'Bearer ' + (localStorage.getItem('access_token') || '') }
     })
     if (res.ok) {
       const json = await res.json()
@@ -289,7 +289,7 @@ async function approveTask(task: any) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + (localStorage.getItem('kflower_token') || '')
+        Authorization: 'Bearer ' + (localStorage.getItem('access_token') || '')
       },
       body: JSON.stringify({ opinion: '同意' })
     })
@@ -308,7 +308,7 @@ async function rejectTask(task: any) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + (localStorage.getItem('kflower_token') || '')
+        Authorization: 'Bearer ' + (localStorage.getItem('access_token') || '')
       },
       body: JSON.stringify({ opinion: '不同意' })
     })

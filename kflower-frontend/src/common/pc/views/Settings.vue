@@ -758,7 +758,7 @@ async function onOCRTestFileSelected(e: Event) {
     
     const res = await (window as any).fetch('/api/v1/local-ai/ocr/text', {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + (localStorage.getItem('kflower_token') || '') },
+      headers: { Authorization: 'Bearer ' + (localStorage.getItem('access_token') || '') },
       body: formData
     })
     const json = await res.json()
