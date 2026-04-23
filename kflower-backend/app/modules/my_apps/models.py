@@ -46,6 +46,7 @@ class Application(Base):
     menus = relationship("AppMenu", back_populates="app", cascade="all, delete-orphan")
     relations = relationship("FormRelation", back_populates="app", cascade="all, delete-orphan")
     plugins = relationship("AppPlugin", back_populates="app", cascade="all, delete-orphan")
+    versions = relationship("AppVersion", back_populates="app", cascade="all, delete-orphan")
     creator = relationship("User", foreign_keys=[created_by])
 
 
@@ -119,3 +120,26 @@ class AppPlugin(Base):
     # 关系
     app = relationship("Application", back_populates="plugins")
     target_template = relationship("Template")
+
+
+class AppVersion(Base):
+    """应用版本快照（升级方案 5.4）"""
+    __tablename__ = "app_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    app_id = Column(Integer, ForeignKey("applications.id"), nullable=False)
+    version = Column(String(20), nullable=False, comment="版本号如1.0.0")
+    snapshot = Column(JSON, nullable=False, comment="完整应用快照")
+    changelog = Column(Text, nullable=True, comment="变更日志")
+    is_stable = Column(Boolean, default=False, comment="是否稳定版")
+    is_current = Column(Boolean, default=False, comment="是否为当前版本")
+    published_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    published_at = Column(DateTime, nullable=True, comment="发布时间")
+    created_at = Column(DateTime, server_default=func.now())
+
+    # 关系
+    app = relationship("Application", back_populates="versions")
+    publisher = relationship("User")
+
+    def __repr__(self):
+        return f"<AppVersion app={self.app_id} v{self.version}>"

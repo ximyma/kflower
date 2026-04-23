@@ -27,6 +27,11 @@ class ApplicationUpdate(BaseModel):
     config: Optional[Dict] = None
     is_published: Optional[bool] = None
     is_public: Optional[bool] = None
+    knowledge_base_ids: Optional[List[int]] = None
+    knowledge_config: Optional[Dict] = None
+    workflow_ids: Optional[List[int]] = None
+    workflow_config: Optional[Dict] = None
+    bound_agents: Optional[List[Dict]] = None
 
 
 class ApplicationResponse(ApplicationBase):
@@ -198,6 +203,25 @@ class MenuTreeNode(BaseModel):
     workflow_node_mapping: Optional[List[Dict]] = None
     children: List["MenuTreeNode"] = []
 
+
+# ============ AppVersion (升级方案 5.4) ============
+class VersionCreate(BaseModel):
+    version: str = Field(..., description="版本号如1.0.0")
+    changelog: Optional[str] = None
+    is_stable: bool = False
+
+class VersionResponse(BaseModel):
+    id: int
+    app_id: int
+    version: str
+    changelog: Optional[str] = None
+    is_stable: bool
+    is_current: bool
+    published_by: Optional[int] = None
+    published_at: Optional[datetime] = None
+    created_at: datetime
+    class Config:
+        from_attributes = True
 
 # 解决循环引用
 AppMenuResponse.model_rebuild()

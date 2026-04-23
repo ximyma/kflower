@@ -18,6 +18,7 @@ def init_db():
     import app.models.ai  # noqa
     import app.models.permission  # noqa
     import app.models.notification_template  # noqa
+    import app.modules.my_apps.models  # noqa
 
 
 async def create_default_user():
@@ -49,7 +50,38 @@ async def lifespan(app: FastAPI):
     # 创建数据库表
     await create_tables()
     await create_default_user()
+
+    # 启动 SLA 后台定时巡检
+    import asyncio
+    from app.core.workflow.sla_manager import SLAManager
+
+    async def sla_periodic_check(interval_minutes: int = 5):
+        """每 N 分钟检查一次 SLA 状态（催办+升级）"""
+        while True:
+            try:
+                async with AsyncSessionLocal() as db:
+                    sla = SLAManager(db)
+                    await sla.process_reminders()
+                    await sla.process_escalations()
+                    logger.info("[SLA] 定时巡检完成")
+            except Exception as e:
+                logger.error(f"[SLA] 定时巡检出错: {e}")
+            await asyncio.sleep(interval_minutes * 60)
+
+    import logging
+    logger = logging.getLogger(__name__)
+    sla_task = asyncio.create_task(sla_periodic_check(5))
+    print("[Kflower] SLA monitor started")
+
     yield
+
+    # 关闭后台任务
+    sla_task.cancel()
+    try:
+        await sla_task
+    except asyncio.CancelledError:
+        pass
+    print("[Kflower] SLA monitor stopped")
     print("[Kflower] Shutting down...")
 
 

@@ -54,6 +54,11 @@
         <PermissionConfig :app-id="appId" />
       </el-tab-pane>
       
+      <!-- 知识库 -->
+      <el-tab-pane label="知识库" name="knowledge">
+        <KnowledgeBaseConfig :app-id="appId" />
+      </el-tab-pane>
+      
       <!-- 审计日志 -->
       <el-tab-pane label="审计日志" name="audit">
         <AuditLogViewer :app-id="appId" />
@@ -84,6 +89,7 @@ import DashboardDesigner from './components/DashboardDesigner.vue'
 import PermissionConfig from './components/PermissionConfig.vue'
 import AuditLogViewer from './components/AuditLogViewer.vue'
 import AIDesigner from './components/AIDesigner.vue'
+import KnowledgeBaseConfig from './components/KnowledgeBaseConfig.vue'
 
 const route = useRoute()
 const router = useRouter()

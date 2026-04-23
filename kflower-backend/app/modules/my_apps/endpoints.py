@@ -16,9 +16,9 @@ from app.modules.my_apps.schemas import (
     AppMenuCreate, AppMenuUpdate, AppMenuResponse,
     FormRelationCreate, FormRelationUpdate, FormRelationResponse,
     AppPluginCreate, AppPluginUpdate, AppPluginResponse,
-    MenuTreeNode
+    MenuTreeNode, VersionCreate, VersionResponse
 )
-from app.modules.my_apps.models import Application, AppMenu, FormRelation, AppPlugin
+from app.modules.my_apps.models import Application, AppMenu, FormRelation, AppPlugin, AppVersion
 
 router = APIRouter(prefix="/apps", tags=["我的应用"])
 
@@ -290,3 +290,225 @@ async def delete_plugin(
         raise HTTPException(status_code=404, detail="插件不存在")
     await my_apps_service.delete_plugin(db, plugin)
     return {"message": "删除成功"}
+
+
+# ============ 版本管理（升级方案 5.4） ============
+@router.get("/{app_id}/versions", response_model=List[VersionResponse])
+async def list_versions(
+    app_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取应用版本列表"""
+    app = await my_apps_service.get_app(db, app_id, current_user)
+    if not app:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    
+    result = await db.execute(
+        select(AppVersion)
+        .where(AppVersion.app_id == app_id)
+        .order_by(AppVersion.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/{app_id}/versions", response_model=VersionResponse)
+async def create_version(
+    app_id: int,
+    data: VersionCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """创建新版本快照"""
+    from sqlalchemy.orm import selectinload
+    from datetime import datetime
+    
+    # 获取应用完整数据
+    query = select(Application).options(
+        selectinload(Application.menus),
+        selectinload(Application.relations),
+        selectinload(Application.plugins)
+    ).where(Application.id == app_id)
+    
+    result = await db.execute(query)
+    app = result.scalar_one_or_none()
+    
+    if not app:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    
+    # 构建快照
+    snapshot = {
+        "name": app.name,
+        "description": app.description,
+        "icon": app.icon,
+        "theme": app.theme,
+        "config": app.config,
+        "workflow_ids": app.workflow_ids,
+        "workflow_config": app.workflow_config,
+        "knowledge_base_ids": app.knowledge_base_ids,
+        "knowledge_config": app.knowledge_config,
+        "bound_agents": app.bound_agents,
+        "menus": [
+            {
+                "id": m.id,
+                "parent_id": m.parent_id,
+                "template_id": m.template_id,
+                "menu_label": m.menu_label,
+                "menu_icon": m.menu_icon,
+                "menu_order": m.menu_order,
+                "is_visible": m.is_visible,
+                "list_page_config": m.list_page_config,
+                "form_page_config": m.form_page_config,
+                "workflow_id": m.workflow_id,
+                "workflow_trigger": m.workflow_trigger,
+                "workflow_field_permissions": m.workflow_field_permissions,
+                "workflow_auto_approve": m.workflow_auto_approve,
+                "workflow_node_mapping": m.workflow_node_mapping,
+            }
+            for m in app.menus
+        ],
+        "relations": [
+            {
+                "id": r.id,
+                "from_template_id": r.from_template_id,
+                "from_field_name": r.from_field_name,
+                "to_template_id": r.to_template_id,
+                "relation_type": r.relation_type,
+                "display_field": r.display_field,
+                "on_delete": r.on_delete,
+                "reverse_name": r.reverse_name,
+            }
+            for r in app.relations
+        ],
+        "plugins": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "trigger_event": p.trigger_event,
+                "target_template_id": p.target_template_id,
+                "script_code": p.script_code,
+                "is_enabled": p.is_enabled,
+            }
+            for p in app.plugins
+        ],
+    }
+    
+    # 清除之前的 is_current
+    await db.execute(
+        select(AppVersion).where(AppVersion.app_id == app_id, AppVersion.is_current == True)
+    )
+    # TODO: 批量更新 is_current = False
+    
+    # 创建版本
+    version = AppVersion(
+        app_id=app_id,
+        version=data.version,
+        snapshot=snapshot,
+        changelog=data.changelog,
+        is_stable=data.is_stable,
+        is_current=True,
+        published_by=current_user.id,
+        published_at=datetime.now()
+    )
+    db.add(version)
+    
+    # 更新应用版本号
+    app.current_version = data.version
+    if data.changelog:
+        app.changelog = data.changelog
+    
+    await db.commit()
+    await db.refresh(version)
+    
+    return version
+
+
+@router.post("/{app_id}/versions/{version_id}/restore")
+async def restore_version(
+    app_id: int,
+    version_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """恢复到指定版本"""
+    version = await db.get(AppVersion, version_id)
+    if not version or version.app_id != app_id:
+        raise HTTPException(status_code=404, detail="版本不存在")
+    
+    app = await db.get(Application, app_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    
+    snapshot = version.snapshot
+    
+    # 恢复应用数据
+    app.name = snapshot["name"]
+    app.description = snapshot.get("description")
+    app.icon = snapshot.get("icon")
+    app.theme = snapshot.get("theme")
+    app.config = snapshot.get("config", {})
+    app.workflow_ids = snapshot.get("workflow_ids", [])
+    app.workflow_config = snapshot.get("workflow_config", {})
+    app.knowledge_base_ids = snapshot.get("knowledge_base_ids", [])
+    app.knowledge_config = snapshot.get("knowledge_config", {})
+    app.bound_agents = snapshot.get("bound_agents", [])
+    app.current_version = version.version
+    
+    # 删除现有菜单/关系/插件
+    for m in await db.execute(select(AppMenu).where(AppMenu.app_id == app_id)):
+        await db.delete(m.scalar())
+    for r in await db.execute(select(FormRelation).where(FormRelation.app_id == app_id)):
+        await db.delete(r.scalar())
+    for p in await db.execute(select(AppPlugin).where(AppPlugin.app_id == app_id)):
+        await db.delete(p.scalar())
+    
+    # 恢复菜单
+    for menu_data in snapshot.get("menus", []):
+        menu = AppMenu(
+            app_id=app_id,
+            parent_id=menu_data.get("parent_id"),
+            template_id=menu_data["template_id"],
+            menu_label=menu_data["menu_label"],
+            menu_icon=menu_data.get("menu_icon"),
+            menu_order=menu_data.get("menu_order", 0),
+            is_visible=menu_data.get("is_visible", True),
+            list_page_config=menu_data.get("list_page_config", {}),
+            form_page_config=menu_data.get("form_page_config", {}),
+            workflow_id=menu_data.get("workflow_id"),
+            workflow_trigger=menu_data.get("workflow_trigger"),
+            workflow_field_permissions=menu_data.get("workflow_field_permissions", {}),
+            workflow_auto_approve=menu_data.get("workflow_auto_approve", False),
+            workflow_node_mapping=menu_data.get("workflow_node_mapping", []),
+        )
+        db.add(menu)
+    
+    # 恢复关系
+    for rel_data in snapshot.get("relations", []):
+        rel = FormRelation(
+            app_id=app_id,
+            from_template_id=rel_data["from_template_id"],
+            from_field_name=rel_data["from_field_name"],
+            to_template_id=rel_data["to_template_id"],
+            relation_type=rel_data["relation_type"],
+            display_field=rel_data.get("display_field"),
+            on_delete=rel_data.get("on_delete", "set_null"),
+            reverse_name=rel_data.get("reverse_name"),
+        )
+        db.add(rel)
+    
+    
+    # 恢复插件
+    for plugin_data in snapshot.get("plugins", []):
+        plugin = AppPlugin(
+            app_id=app_id,
+            name=plugin_data["name"],
+            trigger_event=plugin_data["trigger_event"],
+            target_template_id=plugin_data.get("target_template_id"),
+            script_code=plugin_data["script_code"],
+            is_enabled=plugin_data.get("is_enabled", True),
+        )
+        db.add(plugin)
+    
+    
+    await db.commit()
+    return {"message": f"已恢复到版本 {version.version}"}

@@ -16,8 +16,15 @@ export const appAPI = {
   get: (id: number) => request.get(`/apps/${id}`),
   
   // 更新应用
-  update: (id: number, data: Partial<{ name: string; description: string; icon: string; theme: string; is_published: boolean; is_public: boolean }>) => 
-    request.put(`/apps/${id}`, data),
+  update: (id: number, data: Partial<{
+    name: string; description: string; icon: string; theme: string;
+    is_published: boolean; is_public: boolean;
+    knowledge_base_ids: number[]; knowledge_config: Record<string, any>;
+    workflow_ids: number[]; workflow_config: Record<string, any>;
+    bound_agents: any[];
+    dashboard_config: any;
+    config: any;
+  }>) => request.put(`/apps/${id}`, data),
   
   // 删除应用
   delete: (id: number) => request.delete(`/apps/${id}`),
@@ -81,6 +88,13 @@ export const appAPI = {
   // ============ AI设计助手 ============
   generateAIDesign: (data: { app_id: number; prompt: string }) => request.post('/ai-design/generate', data),
   applyAIDesign: (appId: number, design: any) => request.post(`/ai-design/apply/${appId}`, design),
+
+  // ============ 版本管理 ============
+  listVersions: (appId: number) => request.get(`/apps/${appId}/versions`),
+  createVersion: (appId: number, data: { version: string; changelog?: string; is_stable?: boolean }) =>
+    request.post(`/apps/${appId}/versions`, data),
+  restoreVersion: (appId: number, versionId: number) =>
+    request.post(`/apps/${appId}/versions/${versionId}/restore`),
 }
 
 export default appAPI

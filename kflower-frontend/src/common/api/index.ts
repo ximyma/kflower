@@ -187,7 +187,7 @@ export const notificationAPI = {
 }
 
 export const knowledgeAPI = {
-  listBases: () => api.get('/knowledge/bases'),
+  listBases: (params?: { limit?: number; skip?: number }) => api.get('/knowledge/bases', { params }),
   getBase: (id: number) => api.get(`/knowledge/bases/${id}`),
   createBase: (data: { name: string; code?: string; description?: string; embedding_model?: string; rerank_model?: string; rerank_enabled?: boolean }) => 
     api.post('/knowledge/bases', data),
