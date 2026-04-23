@@ -1470,12 +1470,12 @@ function getCategoryTag(category: string) {
 .page-header h2 {
   margin: 0;
   font-size: 24px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .subtitle {
   margin: 8px 0 0;
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 14px;
 }
 
@@ -1502,7 +1502,7 @@ function getCategoryTag(category: string) {
 
 .tool-card.disabled {
   opacity: 0.7;
-  background: #fafafa;
+  background: var(--el-bg-color-page);
 }
 
 .tool-header {
@@ -1530,7 +1530,7 @@ function getCategoryTag(category: string) {
 
 .tool-description {
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin-bottom: 16px;
   line-height: 1.5;
 }
@@ -1540,7 +1540,7 @@ function getCategoryTag(category: string) {
   gap: 16px;
   margin-bottom: 16px;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .meta-item {
@@ -1583,7 +1583,7 @@ function getCategoryTag(category: string) {
 .progress-label {
   margin-bottom: 8px;
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 /* ─── 工具对话框样式 ─── */
@@ -1593,13 +1593,13 @@ function getCategoryTag(category: string) {
   gap: 12px;
   margin-bottom: 20px;
   padding: 12px 16px;
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
   border-radius: 6px;
 }
 
 .tool-desc-text {
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 .tool-panel {
@@ -1609,12 +1609,12 @@ function getCategoryTag(category: string) {
 .format-hint {
   margin-left: 12px;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .param-hint {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .result-box {
@@ -1652,7 +1652,7 @@ function getCategoryTag(category: string) {
 }
 
 .no-params-hint {
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 14px;
   text-align: center;
   padding: 32px;
@@ -1678,13 +1678,13 @@ function getCategoryTag(category: string) {
 
 .tool-panel-hint {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .wf-desc {
   margin-left: 8px;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .loading-mask {
@@ -1698,14 +1698,14 @@ function getCategoryTag(category: string) {
 .tool-guide {
   margin-top: 16px;
   padding: 16px;
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
   border-radius: 6px;
 }
 
 .guide-title {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin: 0 0 8px;
 }
 
@@ -1713,7 +1713,7 @@ function getCategoryTag(category: string) {
   margin: 0;
   padding-left: 20px;
   font-size: 13px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   line-height: 1.8;
 }
 

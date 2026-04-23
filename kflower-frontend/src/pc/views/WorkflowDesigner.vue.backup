@@ -1277,7 +1277,7 @@
                         <el-input v-model="getFieldMapping(field.name).value" placeholder="如: {{current.qty}} + {{current.add_qty}}" size="small" style="flex:1" />
                       </template>
                       <template v-else>
-                        <span style="flex:1; color: var(--el-text-color-placeholder); font-size:12px; padding-left:8px">不修改，保留原值</span>
+                        <span style="flex:1; color:#999; font-size:12px; padding-left:8px">不修改，保留原值</span>
                       </template>
                     </div>
                   </div>
@@ -1500,12 +1500,7 @@ const nodeTypes = [
   { type: 'update_data', name: '修改数据', icon: 'Edit', color: '#409EFF' },
   { type: 'delete_data', name: '删除数据', icon: 'Delete', color: '#F56C6C' },
   { type: 'sub_process', name: '子流程', icon: 'SetUp', color: '#409EFF' },
-  { type: 'delay', name: '延迟节点', icon: 'Timer', color: '#909399' },
-  // ===== AI 审批节点（升级方案 4.2）=====
-  { type: 'ai_approval', name: 'AI自动审批', icon: 'Cpu', color: '#FF6B6B' },
-  { type: 'ai_review', name: 'AI审核建议', icon: 'ChatDotRound', color: '#4ECDC4' },
-  { type: 'ai_classify', name: 'AI分类路由', icon: 'Sort', color: '#95E1D3' },
-  { type: 'notification', name: '通知节点', icon: 'Bell', color: '#F38181' }
+  { type: 'delay', name: '延迟节点', icon: 'Timer', color: '#909399' }
 ]
 
 // 加载模板列表
@@ -2611,8 +2606,8 @@ onUnmounted(() => {
 
 .designer-header {
   padding: 16px;
-  border-bottom: 1px solid var(--el-border-color-light);
-  background: var(--el-bg-color);
+  border-bottom: 1px solid #e6e6e6;
+  background: white;
 }
 
 .header-actions {
@@ -2628,8 +2623,8 @@ onUnmounted(() => {
 
 .toolbox {
   width: 200px;
-  background: var(--el-bg-color-page);
-  border-right: 1px solid var(--el-border-color-light);
+  background: #f5f7fa;
+  border-right: 1px solid #e6e6e6;
   padding: 16px;
   
   h4 {
@@ -2648,25 +2643,25 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 12px;
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color);
+  background: white;
+  border: 1px solid #dcdfe6;
   border-radius: 4px;
   cursor: move;
   transition: all 0.3s;
   
   &:hover {
-    border-color: var(--el-color-primary);
-    box-shadow: 0 2px 12px var(--el-color-primary-light-7);
+    border-color: #409eff;
+    box-shadow: 0 2px 12px rgba(64, 158, 255, 0.2);
   }
 }
 
 .canvas {
   flex: 1;
   position: relative;
-  background: var(--el-bg-color-page);
+  background: #fafafa;
   background-image: 
-    linear-gradient(var(--el-border-color-light) 1px, transparent 1px),
-    linear-gradient(90deg, var(--el-border-color-light) 1px, transparent 1px);
+    linear-gradient(#e6e6e6 1px, transparent 1px),
+    linear-gradient(90deg, #e6e6e6 1px, transparent 1px);
   background-size: 20px 20px;
   overflow: hidden;
 }
@@ -2682,18 +2677,18 @@ onUnmounted(() => {
 
 .connection-line {
   fill: none;
-  stroke: var(--el-text-color-secondary);
+  stroke: #909399;
   stroke-width: 2;
   pointer-events: stroke;
   cursor: pointer;
   
   &:hover, &.selected {
-    stroke: var(--el-color-primary);
+    stroke: #409eff;
     stroke-width: 3;
   }
   
   &.preview {
-    stroke: var(--el-color-primary);
+    stroke: #409eff;
     stroke-width: 2;
     stroke-dasharray: 5,5;
   }
@@ -2702,15 +2697,15 @@ onUnmounted(() => {
 .workflow-node {
   position: absolute;
   width: 150px;
-  background: var(--el-bg-color);
-  border: 2px solid var(--el-border-color);
+  background: white;
+  border: 2px solid #dcdfe6;
   border-radius: 4px;
   cursor: move;
   user-select: none;
   
   &.selected {
-    border-color: var(--el-color-primary);
-    box-shadow: 0 0 0 2px var(--el-color-primary-light-7);
+    border-color: #409eff;
+    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
   }
   
   .node-header {
@@ -2719,19 +2714,19 @@ onUnmounted(() => {
     align-items: center;
     gap: 8px;
     font-weight: bold;
-    border-bottom: 1px solid var(--el-border-color-light);
+    border-bottom: 1px solid #e6e6e6;
     
-    &.start { background: var(--el-color-success); color: var(--el-color-white); }
-    &.task { background: var(--el-color-primary); color: var(--el-color-white); }
-    &.condition { background: var(--el-color-warning); color: var(--el-color-white); }
-    &.parallel { background: var(--el-text-color-secondary); color: white; }
-    &.end { background: var(--el-color-danger); color: var(--el-color-white); }
+    &.start { background: #67c23a; color: white; }
+    &.task { background: #409eff; color: white; }
+    &.condition { background: #e6a23c; color: white; }
+    &.parallel { background: #909399; color: white; }
+    &.end { background: #f56c6c; color: white; }
   }
   
   .node-body {
     padding: 8px 12px;
     font-size: 12px;
-    color: var(--el-text-color-regular);
+    color: #606266;
     min-height: 40px;
   }
   
@@ -2744,7 +2739,7 @@ onUnmounted(() => {
       width: 12px;
       height: 12px;
       border-radius: 50%;
-      background: var(--el-text-color-secondary);
+      background: #909399;
       cursor: crosshair;
       
       &:hover {
@@ -2767,7 +2762,7 @@ onUnmounted(() => {
 
 .properties {
   width: 300px;
-  background: var(--el-bg-color-page);
+  background: #f5f7fa;
   border-left: 1px solid #e6e6e6;
   padding: 16px;
   overflow-y: auto;
@@ -2790,7 +2785,7 @@ onUnmounted(() => {
   
   .form-tip {
     font-size: 12px;
-    color: var(--el-text-color-secondary);
+    color: #909399;
     margin-top: 4px;
   }
   
@@ -2815,7 +2810,7 @@ onUnmounted(() => {
     align-items: center;
     margin-bottom: 16px;
     padding-bottom: 12px;
-    border-bottom: 1px solid var(--el-border-color-light);
+    border-bottom: 1px solid #e6e6e6;
     
     span {
       font-weight: bold;
@@ -2830,17 +2825,17 @@ onUnmounted(() => {
   .permission-tip {
     margin-top: 20px;
     padding: 12px;
-    background: var(--el-color-primary-light-9);
+    background: #f0f9ff;
     border-radius: 4px;
-    border-left: 4px solid var(--el-color-primary);
+    border-left: 4px solid #409eff;
     
     p {
       margin: 4px 0;
       font-size: 12px;
-      color: var(--el-text-color-regular);
+      color: #606266;
       
       strong {
-        color: var(--el-text-color-primary);
+        color: #303133;
       }
     }
   }
@@ -2851,8 +2846,8 @@ onUnmounted(() => {
   .empty-data-sources {
     padding: 16px;
     text-align: center;
-    color: var(--el-text-color-secondary);
-    background: var(--el-bg-color-page);
+    color: #909399;
+    background: #f5f7fa;
     border-radius: 4px;
     margin-bottom: 12px;
   }
@@ -2863,10 +2858,10 @@ onUnmounted(() => {
   
   .data-source-item {
     padding: 12px;
-    border: 1px solid var(--el-border-color);
+    border: 1px solid #dcdfe6;
     border-radius: 4px;
     margin-bottom: 12px;
-    background: var(--el-bg-color);
+    background: white;
     
     .source-header {
       display: flex;
@@ -2874,7 +2869,7 @@ onUnmounted(() => {
       align-items: center;
       margin-bottom: 12px;
       padding-bottom: 8px;
-      border-bottom: 1px solid var(--el-border-color-lighter);
+      border-bottom: 1px solid #f0f0f0;
       
       span {
         font-weight: bold;
@@ -2891,7 +2886,7 @@ onUnmounted(() => {
           align-items: center;
           margin-bottom: 8px;
           padding: 8px;
-          background: var(--el-bg-color-page);
+          background: #f9f9f9;
           border-radius: 4px;
         }
       }
@@ -2904,24 +2899,24 @@ onUnmounted(() => {
   .divider-title {
     font-size: 12px;
     font-weight: bold;
-    color: var(--el-text-color-regular);
+    color: #606266;
   }
   
   .unit-label {
     margin-left: 8px;
     font-size: 12px;
-    color: var(--el-text-color-secondary);
+    color: #909399;
   }
 }
 
 // 条件组样式
 .condition-groups {
   .condition-group {
-    border: 1px solid var(--el-border-color-light);
+    border: 1px solid #e6e6e6;
     border-radius: 6px;
     padding: 12px;
     margin-bottom: 10px;
-    background: var(--el-bg-color-page);
+    background: #fafafa;
     position: relative;
     
     .group-header {
@@ -2933,8 +2928,8 @@ onUnmounted(() => {
       .or-label {
         font-size: 11px;
         font-weight: bold;
-        color: var(--el-color-warning);
-        background: var(--el-color-warning-light-9);
+        color: #E6A23C;
+        background: #fdf6ec;
         padding: 2px 6px;
         border-radius: 10px;
       }
@@ -2947,16 +2942,16 @@ onUnmounted(() => {
       flex-wrap: wrap;
       gap: 4px;
       padding: 6px;
-      background: var(--el-bg-color);
+      background: white;
       border-radius: 4px;
-      border: 1px solid var(--el-border-color-lighter);
+      border: 1px solid #f0f0f0;
     }
   }
 }
 
 // 字段映射表格样式
 .field-mapping-table {
-  border: 1px solid var(--el-border-color-light);
+  border: 1px solid #e6e6e6;
   border-radius: 4px;
   overflow: hidden;
   
@@ -2964,28 +2959,28 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     padding: 8px 10px;
-    background: var(--el-bg-color-page);
-    border-bottom: 1px solid var(--el-border-color-light);
+    background: #f5f7fa;
+    border-bottom: 1px solid #e6e6e6;
     font-size: 12px;
     font-weight: bold;
-    color: var(--el-text-color-regular);
+    color: #606266;
   }
   
   .mapping-row {
     display: flex;
     align-items: center;
     padding: 8px 10px;
-    border-bottom: 1px solid var(--el-border-color-lighter);
+    border-bottom: 1px solid #f0f0f0;
     font-size: 12px;
     
     &:last-child { border-bottom: none; }
-    &:hover { background: var(--el-bg-color-page); }
+    &:hover { background: #f9fafc; }
     
     .field-name {
       display: flex;
       align-items: center;
       gap: 4px;
-      color: var(--el-text-color-primary);
+      color: #303133;
     }
   }
 }
@@ -2999,9 +2994,9 @@ onUnmounted(() => {
     flex-wrap: wrap;
     gap: 4px;
     padding: 6px;
-    background: var(--el-bg-color-page);
+    background: #f9f9f9;
     border-radius: 4px;
-    border: 1px solid var(--el-border-color-lighter);
+    border: 1px solid #f0f0f0;
   }
 }
 
@@ -3039,13 +3034,13 @@ onUnmounted(() => {
 
       .stat-label {
         font-size: 12px;
-        color: var(--el-text-color-secondary);
+        color: #909399;
       }
 
       .stat-value {
         font-size: 14px;
         font-weight: bold;
-        color: var(--el-text-color-primary);
+        color: #303133;
       }
     }
   }
@@ -3086,7 +3081,7 @@ onUnmounted(() => {
 
     .connector-arrow {
       font-size: 10px;
-      color: var(--el-text-color-secondary);
+      color: #909399;
       line-height: 1;
     }
   }
@@ -3104,7 +3099,7 @@ onUnmounted(() => {
       .step-name {
         font-weight: bold;
         font-size: 14px;
-        color: var(--el-text-color-primary);
+        color: #303133;
       }
     }
 
@@ -3113,24 +3108,24 @@ onUnmounted(() => {
 
       .step-desc {
         font-size: 12px;
-        color: var(--el-text-color-secondary);
+        color: #909399;
       }
 
       .detail-row {
         font-size: 12px;
-        color: var(--el-text-color-regular);
+        color: #606266;
         margin-bottom: 2px;
         display: flex;
         align-items: flex-start;
         gap: 4px;
 
         .detail-label {
-          color: var(--el-text-color-secondary);
+          color: #909399;
           flex-shrink: 0;
         }
 
         .detail-value {
-          color: var(--el-text-color-primary);
+          color: #303133;
         }
       }
 
@@ -3144,15 +3139,15 @@ onUnmounted(() => {
           align-items: center;
           gap: 6px;
           font-size: 12px;
-          color: var(--el-text-color-regular);
-          background: var(--el-bg-color-page);
+          color: #606266;
+          background: #f5f7fa;
           padding: 2px 8px;
           border-radius: 4px;
         }
 
         .condition-more {
           font-size: 11px;
-          color: var(--el-text-color-secondary);
+          color: #909399;
         }
       }
     }
@@ -3170,7 +3165,7 @@ onUnmounted(() => {
       align-items: center;
       gap: 8px;
       padding: 6px 12px;
-      background: var(--el-bg-color-page);
+      background: #f5f7fa;
       border-radius: 4px;
       min-width: 100px;
 
@@ -3183,14 +3178,14 @@ onUnmounted(() => {
 
       .stat-name {
         font-size: 12px;
-        color: var(--el-text-color-regular);
+        color: #606266;
         flex: 1;
       }
 
       .stat-count {
         font-size: 14px;
         font-weight: bold;
-        color: var(--el-text-color-primary);
+        color: #303133;
       }
     }
   }

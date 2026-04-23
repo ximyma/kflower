@@ -473,7 +473,7 @@ onMounted(() => {
 }
 
 .workflow-tabs {
-  background: #fff;
+  background: var(--el-bg-color);
 }
 
 .empty-container {
@@ -517,11 +517,11 @@ onMounted(() => {
 
 .wf-code {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .wf-desc {
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 13px;
   margin: 12px 0;
   min-height: 40px;
@@ -530,7 +530,7 @@ onMounted(() => {
 .wf-meta {
   display: flex;
   gap: 16px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
   margin-bottom: 12px;
 }

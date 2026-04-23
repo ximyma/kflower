@@ -1188,7 +1188,7 @@ onMounted(() => {
     h2 {
       margin: 0;
       font-size: 18px;
-      color: #303133;
+      color: var(--el-text-color-primary);
     }
 
     .card-actions {
@@ -1220,7 +1220,7 @@ onMounted(() => {
 
 .more-tag {
   margin-left: 5px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 
@@ -1233,13 +1233,13 @@ onMounted(() => {
 .mapping-info {
   margin-bottom: 20px;
   padding: 12px 16px;
-  background: #f0f9ff;
+  background: var(--el-color-primary-light-9);
   border-radius: 4px;
-  border-left: 4px solid #409eff;
+  border-left: 4px solid var(--el-color-primary);
   
   p {
     margin: 8px 0;
-    color: #303133;
+    color: var(--el-text-color-primary);
     font-size: 14px;
     
     &:first-child {
@@ -1271,7 +1271,7 @@ onMounted(() => {
   
   p {
     margin: 4px 0;
-    color: #303133;
+    color: var(--el-text-color-primary);
     font-size: 14px;
     
     &.warning-text {
@@ -1287,7 +1287,7 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   cursor: help;
 }
 

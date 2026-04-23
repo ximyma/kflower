@@ -286,7 +286,7 @@ onMounted(() => {
 }
 
 .quick-queries p {
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-bottom: 8px;
   font-size: 13px;
 }
@@ -304,7 +304,7 @@ onMounted(() => {
 }
 
 .chart-card {
-  background: white;
+  background: var(--el-bg-color);
   border: 1px solid #ebeef5;
   border-radius: 8px;
   padding: 16px;
@@ -318,7 +318,7 @@ onMounted(() => {
 .chart-card h3 {
   margin: 0 0 8px 0;
   font-size: 14px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 @media (max-width: 768px) {

@@ -439,7 +439,7 @@
                 <!-- ===== 子表字段配置（subform 类型） ===== -->
                 <template v-if="currentTemplate.fields[selectedField].type === 'subform'">
                   <el-divider>子表字段配置</el-divider>
-                  <p style="font-size:12px;color:#909399;margin:0 0 8px">配置子表（明细表）包含的字段，提交时每个子表字段独立存一行。</p>
+                  <p style="font-size:12px;color: var(--el-text-color-secondary);margin:0 0 8px">配置子表（明细表）包含的字段，提交时每个子表字段独立存一行。</p>
                   <div class="subform-fields-editor">
                     <div
                       v-for="(sf, sfIdx) in (currentTemplate.fields[selectedField].subtable_fields || [])"
@@ -468,7 +468,7 @@
                 <!-- ===== 关联数据配置（relation 类型） ===== -->
                 <template v-if="currentTemplate.fields[selectedField].type === 'relation'">
                   <el-divider>关联数据配置</el-divider>
-                  <p style="font-size:12px;color:#909399;margin:0 0 8px">选择关联的目标模板，用户可通过搜索选择关联记录。</p>
+                  <p style="font-size:12px;color: var(--el-text-color-secondary);margin:0 0 8px">选择关联的目标模板，用户可通过搜索选择关联记录。</p>
                   <el-form-item label="目标模板ID">
                     <el-input-number
                       v-model="currentTemplate.fields[selectedField]._relation_template_id"
@@ -510,7 +510,7 @@
                         示例：{单价} * {数量}<br/>
                         ROUND({金额} * 0.13, 2)
                       </template>
-                      <el-icon style="margin-left:4px;color:#909399;cursor:pointer"><QuestionFilled /></el-icon>
+                      <el-icon style="margin-left:4px;color: var(--el-text-color-secondary);cursor:pointer"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </template>
                   <el-input
@@ -548,7 +548,7 @@
                         示例：{身份类型} == '个人'<br/>
                         当"身份类型"字段值等于"个人"时才显示
                       </template>
-                      <el-icon style="margin-left:4px;color:#909399;cursor:pointer"><QuestionFilled /></el-icon>
+                      <el-icon style="margin-left:4px;color: var(--el-text-color-secondary);cursor:pointer"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </template>
                   <el-select
@@ -667,7 +667,7 @@
                     <template #label>
                       <span>启用级联</span>
                       <el-tooltip placement="top" content="选项随另一字段的值变化而变化">
-                        <el-icon style="margin-left:4px;color:#909399;cursor:pointer"><QuestionFilled /></el-icon>
+                        <el-icon style="margin-left:4px;color: var(--el-text-color-secondary);cursor:pointer"><QuestionFilled /></el-icon>
                       </el-tooltip>
                     </template>
                     <el-switch
@@ -1209,7 +1209,7 @@
                 :value="user.username"
               />
             </el-select>
-            <div class="search-hint" style="font-size:12px;color:#909399;margin-top:4px">
+            <div class="search-hint" style="font-size:12px;color: var(--el-text-color-secondary);margin-top:4px">
               输入用户ID或用户名搜索，从下拉列表中选择
             </div>
           </div>
@@ -3095,7 +3095,7 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
-.template-page { height: 100%; display: flex; flex-direction: column; background: #f5f7fa; }
+.template-page { height: 100%; display: flex; flex-direction: column; background: var(--el-bg-color-page); }
 .list-view { padding: 20px; flex: 1; overflow-y: auto; }
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
   .header-left { display: flex; align-items: center; gap: 12px; h2 { margin: 0; } }
@@ -3103,13 +3103,13 @@ onMounted(async () => {
 }
 .category-filter { margin-bottom: 16px; }
 .loading-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-.template-table-wrapper { background: white; border-radius: 8px; padding: 16px;
+.template-table-wrapper { background: var(--el-bg-color); border-radius: 8px; padding: 16px;
   .table-name-cell { display: flex; align-items: center; gap: 10px; }
   .table-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
-  .table-name-text { font-weight: 500; color: #303133; }
-  .table-code-text { font-size: 12px; color: #909399; }
+  .table-name-text { font-weight: 500; color: var(--el-text-color-primary); }
+  .table-code-text { font-size: 12px; color: var(--el-text-color-secondary); }
   .field-count-num { font-weight: 600; color: #409EFF; }
-  .template-id-text { font-family: monospace; color: #909399; font-size: 12px; }
+  .template-id-text { font-family: monospace; color: var(--el-text-color-secondary); font-size: 12px; }
   .el-table__row { cursor: pointer; &:hover > td { background-color: #f5f7fa !important; } }
 }
 .template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
@@ -3121,28 +3121,28 @@ onMounted(async () => {
     h4 { margin: 0 0 4px; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .card-code { font-size: 11px; color: #aaa; font-family: monospace; }
   }
-  .card-desc { margin: 0 0 10px; font-size: 13px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .card-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #999;
+  .card-desc { margin: 0 0 10px; font-size: 13px; color: var(--el-text-color-regular); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--el-text-color-placeholder);
     .field-count { display: flex; align-items: center; gap: 4px; margin-left: auto; }
     .create-time { color: #bbb; }
   }
 }
 .designer-view { display: flex; flex-direction: column; height: calc(100vh - 60px); }
-.designer-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: white; border-bottom: 1px solid #e6e6e6; flex-shrink: 0;
+.designer-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--el-bg-color); border-bottom: 1px solid var(--el-border-color-light); flex-shrink: 0;
   .toolbar-left, .toolbar-center, .toolbar-right { display: flex; align-items: center; gap: 8px; }
   .toolbar-center { flex: 1; justify-content: center; }
   .toolbar-right { margin-left: auto; }
 }
 .designer-body { display: flex; flex: 1; overflow: hidden; }
-.field-toolbox { width: 200px; background: white; border-right: 1px solid #e6e6e6; overflow-y: auto; flex-shrink: 0;
+.field-toolbox { width: 200px; background: var(--el-bg-color); border-right: 1px solid var(--el-border-color-light); overflow-y: auto; flex-shrink: 0;
   :deep(.el-collapse-item__header) { padding: 0 12px; font-size: 13px; font-weight: 600; }
   :deep(.el-collapse-item__content) { padding: 0 8px 8px; }
 }
 .toolbox-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
-.toolbox-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; background: #f5f7fa; border: 1px solid #e4e7ed; border-radius: 6px; cursor: move; font-size: 12px; transition: all 0.2s;
-  &:hover { border-color: #409eff; background: #ecf5ff; color: #409eff; }
+.toolbox-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; background: var(--el-bg-color-page); border: 1px solid #e4e7ed; border-radius: 6px; cursor: move; font-size: 12px; transition: all 0.2s;
+  &:hover { border-color: var(--el-color-primary); background: #ecf5ff; color: var(--el-color-primary); }
 }
-.form-canvas { flex: 1; padding: 20px; overflow-y: auto; background: #fafafa;
+.form-canvas { flex: 1; padding: 20px; overflow-y: auto; background: var(--el-bg-color-page);
   background-image: linear-gradient(#eee 1px, transparent 1px), linear-gradient(90deg, #eee 1px, transparent 1px);
   background-size: 20px 20px;
 }
@@ -3151,19 +3151,19 @@ onMounted(async () => {
   h4 { margin: 0 0 8px; }
 }
 .canvas-fields { max-width: 800px; margin: 0 auto; }
-.canvas-field { display: flex; align-items: center; gap: 8px; background: white; border: 2px solid #e6e6e6; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s;
+.canvas-field { display: flex; align-items: center; gap: 8px; background: var(--el-bg-color); border: 2px solid #e6e6e6; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s;
   &:hover { border-color: #b0d4f1; }
   &.selected { border-color: #409EFF; background: #f0f7ff; box-shadow: 0 0 0 2px rgba(64,158,255,0.15); }
   .field-handle { color: #ccc; cursor: grab; flex-shrink: 0; }
   .field-body { flex: 1; min-width: 0; }
   .field-header { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 4px; }
   .required-mark { color: #f56c6c; font-size: 16px; }
-  .field-preview { .preview-input { width: 100%; padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px; background: #f5f5f5; color: #999; font-size: 13px; } }
+  .field-preview { .preview-input { width: 100%; padding: 6px 10px; border: 1px solid var(--el-border-color); border-radius: 4px; background: #f5f5f5; color: var(--el-text-color-placeholder); font-size: 13px; } }
   .field-meta { font-size: 11px; color: #aaa; margin-top: 4px; code { background: #f5f5f5; padding: 1px 4px; border-radius: 2px; font-family: monospace; } }
   .field-actions { display: flex; gap: 2px; flex-shrink: 0; }
 }
-.property-panel { width: 280px; background: white; border-left: 1px solid #e6e6e6; display: flex; flex-direction: column; flex-shrink: 0;
-  .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #e6e6e6;
+.property-panel { width: 280px; background: var(--el-bg-color); border-left: 1px solid var(--el-border-color-light); display: flex; flex-direction: column; flex-shrink: 0;
+  .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--el-border-color-light);
     h4 { margin: 0; font-size: 14px; }
   }
   .panel-body { flex: 1; overflow-y: auto; padding: 12px; }
@@ -3192,14 +3192,14 @@ onMounted(async () => {
 /* 导入弹窗样式 */
 .import-container { min-height: 300px; }
 .import-uploader { width: 100%; margin-bottom: 16px; }
-.upload-icon { font-size: 48px; color: #409eff; margin-bottom: 12px; }
+.upload-icon { font-size: 48px; color: var(--el-color-primary); margin-bottom: 12px; }
 .upload-text p { margin: 4px 0; }
-.upload-hint { font-size: 12px; color: #999; }
+.upload-hint { font-size: 12px; color: var(--el-text-color-placeholder); }
 .upload-examples { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
 .upload-examples .el-tag { cursor: pointer; }
 /* 导入依赖状态提示 */
 .import-deps-status {
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
   border-radius: 6px;
   padding: 12px 16px;
   margin-bottom: 16px;
@@ -3207,7 +3207,7 @@ onMounted(async () => {
 }
 .import-deps-status .deps-title {
   font-size: 13px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin-bottom: 8px;
   display: flex;
   align-items: center;
@@ -3233,7 +3233,7 @@ onMounted(async () => {
 }
 .import-deps-status .dep-item.warn {
   color: #e6a23c;
-  background: #fdf6ec;
+  background: var(--el-color-warning-light-9);
 }
 .import-deps-status .dep-item.error {
   color: #f56c6c;
@@ -3266,7 +3266,7 @@ onMounted(async () => {
 }
 
 /* 导入预览控制 */
-.preview-controls { margin-top: 12px; padding: 12px; background: #f5f7fa; border-radius: 6px; }
+.preview-controls { margin-top: 12px; padding: 12px; background: var(--el-bg-color-page); border-radius: 6px; }
 .control-row { display: flex; align-items: center; gap: 8px; }
 .field-checkboxes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; max-height: 120px; overflow-y: auto; }
 
@@ -3274,19 +3274,19 @@ onMounted(async () => {
 .data-mgr-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
 .data-stats-bar { display: flex; gap: 10px; margin-bottom: 12px; }
 .data-pagination { display: flex; justify-content: flex-end; margin-top: 12px; }
-.data-summary { font-size: 12px; color: #666; }
-.stats-content h4 { color: #303133; }
+.data-summary { font-size: 12px; color: var(--el-text-color-regular); }
+.stats-content h4 { color: var(--el-text-color-primary); }
 
 /* 权限设置样式 */
 .permission-section {
   margin: 20px 0;
   padding: 16px;
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
   border-radius: 6px;
   h4 {
     margin: 0 0 12px;
     font-size: 14px;
-    color: #303133;
+    color: var(--el-text-color-primary);
   }
   .el-radio-group {
     display: flex;
@@ -3313,7 +3313,7 @@ onMounted(async () => {
     .user-search {
       .search-hint {
         font-size: 12px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
         margin-top: 4px;
       }
     }

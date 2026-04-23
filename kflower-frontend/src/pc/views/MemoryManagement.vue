@@ -463,12 +463,12 @@ function resetConfig() {
 .page-header h2 {
   margin: 0;
   font-size: 24px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .subtitle {
   margin: 8px 0 0;
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 14px;
 }
 
@@ -477,7 +477,7 @@ function resetConfig() {
 }
 
 .stat-card {
-  background: white;
+  background: var(--el-bg-color);
   border-radius: 8px;
   padding: 20px;
   border: 1px solid #ebeef5;
@@ -499,7 +499,7 @@ function resetConfig() {
 
 .stat-icon.total { background: #ecf5ff; color: #409EFF; }
 .stat-icon.active { background: #f0f9eb; color: #67C23A; }
-.stat-icon.retrieval { background: #fdf6ec; color: #E6A23C; }
+.stat-icon.retrieval { background: var(--el-color-warning-light-9); color: #E6A23C; }
 .stat-icon.accuracy { background: #fef0f0; color: #F56C6C; }
 
 .stat-info {
@@ -509,12 +509,12 @@ function resetConfig() {
 .stat-value {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .stat-label {
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-top: 4px;
 }
 
@@ -556,7 +556,7 @@ function resetConfig() {
 
 .type-count {
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .memory-content {
@@ -585,7 +585,7 @@ function resetConfig() {
 
 .results-count {
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-bottom: 16px;
 }
 
@@ -594,7 +594,7 @@ function resetConfig() {
   border-radius: 6px;
   padding: 16px;
   margin-bottom: 12px;
-  background: #fafafa;
+  background: var(--el-bg-color-page);
 }
 
 .result-header {
@@ -612,17 +612,17 @@ function resetConfig() {
 
 .result-agent {
   font-size: 13px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 .result-time {
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .result-content {
   font-size: 14px;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin-bottom: 12px;
   line-height: 1.5;
 }
@@ -667,6 +667,6 @@ function resetConfig() {
 .progress-label {
   margin-bottom: 8px;
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 </style>

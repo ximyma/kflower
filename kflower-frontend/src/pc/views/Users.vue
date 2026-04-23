@@ -477,7 +477,7 @@ onMounted(() => {
 }
 
 .table-card {
-  background: white;
+  background: var(--el-bg-color);
 }
 
 .user-cell {
@@ -486,7 +486,7 @@ onMounted(() => {
   gap: 10px;
 
   .user-avatar {
-    background: #409eff;
+    background: var(--el-color-primary);
     color: white;
     font-size: 14px;
   }
@@ -505,7 +505,7 @@ onMounted(() => {
 .form-tip {
   margin-left: 12px;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .el-dialog {

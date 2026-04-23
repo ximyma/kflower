@@ -1020,12 +1020,12 @@ function createWorkflow() {
 .page-header h2 {
   margin: 0;
   font-size: 24px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .subtitle {
   margin: 8px 0 0;
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 14px;
 }
 
@@ -1034,7 +1034,7 @@ function createWorkflow() {
 }
 
 .stat-card {
-  background: white;
+  background: var(--el-bg-color);
   border-radius: 8px;
   padding: 20px;
   border: 1px solid #ebeef5;
@@ -1056,7 +1056,7 @@ function createWorkflow() {
 
 .stat-icon.workflow { background: #ecf5ff; color: #409EFF; }
 .stat-icon.running { background: #f0f9eb; color: #67C23A; }
-.stat-icon.success { background: #fdf6ec; color: #E6A23C; }
+.stat-icon.success { background: var(--el-color-warning-light-9); color: #E6A23C; }
 .stat-icon.time { background: #fef0f0; color: #F56C6C; }
 
 .stat-info {
@@ -1066,12 +1066,12 @@ function createWorkflow() {
 .stat-value {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .stat-label {
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-top: 4px;
 }
 
@@ -1102,13 +1102,13 @@ function createWorkflow() {
 
 .canvas-title {
   font-size: 18px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin-bottom: 12px;
 }
 
 .canvas-hint {
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-bottom: 24px;
 }
 
@@ -1132,7 +1132,7 @@ function createWorkflow() {
 .mock-node.end { background: #909399; }
 
 .mock-arrow {
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 20px;
 }
 
@@ -1156,7 +1156,7 @@ function createWorkflow() {
 }
 
 .component-item:hover {
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
 }
 
 .component-icon {
@@ -1170,7 +1170,7 @@ function createWorkflow() {
 }
 
 .component-icon.agent { background: #ecf5ff; color: #409EFF; }
-.component-icon.tool { background: #fdf6ec; color: #E6A23C; }
+.component-icon.tool { background: var(--el-color-warning-light-9); color: #E6A23C; }
 .component-icon.control { background: #f0f9eb; color: #67C23A; }
 
 .component-info {
@@ -1184,7 +1184,7 @@ function createWorkflow() {
 
 .component-desc {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .workflow-name {
@@ -1210,7 +1210,7 @@ function createWorkflow() {
 
 .log-desc {
   font-size: 13px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 .development-info {
@@ -1232,7 +1232,7 @@ function createWorkflow() {
 .progress-label {
   margin-bottom: 8px;
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 .component-actions {
@@ -1285,7 +1285,7 @@ function createWorkflow() {
 
 .workflow-node.selected {
   border-color: #409EFF;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+  box-shadow: 0 0 0 2px var(--el-color-primary-light-7);
 }
 
 .workflow-node.dragging {
@@ -1313,7 +1313,7 @@ function createWorkflow() {
 }
 
 .workflow-node.tool {
-  background: #fdf6ec;
+  background: var(--el-color-warning-light-9);
   color: #E6A23C;
   border-color: #E6A23C;
 }
@@ -1343,7 +1343,7 @@ function createWorkflow() {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: white;
+  background: var(--el-bg-color);
   border: 2px solid #409EFF;
   cursor: crosshair;
   z-index: 3;
@@ -1392,7 +1392,7 @@ function createWorkflow() {
 /* 节点上下文菜单 */
 .node-context-menu {
   position: absolute;
-  background: white;
+  background: var(--el-bg-color);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   padding: 8px;

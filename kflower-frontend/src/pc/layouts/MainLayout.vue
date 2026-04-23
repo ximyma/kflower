@@ -203,7 +203,7 @@ function handleUserCommand(command: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--el-color-white);
   font-size: 20px;
   font-weight: bold;
   border-bottom: 1px solid #3d4a5c;
@@ -219,7 +219,7 @@ function handleUserCommand(command: string) {
 }
 
 .sidebar-menu .el-menu-item:hover {
-  color: #ffffff;
+  color: var(--el-color-white);
   background-color: #263445;
 }
 
@@ -233,7 +233,7 @@ function handleUserCommand(command: string) {
 }
 
 .el-header {
-  background: white;
+  background: var(--el-bg-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -253,7 +253,7 @@ function handleUserCommand(command: string) {
 }
 
 .username {
-  color: #333;
+  color: var(--el-text-color-primary);
 }
 
 .el-main {

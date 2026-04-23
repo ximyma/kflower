@@ -378,7 +378,7 @@ onMounted(() => {
 }
 
 .stat-info .stat-title {
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 13px;
   margin: 0 0 8px;
 }
@@ -386,7 +386,7 @@ onMounted(() => {
 .stat-info .stat-value {
   font-size: 28px;
   font-weight: bold;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin: 0;
 }
 
@@ -443,7 +443,7 @@ onMounted(() => {
 }
 
 .suggestions-label {
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 13px;
 }
 
@@ -466,7 +466,7 @@ onMounted(() => {
 }
 
 .quick-entry-item:hover {
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
 }
 
 .entry-icon {
@@ -482,7 +482,7 @@ onMounted(() => {
 
 .entry-title {
   font-size: 13px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 .todo-card {
@@ -492,7 +492,7 @@ onMounted(() => {
 .empty-todo {
   text-align: center;
   padding: 32px 0;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .empty-todo p {
@@ -509,7 +509,7 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   margin: 0 0 12px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 13px;
 }
 
@@ -525,6 +525,6 @@ onMounted(() => {
 .empty-activity {
   text-align: center;
   padding: 32px 0;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 </style>

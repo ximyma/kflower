@@ -1025,9 +1025,22 @@ LOCAL_RERANKER_MODEL_PATHS = [
 
 def _get_reranker_model_path(model_name: str) -> str:
     """
-    获取 reranker 模型的本地路径（禁止自动下载，必须本地存在）
-    如果找不到，抛出 FileNotFoundError，不尝试下载。
+    获取 reranker 模型的本地路径
+    优先使用本地已存在的模型，否则从魔塔社区下载
     """
+    from app.core.ai_digital_base.modelscope_utils import ensure_model_downloaded
+    from app.core.config import settings
+    
+    # 如果 model_name 本身就是一个存在的本地路径
+    if os.path.exists(model_name):
+        has_weights = (
+            os.path.exists(os.path.join(model_name, "model.safetensors")) or
+            os.path.exists(os.path.join(model_name, "pytorch_model.bin"))
+        )
+        if has_weights:
+            logger.info(f"使用本地 reranker 模型: {model_name}")
+            return model_name
+    
     # 检查是否是 bge-reranker-v2-m3 模型
     if "bge-reranker-v2-m3" in model_name:
         for local_path in LOCAL_RERANKER_MODEL_PATHS:
@@ -1039,25 +1052,28 @@ def _get_reranker_model_path(model_name: str) -> str:
                 if has_weights:
                     logger.info(f"使用本地 reranker 模型: {local_path}")
                     return local_path
-                else:
-                    raise FileNotFoundError(
-                        f"本地 reranker 模型目录存在但缺少权重文件: {local_path}"
-                    )
-
-        raise FileNotFoundError(
-            f"未找到本地 reranker 模型: {model_name}\n"
-            f"请先下载模型到以下路径之一:\n" +
-            "\n".join(f"  - {p}" for p in LOCAL_RERANKER_MODEL_PATHS) +
-            "\n或切换为 LLM 重排模式。"
+    
+    # 尝试从魔塔社区下载模型
+    cache_dir = os.path.join(settings.PROJECT_ROOT, "models", "cache")
+    logger.info(f"尝试从魔塔社区获取 rerank 模型: {model_name}")
+    
+    downloaded_path = ensure_model_downloaded(model_name, cache_dir=cache_dir)
+    
+    if downloaded_path and os.path.exists(downloaded_path):
+        # 验证模型文件是否完整
+        has_weights = (
+            os.path.exists(os.path.join(downloaded_path, "model.safetensors")) or
+            os.path.exists(os.path.join(downloaded_path, "pytorch_model.bin"))
         )
-
-    # 如果 model_name 本身就是一个存在的本地路径
-    if os.path.exists(model_name):
-        return model_name
-
+        if has_weights:
+            logger.info(f"使用魔塔社区 rerank 模型: {downloaded_path}")
+            return downloaded_path
+    
     raise FileNotFoundError(
-        f"未找到本地 reranker 模型: {model_name}\n"
-        f"请确保模型文件存在于本地，或切换为 LLM 重排模式。"
+        f"无法获取 reranker 模型: {model_name}\n"
+        f"本地路径不存在且从魔塔社区下载失败。\n"
+        f"请检查网络连接或手动下载模型到以下路径之一:\n" +
+        "\n".join(f"  - {p}" for p in LOCAL_RERANKER_MODEL_PATHS)
     )
 
 

@@ -292,12 +292,12 @@ function toggleRateLimit(row: any) {
 .page-header h2 {
   margin: 0;
   font-size: 24px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .subtitle {
   margin: 8px 0 0;
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 14px;
 }
 
@@ -317,13 +317,13 @@ function toggleRateLimit(row: any) {
 .stat-number {
   font-size: 32px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin-bottom: 8px;
 }
 
 .stat-label {
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-bottom: 4px;
 }
 
@@ -351,7 +351,7 @@ function toggleRateLimit(row: any) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fafafa;
+  background: var(--el-bg-color-page);
   border-radius: 4px;
 }
 
@@ -361,19 +361,19 @@ function toggleRateLimit(row: any) {
 
 .chart-title {
   font-size: 16px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin-bottom: 8px;
 }
 
 .chart-hint {
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .path-code {
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 12px;
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
   padding: 2px 6px;
   border-radius: 3px;
 }
@@ -397,6 +397,6 @@ function toggleRateLimit(row: any) {
 .progress-label {
   margin-bottom: 8px;
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 </style>

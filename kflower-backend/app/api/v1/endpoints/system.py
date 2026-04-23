@@ -327,36 +327,35 @@ async def test_rerank_model(
     request: dict,
     current_user: User = Depends(get_current_user)
 ):
-    """测试 Rerank 模型（禁止自动下载，必须本地存在）"""
+    """测试 Rerank 模型（优先本地，否则从魔塔社区下载）"""
     model_id = request.get("model_id")
 
     if not model_id:
         return BaseResponse(success=False, message="请指定模型ID")
 
     try:
-        import os
-        os.environ["HF_HUB_OFFLINE"] = "1"
-        os.environ["TRANSFORMERS_OFFLINE"] = "1"
         from sentence_transformers import CrossEncoder
+        from app.core.ai_digital_base.modelscope_utils import ensure_model_downloaded
 
-        # 确定模型路径（必须本地存在）
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-        local_path = os.path.join(project_root, "bge-reranker-v2-m3")
-
-        if "bge-reranker-v2-m3" in model_id:
-            if not os.path.exists(local_path):
-                return BaseResponse(
-                    success=False,
-                    message=f"本地 reranker 模型不存在: {local_path}\n请先下载模型到该路径，或切换为 LLM 重排模式。"
-                )
-            model_path = local_path
-        elif os.path.exists(model_id):
+        # 确定模型路径
+        model_path = None
+        
+        # 检查是否是本地路径
+        if os.path.exists(model_id):
             model_path = model_id
         else:
-            return BaseResponse(
-                success=False,
-                message=f"本地模型路径不存在: {model_id}\n请确保模型文件存在，或切换为 LLM 重排模式。"
-            )
+            # 尝试从魔塔社区下载
+            cache_dir = os.path.join(settings.PROJECT_ROOT, "models", "cache")
+            logger.info(f"尝试从魔塔社区获取 rerank 模型: {model_id}")
+            downloaded_path = ensure_model_downloaded(model_id, cache_dir=cache_dir)
+            
+            if downloaded_path and os.path.exists(downloaded_path):
+                model_path = downloaded_path
+            else:
+                return BaseResponse(
+                    success=False,
+                    message=f"无法获取模型: {model_id}\n本地路径不存在且从魔塔社区下载失败，请检查网络连接。"
+                )
 
         # 尝试加载模型
         logger.info(f"测试加载 Rerank 模型: {model_path}")

@@ -554,8 +554,8 @@ onMounted(() => {
 .designer-header {
   height: 60px;
   padding: 0 20px;
-  background: white;
-  border-bottom: 1px solid #e6e6e6;
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-light);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -585,8 +585,8 @@ onMounted(() => {
 
 .sidebar-left {
   width: 280px;
-  background: #f5f7fa;
-  border-right: 1px solid #e6e6e6;
+  background: var(--el-bg-color-page);
+  border-right: 1px solid var(--el-border-color-light);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -601,7 +601,7 @@ onMounted(() => {
   h3 {
     margin: 0;
     font-size: 14px;
-    color: #606266;
+    color: var(--el-text-color-regular);
   }
 
   .template-card {
@@ -622,7 +622,7 @@ onMounted(() => {
       p {
         margin: 0;
         font-size: 12px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -633,14 +633,14 @@ onMounted(() => {
 
 .center-canvas {
   flex: 1;
-  background: #fafafa;
+  background: var(--el-bg-color-page);
   padding: 16px;
   overflow-y: auto;
 
   h3 {
     margin: 0 0 12px;
     font-size: 14px;
-    color: #606266;
+    color: var(--el-text-color-regular);
   }
 
   .tree-node {
@@ -652,23 +652,23 @@ onMounted(() => {
 
 .sidebar-right {
   width: 300px;
-  background: white;
-  border-left: 1px solid #e6e6e6;
+  background: var(--el-bg-color);
+  border-left: 1px solid var(--el-border-color-light);
   padding: 16px;
   overflow-y: auto;
 
   h3 {
     margin: 0 0 16px;
     font-size: 14px;
-    color: #606266;
-    border-bottom: 1px solid #e6e6e6;
+    color: var(--el-text-color-regular);
+    border-bottom: 1px solid var(--el-border-color-light);
     padding-bottom: 12px;
   }
 
   h4 {
     margin: 0 0 16px;
     font-size: 13px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 }
 </style>

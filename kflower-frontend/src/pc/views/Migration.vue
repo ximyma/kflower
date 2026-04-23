@@ -378,7 +378,7 @@ const generateMigrationScript = async () => {
   
   .unit {
     margin-left: 8px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 }
 
@@ -395,7 +395,7 @@ const generateMigrationScript = async () => {
   .progress-message {
     margin-top: 16px;
     text-align: center;
-    color: #606266;
+    color: var(--el-text-color-regular);
   }
 }
 

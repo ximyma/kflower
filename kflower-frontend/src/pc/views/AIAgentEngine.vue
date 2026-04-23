@@ -259,12 +259,12 @@ function toggleTool(row: any) {
 .page-header h2 {
   margin: 0;
   font-size: 24px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .subtitle {
   margin: 8px 0 0;
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 14px;
 }
 
@@ -273,7 +273,7 @@ function toggleTool(row: any) {
 }
 
 .stat-card {
-  background: white;
+  background: var(--el-bg-color);
   border-radius: 8px;
   padding: 20px;
   border: 1px solid #ebeef5;
@@ -295,7 +295,7 @@ function toggleTool(row: any) {
 
 .stat-icon.agent { background: #ecf5ff; color: #409EFF; }
 .stat-icon.task { background: #f0f9eb; color: #67C23A; }
-.stat-icon.tool { background: #fdf6ec; color: #E6A23C; }
+.stat-icon.tool { background: var(--el-color-warning-light-9); color: #E6A23C; }
 .stat-icon.memory { background: #fef0f0; color: #F56C6C; }
 
 .stat-info {
@@ -305,12 +305,12 @@ function toggleTool(row: any) {
 .stat-value {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .stat-label {
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-top: 4px;
 }
 
@@ -359,6 +359,6 @@ function toggleTool(row: any) {
 .progress-label {
   margin-bottom: 8px;
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 </style>

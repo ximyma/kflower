@@ -722,31 +722,20 @@
           </el-select>
           <div class="form-tip">可直接输入自定义模型 ID，支持 HuggingFace 模型名称</div>
         </el-form-item>
-        <el-form-item label="部署方式">
+        <el-form-item label="服务商">
           <el-select v-model="rerankForm.provider" style="width:100%">
             <el-option label="本地部署" value="local" />
-            <el-option label="Cohere API" value="cohere" />
-            <el-option label="SiliconFlow API" value="siliconflow" />
-            <el-option label="Jina AI API" value="jina" />
+            <el-option label="Cohere" value="cohere" />
+            <el-option label="SiliconFlow" value="siliconflow" />
+            <el-option label="Jina AI" value="jina" />
           </el-select>
         </el-form-item>
-        
-        <!-- 本地模型配置 -->
-        <template v-if="rerankForm.provider === 'local'">
-          <el-form-item label="模型本地路径">
-            <el-input v-model="rerankForm.modelPath" placeholder="本地模型路径（可选，留空从 HuggingFace 下载）" />
-          </el-form-item>
-        </template>
-        
-        <!-- API 模型配置 -->
-        <template v-if="rerankForm.provider !== 'local'">
-          <el-form-item label="API 地址">
-            <el-input v-model="rerankForm.apiUrl" placeholder="自定义 API 地址（可选）" />
-          </el-form-item>
-          <el-form-item label="API Key">
-            <el-input v-model="rerankForm.apiKey" type="password" show-password placeholder="API Key" />
-          </el-form-item>
-        </template>
+        <el-form-item label="API 地址">
+          <el-input v-model="rerankForm.apiUrl" placeholder="自定义 API 地址（可选）" />
+        </el-form-item>
+        <el-form-item label="API Key">
+          <el-input v-model="rerankForm.apiKey" type="password" show-password placeholder="API Key" />
+        </el-form-item>
         <el-form-item label="启用">
           <el-switch v-model="rerankForm.enabled" />
         </el-form-item>
@@ -952,7 +941,6 @@ const rerankForm = reactive({
   provider: 'local',
   apiUrl: '',
   apiKey: '',
-  modelPath: '',
   enabled: true
 })
 
@@ -1394,7 +1382,6 @@ function openAddRerankDialog() {
     provider: 'local',
     apiUrl: '',
     apiKey: '',
-    modelPath: '',
     enabled: true
   })
   showRerankDialog.value = true
@@ -1408,7 +1395,6 @@ function editRerankModel(row: any) {
     provider: row.provider || 'local',
     apiUrl: row.apiUrl || '',
     apiKey: row.apiKey || '',
-    modelPath: row.modelPath || '',
     enabled: row.enabled !== false
   })
   showRerankDialog.value = true
@@ -1782,7 +1768,7 @@ onMounted(async () => {
 }
 
 .settings-tabs {
-  background: var(--el-bg-color);
+  background: #fff;
 }
 
 .card-header {
@@ -1863,7 +1849,7 @@ onMounted(async () => {
 .ai-test-section h4 {
   margin: 0 0 12px;
   font-size: 14px;
-  color: var(--el-text-color-regular);
+  color: #606266;
 }
 
 .test-response {
@@ -1884,7 +1870,7 @@ onMounted(async () => {
   align-items: center;
   gap: 16px;
   padding: 20px;
-  background: var(--el-bg-color-page);
+  background: #f5f7fa;
   border-radius: 8px;
 }
 
@@ -1900,7 +1886,7 @@ onMounted(async () => {
 
 .health-icon.cpu { background: #ecf5ff; color: #409EFF; }
 .health-icon.mem { background: #f0f9eb; color: #67C23A; }
-.health-icon.disk { background: var(--el-color-warning-light-9); color: #E6A23C; }
+.health-icon.disk { background: #fdf6ec; color: #E6A23C; }
 .health-icon.status { background: #f0f9eb; color: #67C23A; }
 .health-icon.status.healthy { background: #f0f9eb; color: #67C23A; }
 .health-icon.status.unhealthy { background: #fef0f0; color: #F56C6C; }
@@ -1912,13 +1898,13 @@ onMounted(async () => {
 
 .health-label {
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: #909399;
 }
 
 .health-value {
   font-size: 20px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
+  color: #303133;
 }
 
 /* 通用样式 */
@@ -1929,24 +1915,24 @@ onMounted(async () => {
 .text-mono {
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 12px;
-  color: var(--el-text-color-regular);
+  color: #606266;
 }
 
 .text-muted {
-  color: var(--el-text-color-secondary);
+  color: #909399;
   font-size: 13px;
 }
 
 .form-tip {
   display: block;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: #909399;
   margin-top: 4px;
 }
 
 /* 本地工具样式 */
 .tool-card {
-  background: var(--el-bg-color-page);
+  background: #fafafa;
   border: 1px solid #ebeef5;
   border-radius: 8px;
   padding: 20px;
@@ -1965,7 +1951,7 @@ onMounted(async () => {
 }
 
 .tool-desc {
-  color: var(--el-text-color-secondary);
+  color: #909399;
   font-size: 13px;
   margin: 0 0 12px;
 }
@@ -1984,7 +1970,7 @@ onMounted(async () => {
   word-wrap: break-word;
   margin: 0;
   font-size: 12px;
-  background: var(--el-bg-color-page);
+  background: #f5f7fa;
   padding: 8px;
   border-radius: 4px;
   max-height: 100px;
@@ -1993,7 +1979,7 @@ onMounted(async () => {
 
 .tool-result .result-label {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: #909399;
 }
 
 .service-item {
@@ -2013,7 +1999,7 @@ onMounted(async () => {
   display: flex;
   gap: 24px;
   padding: 12px 16px;
-  background: var(--el-bg-color-page);
+  background: #f5f7fa;
   border-radius: 8px;
   margin-bottom: 8px;
 }
@@ -2026,7 +2012,7 @@ onMounted(async () => {
 
 .status-label {
   font-size: 13px;
-  color: var(--el-text-color-regular);
+  color: #606266;
 }
 
 .model-cell {

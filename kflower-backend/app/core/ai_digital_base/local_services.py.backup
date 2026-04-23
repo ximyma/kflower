@@ -45,13 +45,13 @@ except ImportError:
 
 # sentence-transformers 本地模型
 try:
+    # 禁止自动从 HuggingFace 下载模型
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
     from sentence_transformers import SentenceTransformer
     ST_AVAILABLE = True
 except ImportError:
     ST_AVAILABLE = False
-
-# 魔塔社区模型下载工具
-from app.core.ai_digital_base.modelscope_utils import ensure_model_downloaded, setup_modelscope_environment
 
 
 class OCRService:
@@ -846,31 +846,17 @@ class EmbeddingService:
         if not ST_AVAILABLE:
             raise RuntimeError("sentence-transformers 未安装，请运行: pip install sentence-transformers")
 
-        # 确定加载路径
-        load_path = None
-        
-        if model_path and os.path.exists(model_path):
-            # 使用已存在的本地路径
-            load_path = model_path
-        elif model_name:
-            # 尝试从魔塔社区下载/获取模型
-            from app.core.config import settings
-            cache_dir = os.path.join(settings.PROJECT_ROOT, "models", "cache")
-            
-            logger.info(f"尝试从魔塔社区获取模型: {model_name}")
-            downloaded_path = ensure_model_downloaded(model_name, cache_dir=cache_dir)
-            
-            if downloaded_path and os.path.exists(downloaded_path):
-                load_path = downloaded_path
-                logger.info(f"使用魔塔社区模型: {load_path}")
-            else:
+        # 确定加载路径：必须使用 model_path，且路径必须存在
+        if model_path:
+            if not os.path.exists(model_path):
                 raise FileNotFoundError(
-                    f"无法获取模型: {model_name}\n"
-                    f"从魔塔社区下载失败，请检查网络连接或手动下载模型。"
+                    f"本地 embedding 模型路径不存在: {model_path}\n"
+                    f"请先下载模型到该路径，或修改配置使用 API 嵌入服务。"
                 )
+            load_path = model_path
         else:
             raise FileNotFoundError(
-                f"未配置本地 embedding 模型路径 (model_path) 或模型名称。\n"
+                f"未配置本地 embedding 模型路径 (model_path)。\n"
                 f"请在知识库设置中配置本地模型路径，或切换为 API 嵌入服务。"
             )
 

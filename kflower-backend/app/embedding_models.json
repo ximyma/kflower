@@ -1,24 +1,11 @@
 {
   "models": {
     "BAAI/bge-m3": {
-      "name": "sili-bge-m3",
-      "model": "BAAI/bge-m3",
-      "provider": "api",
-      "dimension": 1536,
-      "description": "https://api.siliconflow.cn/v1",
-      "api_key": "sk-gwubswspdzjmbaenyoxknpqkiqzfclgqlpemefadvqiezxwg",
-      "api_base": "https://api.siliconflow.cn/v1",
-      "model_path": "",
-      "device": "cpu",
-      "batch_size": 32,
-      "enabled": true
-    },
-    "sentence-transformers/all-mpnet-base-v2": {
       "name": "all-mpnet-base-v2",
-      "model": "sentence-transformers/all-mpnet-base-v2",
+      "model": "BAAI/bge-m3",
       "provider": "local",
       "dimension": 1024,
-      "description": "E:\\models\\all-mpnet-base-v2",
+      "description": "all-mpnet-base-v2",
       "api_key": "",
       "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "model_path": "E:\\models\\all-mpnet-base-v2",

@@ -636,7 +636,7 @@ onMounted(() => {
   .form-section-title {
     font-size: 16px;
     font-weight: 600;
-    color: #303133;
+    color: var(--el-text-color-primary);
     margin: 24px 0 16px;
     padding-bottom: 8px;
     border-bottom: 1px solid #e4e7ed;
@@ -665,7 +665,7 @@ onMounted(() => {
 
 .form-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-left: 8px;
 }
 
@@ -682,20 +682,20 @@ onMounted(() => {
     transition: border-color 0.3s;
     
     &:hover {
-      border-color: #409eff;
+      border-color: var(--el-color-primary);
     }
     
     h4 {
       margin: 0 0 8px;
       font-size: 14px;
       font-weight: 600;
-      color: #303133;
+      color: var(--el-text-color-primary);
     }
     
     p {
       margin: 0 0 12px;
       font-size: 12px;
-      color: #606266;
+      color: var(--el-text-color-regular);
       line-height: 1.5;
     }
     

@@ -387,7 +387,7 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="说明">
-          <div style="color:#909399;font-size:12px;line-height:1.6">
+          <div style="color: var(--el-text-color-secondary);font-size:12px;line-height:1.6">
             <p>• <strong>私有</strong>：只有创建者可以看到和使用</p>
             <p>• <strong>公开</strong>：组织内所有用户都可以看到和使用</p>
           </div>
@@ -834,13 +834,13 @@ onMounted(() => {
   .page-title {
     font-size: 28px;
     font-weight: 600;
-    color: #303133;
+    color: var(--el-text-color-primary);
     margin: 0 0 8px;
   }
   
   .page-subtitle {
     font-size: 14px;
-    color: #606266;
+    color: var(--el-text-color-regular);
     margin: 0;
   }
 }
@@ -872,14 +872,14 @@ onMounted(() => {
         .stat-number {
           font-size: 24px;
           font-weight: 600;
-          color: #303133;
+          color: var(--el-text-color-primary);
           margin-bottom: 4px;
           line-height: 1;
         }
         
         .stat-label {
           font-size: 13px;
-          color: #606266;
+          color: var(--el-text-color-regular);
         }
       }
     }
@@ -893,7 +893,7 @@ onMounted(() => {
   
   :deep(.el-tabs__content) {
     padding: 24px;
-    background: #fff;
+    background: var(--el-bg-color);
     border-radius: 0 0 8px 8px;
     border: 1px solid #e4e7ed;
     border-top: none;
@@ -910,7 +910,7 @@ onMounted(() => {
     h3 {
       font-size: 18px;
       font-weight: 600;
-      color: #303133;
+      color: var(--el-text-color-primary);
       margin: 0;
     }
   }
@@ -927,12 +927,12 @@ onMounted(() => {
 
 .loading-skeleton {
   padding: 20px;
-  background: white;
+  background: var(--el-bg-color);
   border-radius: 8px;
 }
 
 .template-table-wrapper {
-  background: white;
+  background: var(--el-bg-color);
   border-radius: 8px;
   padding: 16px;
   
@@ -955,12 +955,12 @@ onMounted(() => {
   
   .table-name-text {
     font-weight: 500;
-    color: #303133;
+    color: var(--el-text-color-primary);
   }
   
   .table-code-text {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
   
   .field-count-num {
@@ -970,7 +970,7 @@ onMounted(() => {
   
   .template-id-text {
     font-family: monospace;
-    color: #909399;
+    color: var(--el-text-color-secondary);
     font-size: 12px;
   }
   
@@ -980,7 +980,7 @@ onMounted(() => {
     
     span {
       font-size: 12px;
-      color: #606266;
+      color: var(--el-text-color-regular);
     }
   }
 }

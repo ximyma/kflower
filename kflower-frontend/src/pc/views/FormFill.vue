@@ -868,7 +868,7 @@ onMounted(() => {
 <style scoped lang="scss">
 .form-fill-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
   padding: 40px 20px;
 }
 
@@ -876,7 +876,7 @@ onMounted(() => {
   max-width: 800px;
   margin: 0 auto;
   padding: 40px;
-  background: #fff;
+  background: var(--el-bg-color);
   border-radius: 8px;
 }
 
@@ -887,13 +887,13 @@ onMounted(() => {
   .form-title {
     font-size: 28px;
     font-weight: 600;
-    color: #303133;
+    color: var(--el-text-color-primary);
     margin: 0 0 12px;
   }
 
   .form-desc {
     font-size: 14px;
-    color: #606266;
+    color: var(--el-text-color-regular);
     margin: 0;
   }
 }
@@ -911,7 +911,7 @@ onMounted(() => {
 .module-title {
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin: 24px 0 16px;
   padding-bottom: 8px;
   border-bottom: 1px solid #e4e7ed;
@@ -924,13 +924,13 @@ onMounted(() => {
 .field-title {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin: 16px 0 8px;
 }
 
 .field-desc {
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin: 8px 0;
   line-height: 1.6;
 }
@@ -949,7 +949,7 @@ onMounted(() => {
   .formula-hint {
     display: block;
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
     margin-top: 4px;
   }
 }
@@ -965,12 +965,12 @@ onMounted(() => {
     justify-content: space-between;
     align-items: center;
     padding: 10px 14px;
-    background: #f5f7fa;
+    background: var(--el-bg-color-page);
     border-bottom: 1px solid #e4e7ed;
     .subform-title {
       font-size: 14px;
       font-weight: 600;
-      color: #303133;
+      color: var(--el-text-color-primary);
     }
   }
 }
@@ -983,7 +983,7 @@ onMounted(() => {
   text-align: center;
   margin-top: 30px;
   padding: 20px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 

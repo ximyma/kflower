@@ -136,7 +136,7 @@
           <el-form :model="jsonForm" label-width="80px" style="margin-top:12px">
             <el-form-item label="表头行">
               <el-input-number v-model="jsonForm.headerRow" :min="0" :max="10" size="small" />
-              <span style="font-size:12px;color:#909399;margin-left:8px">（0=第1行为表头）</span>
+              <span style="font-size:12px;color: var(--el-text-color-secondary);margin-left:8px">（0=第1行为表头）</span>
             </el-form-item>
             <el-form-item label="最大行数">
               <el-input-number v-model="jsonForm.maxRows" :min="10" :max="10000" :step="100" size="small" />
@@ -461,12 +461,12 @@ async function doBatchConvert() {
 .page-header h2 {
   margin: 0;
   font-size: 24px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .subtitle {
   margin: 8px 0 0;
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 14px;
 }
 
@@ -491,7 +491,7 @@ async function doBatchConvert() {
 
 .status-path {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin: 0;
   max-width: 300px;
   overflow: hidden;
@@ -506,7 +506,7 @@ async function doBatchConvert() {
 
 .dep-title {
   font-size: 13px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin: 0 0 4px;
 }
 
@@ -520,7 +520,7 @@ async function doBatchConvert() {
 
 .upload-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-top: 4px;
 }
 
@@ -534,7 +534,7 @@ async function doBatchConvert() {
 
 .hint-text {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin: 4px 0 0;
 }
 </style>

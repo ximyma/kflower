@@ -423,12 +423,12 @@ function fixIssue(issue: any) {
 .page-header h2 {
   margin: 0;
   font-size: 24px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .subtitle {
   margin: 8px 0 0;
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 14px;
 }
 
@@ -437,7 +437,7 @@ function fixIssue(issue: any) {
 }
 
 .stat-card {
-  background: white;
+  background: var(--el-bg-color);
   border-radius: 8px;
   padding: 20px;
   border: 1px solid #ebeef5;
@@ -459,7 +459,7 @@ function fixIssue(issue: any) {
 
 .stat-icon.connections { background: #ecf5ff; color: #409EFF; }
 .stat-icon.sources { background: #f0f9eb; color: #67C23A; }
-.stat-icon.sync { background: #fdf6ec; color: #E6A23C; }
+.stat-icon.sync { background: var(--el-color-warning-light-9); color: #E6A23C; }
 .stat-icon.health { background: #fef0f0; color: #F56C6C; }
 
 .stat-info {
@@ -469,12 +469,12 @@ function fixIssue(issue: any) {
 .stat-value {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .stat-label {
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-top: 4px;
 }
 
@@ -505,7 +505,7 @@ function fixIssue(issue: any) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fafafa;
+  background: var(--el-bg-color-page);
   border-radius: 4px;
 }
 
@@ -515,13 +515,13 @@ function fixIssue(issue: any) {
 
 .editor-title {
   font-size: 18px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin-bottom: 12px;
 }
 
 .editor-hint {
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-bottom: 24px;
 }
 
@@ -535,7 +535,7 @@ function fixIssue(issue: any) {
 .mapping-source, .mapping-transform, .mapping-target {
   padding: 20px;
   border-radius: 8px;
-  background: white;
+  background: var(--el-bg-color);
   border: 2px solid #ebeef5;
   min-width: 180px;
 }
@@ -543,7 +543,7 @@ function fixIssue(issue: any) {
 .mapping-title {
   font-weight: 600;
   margin-bottom: 12px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .mapping-fields {
@@ -554,10 +554,10 @@ function fixIssue(issue: any) {
 
 .field-item {
   padding: 6px 12px;
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
   border-radius: 4px;
   font-size: 13px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 .transform-rules {
@@ -576,7 +576,7 @@ function fixIssue(issue: any) {
 
 .mapping-arrow {
   font-size: 24px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .quality-metrics {
@@ -593,7 +593,7 @@ function fixIssue(issue: any) {
 
 .metric-label {
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin-bottom: 8px;
 }
 
@@ -604,7 +604,7 @@ function fixIssue(issue: any) {
 .issues-title {
   font-weight: 600;
   margin-bottom: 12px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .issue-item {
@@ -625,13 +625,13 @@ function fixIssue(issue: any) {
 
 .issue-name {
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin-bottom: 4px;
 }
 
 .issue-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .issue-action {
@@ -657,6 +657,6 @@ function fixIssue(issue: any) {
 .progress-label {
   margin-bottom: 8px;
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 </style>
