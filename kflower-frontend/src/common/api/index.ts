@@ -173,6 +173,17 @@ export const notificationAPI = {
   send: (data: { user_id: number; message: string; channel?: string }) =>
     api.post('/notifications/send', data),
   listUsers: (params?: any) => api.get('/users/', { params }),
+  
+  // 通知模板 API
+  getTemplates: (params?: { category?: string; event_type?: string; is_active?: boolean }) =>
+    api.get('/notifications/templates', { params }),
+  getTemplate: (id: number) => api.get(`/notifications/templates/${id}`),
+  createTemplate: (data: any) => api.post('/notifications/templates', data),
+  updateTemplate: (id: number, data: any) => api.put(`/notifications/templates/${id}`, data),
+  deleteTemplate: (id: number) => api.delete(`/notifications/templates/${id}`),
+  sendWithTemplate: (data: { template_id: number; user_ids: number[]; variables?: any; channels?: string[] }) =>
+    api.post('/notifications/send-with-template', data),
+  getChannels: () => api.get('/notifications/channels'),
 }
 
 export const knowledgeAPI = {

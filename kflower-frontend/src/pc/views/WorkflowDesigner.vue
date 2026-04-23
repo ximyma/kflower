@@ -1314,6 +1314,177 @@
                 </el-form-item>
               </el-form>
             </el-tab-pane>
+            
+            <!-- AI 配置 -->
+            <el-tab-pane label="AI 配置" name="ai_config" v-if="['ai_approval', 'ai_review', 'ai_classify'].includes(selectedNodeData.type)">
+              <el-form label-width="100px">
+                <el-form-item label="AI 模型">
+                  <el-select v-model="nodeConfig.ai.model_provider" placeholder="选择模型提供商" style="width: 100%">
+                    <el-option label="OpenAI" value="openai" />
+                    <el-option label="Azure OpenAI" value="azure" />
+                    <el-option label="DeepSeek" value="deepseek" />
+                    <el-option label="本地模型" value="local" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="模型名称">
+                  <el-input v-model="nodeConfig.ai.model_name" placeholder="如 gpt-4, deepseek-chat" />
+                </el-form-item>
+                <el-form-item label="指令配置">
+                  <el-input
+                    v-model="nodeConfig.ai.instruction"
+                    type="textarea"
+                    :rows="4"
+                    placeholder="输入 AI 处理指令，如：判断该申请是否符合审批条件..."
+                  />
+                </el-form-item>
+                <el-form-item label="置信度阈值">
+                  <el-slider v-model="nodeConfig.ai.confidence_threshold" :min="0" :max="100" :step="5" show-input />
+                </el-form-item>
+                <el-form-item label="输出处理">
+                  <el-radio-group v-model="nodeConfig.ai.output_action">
+                    <el-radio label="pass">自动通过</el-radio>
+                    <el-radio label="reject">自动驳回</el-radio>
+                    <el-radio label="escalate">转人工</el-radio>
+                  </el-radio-group>
+                </el-form-item>
+                <el-form-item label="结果字段">
+                  <el-input v-model="nodeConfig.ai.result_field" placeholder="AI 判断结果存储字段" />
+                </el-form-item>
+                <el-form-item label="超时时间">
+                  <el-input-number v-model="nodeConfig.ai.timeout_seconds" :min="5" :max="300" :step="5" />
+                  <span style="margin-left: 8px; color: var(--el-text-color-secondary);">秒</span>
+                </el-form-item>
+              </el-form>
+            </el-tab-pane>
+            
+            <!-- SLA 超时配置 -->
+            <el-tab-pane label="SLA 配置" name="sla_config" v-if="['approval', 'task', 'cc', 'ai_approval', 'ai_review'].includes(selectedNodeData.type)">
+              <el-form label-width="100px" class="node-config-form">
+                <!-- SLA 开关 -->
+                <el-form-item label="启用 SLA">
+                  <el-switch v-model="nodeConfig.sla.enabled" />
+                </el-form-item>
+                
+                <template v-if="nodeConfig.sla.enabled">
+                  <!-- 超时时间 -->
+                  <el-form-item label="超时时间">
+                    <el-input-number v-model="nodeConfig.sla.deadline_hours" :min="1" :max="168" :step="1" />
+                    <span style="margin-left: 8px; color: var(--el-text-color-secondary);">小时</span>
+                  </el-form-item>
+                  
+                  <!-- 启用提醒 -->
+                  <el-form-item label="超时提醒">
+                    <el-switch v-model="nodeConfig.sla.reminder_enabled" />
+                  </el-form-item>
+                  
+                  <!-- 提醒时间点 -->
+                  <el-form-item label="提醒时间" v-if="nodeConfig.sla.reminder_enabled">
+                    <el-checkbox-group v-model="nodeConfig.sla.reminder_at">
+                      <el-checkbox :label="4">4小时前</el-checkbox>
+                      <el-checkbox :label="8">8小时前</el-checkbox>
+                      <el-checkbox :label="20">20小时前</el-checkbox>
+                      <el-checkbox :label="24">1天前</el-checkbox>
+                      <el-checkbox :label="48">2天前</el-checkbox>
+                    </el-checkbox-group>
+                    <div class="form-tip">选择提前提醒的时间点</div>
+                  </el-form-item>
+                  
+                  <!-- 启用升级 -->
+                  <el-form-item label="超时升级">
+                    <el-switch v-model="nodeConfig.sla.escalate_enabled" />
+                  </el-form-item>
+                  
+                  <!-- 升级策略 -->
+                  <el-form-item label="升级给" v-if="nodeConfig.sla.escalate_enabled">
+                    <el-select v-model="nodeConfig.sla.escalate_to" placeholder="选择升级对象" style="width: 100%">
+                      <el-option label="部门主管" value="manager" />
+                      <el-option label="部门负责人" value="supervisor" />
+                      <el-option label="系统管理员" value="admin" />
+                      <el-option label="指定人员" value="designated" />
+                    </el-select>
+                  </el-form-item>
+                  
+                  <!-- 指定人员 -->
+                  <el-form-item label="升级人员" v-if="nodeConfig.sla.escalate_enabled && nodeConfig.sla.escalate_to === 'designated'">
+                    <el-select
+                      v-model="nodeConfig.sla.escalate_user_ids"
+                      multiple
+                      placeholder="选择升级人员"
+                      filterable
+                      style="width: 100%"
+                    >
+                      <el-option-group label="用户">
+                        <el-option
+                          v-for="user in users"
+                          :key="`user-${user.id}`"
+                          :label="`${user.full_name || user.username} (${user.username})`"
+                          :value="user.id"
+                        />
+                      </el-option-group>
+                    </el-select>
+                  </el-form-item>
+                </template>
+                
+                <!-- SLA 状态说明 -->
+                <el-alert
+                  type="info"
+                  :closable="false"
+                  show-icon
+                  style="margin-top: 16px"
+                >
+                  <template #title>
+                    <span>SLA 说明</span>
+                  </template>
+                  <div style="font-size: 12px; color: var(--el-text-color-secondary);">
+                    超时后系统将自动发送催办提醒，升级策略可确保任务被及时处理。
+                  </div>
+                </el-alert>
+              </el-form>
+            </el-tab-pane>
+            
+            <!-- 通知配置 -->
+            <el-tab-pane label="通知配置" name="notification" v-if="selectedNodeData.type === 'notification'">
+              <el-form label-width="100px">
+                <el-form-item label="通知渠道">
+                  <el-checkbox-group v-model="nodeConfig.notification.channels">
+                    <el-checkbox label="email">邮件</el-checkbox>
+                    <el-checkbox label="sms">短信</el-checkbox>
+                    <el-checkbox label="wecom">企业微信</el-checkbox>
+                    <el-checkbox label="dingtalk">钉钉</el-checkbox>
+                  </el-checkbox-group>
+                </el-form-item>
+                <el-form-item label="通知模板">
+                  <el-select v-model="nodeConfig.notification.template_id" placeholder="选择通知模板" style="width: 100%">
+                    <el-option v-for="tpl in notificationTemplates" :key="tpl.id" :label="tpl.name" :value="tpl.id" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="模板内容">
+                  <el-input
+                    v-model="nodeConfig.notification.template_content"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="支持变量：{title}, {applicant}, {result}, {url}"
+                  />
+                </el-form-item>
+                <el-form-item label="接收人">
+                  <el-radio-group v-model="nodeConfig.notification.receiver_type">
+                    <el-radio label="fixed">固定人员</el-radio>
+                    <el-radio label="dynamic">动态获取</el-radio>
+                    <el-radio label="executor">流程发起人</el-radio>
+                  </el-radio-group>
+                </el-form-item>
+                <el-form-item label="接收人员" v-if="nodeConfig.notification.receiver_type === 'fixed'">
+                  <el-select v-model="nodeConfig.notification.receivers" multiple placeholder="选择接收人" style="width: 100%">
+                    <el-option v-for="user in users" :key="user.id" :label="user.name" :value="user.id" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="接收人字段" v-if="nodeConfig.notification.receiver_type === 'dynamic'">
+                  <el-select v-model="nodeConfig.notification.receiver_field" placeholder="选择表单字段" style="width: 100%">
+                    <el-option v-for="field in formFields" :key="field.name" :label="field.label" :value="field.name" />
+                  </el-select>
+                </el-form-item>
+              </el-form>
+            </el-tab-pane>
           </el-tabs>
           
           <el-divider />
@@ -1340,7 +1511,7 @@ import {
   Connection, Share, Sort, SetUp, MagicStick, Refresh, Timer, VideoPlay,
   Plus, Delete
 } from '@element-plus/icons-vue'
-import { templateAPI, userAPI, workflowAPI } from '../../common/api'
+import { templateAPI, userAPI, workflowAPI, notificationAPI } from '../../common/api'
 
 interface WorkflowNode {
   id: string
@@ -1454,6 +1625,38 @@ interface WorkflowNode {
         formula?: string
       }>
     }>
+    
+    // AI 节点配置
+    ai?: {
+      model_provider?: 'openai' | 'azure' | 'deepseek' | 'local'
+      model_name?: string
+      instruction?: string
+      confidence_threshold?: number
+      output_action?: 'pass' | 'reject' | 'escalate'
+      result_field?: string
+      timeout_seconds?: number
+    }
+    
+    // 通知节点配置
+    notification?: {
+      channels?: ('email' | 'sms' | 'wecom' | 'dingtalk')[]
+      template_id?: string
+      template_content?: string
+      receiver_type?: 'fixed' | 'dynamic' | 'executor'
+      receivers?: number[]
+      receiver_field?: string
+    }
+    
+    // SLA 超时配置
+    sla?: {
+      enabled?: boolean
+      deadline_hours?: number       // 超时小时数
+      reminder_at?: number[]       // 提醒时间点（小时），如 [4, 8, 20]
+      reminder_enabled?: boolean
+      escalate_enabled?: boolean
+      escalate_to?: 'manager' | 'supervisor' | 'admin' | 'designated'
+      escalate_user_ids?: number[]
+    }
   }
 }
 
@@ -1481,6 +1684,12 @@ const loadingUsers = ref(false)
 // 角色列表 - 用于人员选择
 const roles = ref<any[]>([])
 const loadingRoles = ref(false)
+
+// 通知模板列表
+const notificationTemplates = ref<any[]>([])
+
+// 表单字段列表 - 根据选中节点的表单模板动态获取
+const formFields = computed(() => getTemplateFields(nodeConfig.value.form_template_id))
 
 const canvasRef = ref<HTMLElement>()
 const connectionsSvg = ref<SVGSVGElement>()
@@ -1570,11 +1779,32 @@ const loadRoles = async () => {
   }
 }
 
+// 加载通知模板
+const loadNotificationTemplates = async () => {
+  try {
+    const response = await notificationAPI.getTemplates({ is_active: true })
+    if (response.data) {
+      notificationTemplates.value = response.data
+    }
+  } catch (error) {
+    console.error('加载通知模板失败:', error)
+    // 如果失败，使用默认模板
+    notificationTemplates.value = [
+      { id: 1, name: '审批通过通知', category: 'approval', event_type: 'approval_completed' },
+      { id: 2, name: '审批拒绝通知', category: 'approval', event_type: 'approval_rejected' },
+      { id: 3, name: '任务分配通知', category: 'task', event_type: 'task_assigned' },
+      { id: 4, name: '催办提醒', category: 'reminder', event_type: 'deadline_reminder' },
+      { id: 5, name: '超时升级通知', category: 'escalation', event_type: 'escalation' }
+    ]
+  }
+}
+
 // 初始化加载数据
 const initData = async () => {
   loadTemplates()
   loadUsers()
   loadRoles()
+  loadNotificationTemplates()  // 加载通知模板
   
   // 如果提供了工作流ID，则加载现有工作流
   if (workflowId && workflowId !== 'new') {
@@ -1889,6 +2119,41 @@ const nodeConfig = computed(() => {
   // 确保 plugins 对象存在
   if (!selectedNodeData.value.config.plugins) {
     selectedNodeData.value.config.plugins = { before: '', after: '' }
+  }
+  // 确保 AI 配置对象存在
+  if (!selectedNodeData.value.config.ai) {
+    selectedNodeData.value.config.ai = {
+      model_provider: 'openai',
+      model_name: 'gpt-4',
+      instruction: '',
+      confidence_threshold: 70,
+      output_action: 'escalate',
+      result_field: 'ai_result',
+      timeout_seconds: 30
+    }
+  }
+  // 确保通知配置对象存在
+  if (!selectedNodeData.value.config.notification) {
+    selectedNodeData.value.config.notification = {
+      channels: ['email'],
+      template_id: '',
+      template_content: '',
+      receiver_type: 'executor',
+      receivers: [],
+      receiver_field: ''
+    }
+  }
+  // 确保 SLA 配置对象存在
+  if (!selectedNodeData.value.config.sla) {
+    selectedNodeData.value.config.sla = {
+      enabled: false,
+      deadline_hours: 24,
+      reminder_at: [4, 8, 20],
+      reminder_enabled: true,
+      escalate_enabled: false,
+      escalate_to: 'manager',
+      escalate_user_ids: []
+    }
   }
   return selectedNodeData.value.config
 })

@@ -17,6 +17,7 @@ def init_db():
     import app.models.workflow  # noqa
     import app.models.ai  # noqa
     import app.models.permission  # noqa
+    import app.models.notification_template  # noqa
 
 
 async def create_default_user():

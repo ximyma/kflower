@@ -181,6 +181,18 @@ class WorkflowEngine:
                 node_config=node
             )
             self.db.add(task)
+            await self.db.flush()  # 刷新以获取 task.id
+            
+            # 设置 SLA（升级方案 4.3）
+            sla_config = config.get("sla", {})
+            if sla_config and sla_config.get("enabled"):
+                sla_manager = SLAManager(self.db)
+                await sla_manager.setup_task_sla(task.id, {
+                    "deadline_hours": sla_config.get("deadline_hours", 24),
+                    "reminder_at": sla_config.get("reminder_at", [4, 8, 20]),
+                    "escalate_to": sla_config.get("escalate_to", "manager"),
+                    "escalate_user_id": sla_config.get("escalate_user_id")
+                })
             
             # 抄送或通知
             await self._send_notification(assignee["user_id"], node.get("name", ""), instance_id)
