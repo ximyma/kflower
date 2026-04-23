@@ -620,6 +620,37 @@ async def query_knowledge(
     return {"results": results}
 
 
+@router.post("/app-search")
+async def search_app_knowledge(
+    app_id: int = Query(..., description="应用ID"),
+    query: str = Query(..., description="查询文本"),
+    top_k: int = Query(5, description="返回结果数"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    在应用绑定的知识库中搜索
+    支持应用级自动索引的数据检索
+    """
+    from app.core.rag_autoindexer import get_rag_autoindexer
+    
+    autoindexer = get_rag_autoindexer()
+    
+    results = await autoindexer.search_app_knowledge(
+        app_id=app_id,
+        query=query,
+        top_k=top_k,
+        db=db,
+    )
+    
+    return {
+        "app_id": app_id,
+        "query": query,
+        "results": results,
+        "total": len(results)
+    }
+
+
 # ============ 内部解析函数 ============
 
 async def _parse_document(doc_id: int, db: AsyncSession):

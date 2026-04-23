@@ -59,6 +59,11 @@
         <KnowledgeBaseConfig :app-id="appId" />
       </el-tab-pane>
       
+      <!-- 知识搜索 -->
+      <el-tab-pane label="知识搜索" name="knowledge-search">
+        <KnowledgeSearch :app-id="appId" />
+      </el-tab-pane>
+      
       <!-- 审计日志 -->
       <el-tab-pane label="审计日志" name="audit">
         <AuditLogViewer :app-id="appId" />
@@ -67,6 +72,11 @@
       <!-- AI设计助手 -->
       <el-tab-pane label="AI设计助手" name="ai-design">
         <AIDesigner :app-id="appId" />
+      </el-tab-pane>
+      
+      <!-- 版本管理 -->
+      <el-tab-pane label="版本管理" name="versions">
+        <VersionManager :app-id="appId" @restored="loadAppData" />
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -90,6 +100,8 @@ import PermissionConfig from './components/PermissionConfig.vue'
 import AuditLogViewer from './components/AuditLogViewer.vue'
 import AIDesigner from './components/AIDesigner.vue'
 import KnowledgeBaseConfig from './components/KnowledgeBaseConfig.vue'
+import KnowledgeSearch from './components/KnowledgeSearch.vue'
+import VersionManager from './components/VersionManager.vue'
 
 const route = useRoute()
 const router = useRouter()

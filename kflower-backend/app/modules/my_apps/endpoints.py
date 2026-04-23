@@ -512,3 +512,45 @@ async def restore_version(
     
     await db.commit()
     return {"message": f"已恢复到版本 {version.version}"}
+
+
+# ============ AI 应用生成 ============
+
+@router.post("/ai-generate")
+async def ai_generate_app(
+    description: str,
+    app_name: str = None,
+    skip_workflow: bool = False,
+    skip_dashboard: bool = False,
+    skip_agent: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    AI 自动生成应用
+    从自然语言描述生成完整应用，包括表单、工作流、关系、仪表盘、智能体
+    """
+    from app.core.ai_app_generator import get_ai_app_generator
+    
+    generator = get_ai_app_generator()
+    
+    result = await generator.generate_from_description(
+        description=description,
+        db=db,
+        user_id=current_user.id,
+        organization_id=None,
+        app_name=app_name,
+        options={
+            "skip_workflow": skip_workflow,
+            "skip_dashboard": skip_dashboard,
+            "skip_agent": skip_agent,
+        }
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail="应用生成失败: " + "; ".join(result.get("errors", ["未知错误"]))
+        )
+    
+    return result

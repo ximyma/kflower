@@ -95,6 +95,18 @@ export const appAPI = {
     request.post(`/apps/${appId}/versions`, data),
   restoreVersion: (appId: number, versionId: number) =>
     request.post(`/apps/${appId}/versions/${versionId}/restore`),
+
+  // ============ AI 应用生成 ============
+  aiGenerate: (description: string, appName?: string, options?: { skipWorkflow?: boolean; skipDashboard?: boolean; skipAgent?: boolean }) =>
+    request.post('/apps/ai-generate', null, {
+      params: {
+        description,
+        app_name: appName,
+        skip_workflow: options?.skipWorkflow,
+        skip_dashboard: options?.skipDashboard,
+        skip_agent: options?.skipAgent,
+      }
+    }),
 }
 
 export default appAPI

@@ -499,6 +499,78 @@
 
                 <!-- ===== 公式/计算字段设置 ===== -->
                 <el-divider>公式与计算</el-divider>
+                
+                <!-- 字段选择器 & 函数面板 -->
+                <el-row :gutter="12" style="margin-bottom:12px">
+                  <!-- 字段选择器 -->
+                  <el-col :span="12">
+                    <el-dropdown trigger="click" @command="insertFieldToFormula">
+                      <el-button size="small">
+                        <el-icon><Plus /></el-icon> 插入字段
+                      </el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item
+                            v-for="(field, idx) in availableFieldsForFormula"
+                            :key="idx"
+                            :command="field.name"
+                          >
+                            <el-icon v-if="field.type === 'number'" style="margin-right:4px"><Coin /></el-icon>
+                            <el-icon v-else style="margin-right:4px"><Document /></el-icon>
+                            {{ field.label }} <span style="color:var(--el-text-color-secondary);font-size:12px;margin-left:4px">({{ field.name }})</span>
+                          </el-dropdown-item>
+                          <el-dropdown-item v-if="availableFieldsForFormula.length === 0" disabled>
+                            <span style="color:var(--el-text-color-placeholder)">无可用字段</span>
+                          </el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                  </el-col>
+                  
+                  <!-- 函数选择器 -->
+                  <el-col :span="12">
+                    <el-dropdown trigger="click" @command="insertFunctionToFormula">
+                      <el-button size="small">
+                        <el-icon><Function /></el-icon> 插入函数
+                      </el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item divided disabled><span style="font-weight:600;font-size:12px">数学函数</span></el-dropdown-item>
+                          <el-dropdown-item v-for="fn in FORMULA_FUNCTIONS.math" :key="fn.name" :command="fn.template">
+                            <span style="font-family:monospace">{{ fn.name }}</span>
+                            <span style="color:var(--el-text-color-secondary);font-size:11px;margin-left:8px">{{ fn.desc }}</span>
+                          </el-dropdown-item>
+                          
+                          <el-dropdown-item divided disabled><span style="font-weight:600;font-size:12px">字符串函数</span></el-dropdown-item>
+                          <el-dropdown-item v-for="fn in FORMULA_FUNCTIONS.string" :key="fn.name" :command="fn.template">
+                            <span style="font-family:monospace">{{ fn.name }}</span>
+                            <span style="color:var(--el-text-color-secondary);font-size:11px;margin-left:8px">{{ fn.desc }}</span>
+                          </el-dropdown-item>
+                          
+                          <el-dropdown-item divided disabled><span style="font-weight:600;font-size:12px">日期函数</span></el-dropdown-item>
+                          <el-dropdown-item v-for="fn in FORMULA_FUNCTIONS.date" :key="fn.name" :command="fn.template">
+                            <span style="font-family:monospace">{{ fn.name }}</span>
+                            <span style="color:var(--el-text-color-secondary);font-size:11px;margin-left:8px">{{ fn.desc }}</span>
+                          </el-dropdown-item>
+                          
+                          <el-dropdown-item divided disabled><span style="font-weight:600;font-size:12px">逻辑函数</span></el-dropdown-item>
+                          <el-dropdown-item v-for="fn in FORMULA_FUNCTIONS.logic" :key="fn.name" :command="fn.template">
+                            <span style="font-family:monospace">{{ fn.name }}</span>
+                            <span style="color:var(--el-text-color-secondary);font-size:11px;margin-left:8px">{{ fn.desc }}</span>
+                          </el-dropdown-item>
+                          
+                          <el-dropdown-item divided disabled><span style="font-weight:600;font-size:12px">聚合函数</span></el-dropdown-item>
+                          <el-dropdown-item v-for="fn in FORMULA_FUNCTIONS.aggregate" :key="fn.name" :command="fn.template">
+                            <span style="font-family:monospace">{{ fn.name }}</span>
+                            <span style="color:var(--el-text-color-secondary);font-size:11px;margin-left:8px">{{ fn.desc }}</span>
+                          </el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                  </el-col>
+                </el-row>
+                
+                <!-- 公式输入区 -->
                 <el-form-item>
                   <template #label>
                     <span>计算公式</span>
@@ -506,29 +578,47 @@
                       <template #content>
                         用 {字段名} 引用其他字段值<br/>
                         支持：+ - * / ** %<br/>
-                        内置函数：ROUND、SUM、IF 等<br/>
-                        示例：{单价} * {数量}<br/>
-                        ROUND({金额} * 0.13, 2)
+                        点击上方按钮快速插入字段或函数
                       </template>
-                      <el-icon style="margin-left:4px;color: var(--el-text-color-secondary);cursor:pointer"><QuestionFilled /></el-icon>
+                      <el-icon style="margin-left:4px;color:var(--el-text-color-secondary);cursor:pointer"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </template>
                   <el-input
+                    ref="formulaInputRef"
                     v-model="currentTemplate.fields[selectedField].formula"
                     type="textarea"
-                    :rows="3"
+                    :rows="4"
                     placeholder="例如：{单价} * {数量} 或 ROUND({金额} * 0.13, 2)"
+                    @input="onFormulaInput"
                     @blur="validateFieldFormula"
                   />
-                  <div v-if="formulaValidation[selectedField]" style="margin-top:4px">
-                    <el-tag v-if="formulaValidation[selectedField].valid" type="success" size="small">
-                      ✓ 公式正确
-                    </el-tag>
-                    <el-tag v-else type="danger" size="small">
-                      ✗ {{ formulaValidation[selectedField].error }}
+                  
+                  <!-- 依赖字段可视化 -->
+                  <div v-if="formulaDependencies.length > 0" style="margin-top:8px">
+                    <span style="font-size:12px;color:var(--el-text-color-secondary);margin-right:8px">依赖字段:</span>
+                    <el-tag
+                      v-for="dep in formulaDependencies"
+                      :key="dep"
+                      size="small"
+                      type="info"
+                      style="margin-right:4px"
+                    >
+                      {{ dep }}
                     </el-tag>
                   </div>
-                  <div v-if="currentTemplate.fields[selectedField].formula" style="margin-top:4px">
+                  
+                  <!-- 验证状态 -->
+                  <div v-if="formulaValidation[selectedField]" style="margin-top:8px">
+                    <el-tag v-if="formulaValidation[selectedField].valid" type="success" size="small">
+                      <el-icon style="margin-right:4px"><CircleCheck /></el-icon> 公式正确
+                    </el-tag>
+                    <el-tag v-else type="danger" size="small">
+                      <el-icon style="margin-right:4px"><CircleClose /></el-icon> {{ formulaValidation[selectedField].error }}
+                    </el-tag>
+                  </div>
+                  
+                  <!-- 卡为计算字段 -->
+                  <div v-if="currentTemplate.fields[selectedField].formula" style="margin-top:8px">
                     <el-switch
                       v-model="currentTemplate.fields[selectedField].is_formula"
                       active-text="标记为计算字段（只读）"
@@ -1245,7 +1335,7 @@ import {
   Brush, PictureFilled, User, OfficeBuilding, Link, Message, Phone,
   Lock, Timer, Alarm, DateRange, Share, Star, Notebook, Download,
   ArrowLeft, MoreFilled, Rank, RefreshRight, QuestionFilled, Promotion,
-  InfoFilled
+  InfoFilled, Function, Coin, CircleCheck, CircleClose
 } from '@element-plus/icons-vue'
 import { templateAPI, userAPI } from '../../common/api'
 import { useAIStore } from '../../common/store/ai'
@@ -1471,6 +1561,105 @@ function applyOptions() {
 // ============ 公式编辑器相关 ============
 
 const formulaValidation = ref<Record<number, {valid: boolean; error: string | null}>>({})
+const formulaDependencies = computed<string[]>(() => {
+  if (selectedField.value === null || !currentTemplate.fields[selectedField.value]?.formula) return []
+  const formula = currentTemplate.fields[selectedField.value].formula
+  const pattern = /\{([^}]+)\}/g
+  const deps: string[] = []
+  let match
+  while ((match = pattern.exec(formula)) !== null) {
+    if (!deps.includes(match[1])) deps.push(match[1])
+  }
+  return deps
+})
+
+// 可用于公式引用的字段（排除当前字段和已标记为计算的字段）
+const availableFieldsForFormula = computed(() => {
+  if (selectedField.value === null) return []
+  return currentTemplate.fields
+    .map((f: any, idx: number) => ({ ...f, _idx: idx }))
+    .filter((f: any, idx: number) => {
+      if (idx === selectedField.value) return false // 排除当前字段
+      if (f.is_formula) return false // 排除其他计算字段
+      return true
+    })
+})
+
+// 函数定义（分类）
+const FORMULA_FUNCTIONS = {
+  math: [
+    { name: 'ROUND', template: 'ROUND(,2)'.replace(',', '{光标位置}'), desc: '四舍五入' },
+    { name: 'FLOOR', template: 'FLOOR()', desc: '向下取整' },
+    { name: 'CEIL', template: 'CEIL()', desc: '向上取整' },
+    { name: 'ABS', template: 'ABS()', desc: '绝对值' },
+    { name: 'SQRT', template: 'SQRT()', desc: '平方根' },
+    { name: 'POWER', template: 'POWER(,2)'.replace(',', '{光标位置}'), desc: '幂运算' },
+    { name: 'MAX', template: 'MAX(,)', desc: '最大值' },
+    { name: 'MIN', template: 'MIN(,)', desc: '最小值' },
+  ],
+  string: [
+    { name: 'LEN', template: 'LEN()', desc: '字符串长度' },
+    { name: 'CONCAT', template: 'CONCAT(,)', desc: '字符串连接' },
+    { name: 'UPPER', template: 'UPPER()', desc: '转大写' },
+    { name: 'LOWER', template: 'LOWER()', desc: '转小写' },
+    { name: 'TRIM', template: 'TRIM()', desc: '去除空白' },
+    { name: 'LEFT', template: 'LEFT(,3)'.replace(',', '{光标位置}'), desc: '左侧截取' },
+    { name: 'RIGHT', template: 'RIGHT(,3)'.replace(',', '{光标位置}'), desc: '右侧截取' },
+    { name: 'REPLACE', template: 'REPLACE(,,)', desc: '字符串替换' },
+  ],
+  date: [
+    { name: 'TODAY', template: 'TODAY()', desc: '今天日期' },
+    { name: 'NOW', template: 'NOW()', desc: '当前时间' },
+    { name: 'YEAR', template: 'YEAR()', desc: '年份' },
+    { name: 'MONTH', template: 'MONTH()', desc: '月份' },
+    { name: 'DAY', template: 'DAY()', desc: '日期' },
+    { name: 'DATEDIFF', template: 'DATEDIFF(,,)', desc: '日期差' },
+    { name: 'DATE_FORMAT', template: 'DATE_FORMAT(,"%Y-%m-%d")'.replace(',', '{光标位置}'), desc: '格式化' },
+  ],
+  logic: [
+    { name: 'IF', template: 'IF(,,)', desc: '条件判断' },
+    { name: 'AND', template: 'AND(,)', desc: '逻辑与' },
+    { name: 'OR', template: 'OR(,)', desc: '逻辑或' },
+    { name: 'NOT', template: 'NOT()', desc: '逻辑非' },
+    { name: 'ISNULL', template: 'ISNULL()', desc: '是否为空' },
+    { name: 'ISEMPTY', template: 'ISEMPTY()', desc: '是否为空串' },
+    { name: 'SWITCH', template: 'SWITCH(,,)', desc: '多路选择' },
+  ],
+  aggregate: [
+    { name: 'SUM', template: 'SUM(,)', desc: '求和' },
+    { name: 'AVG', template: 'AVG(,)', desc: '平均值' },
+    { name: 'COUNT', template: 'COUNT()', desc: '计数' },
+    { name: 'SUMIF', template: 'SUMIF(,,)', desc: '条件求和' },
+    { name: 'COUNTIF', template: 'COUNTIF(,)', desc: '条件计数' },
+    { name: 'AVGIF', template: 'AVGIF(,,)', desc: '条件平均' },
+  ],
+}
+
+// 插入字段到公式
+function insertFieldToFormula(fieldName: string) {
+  if (selectedField.value === null) return
+  const f = currentTemplate.fields[selectedField.value]
+  const insert = `{${fieldName}}`
+  f.formula = (f.formula || '') + insert
+  validateFieldFormula()
+}
+
+// 插入函数到公式
+function insertFunctionToFormula(template: string) {
+  if (selectedField.value === null) return
+  const f = currentTemplate.fields[selectedField.value]
+  f.formula = (f.formula || '') + template
+  validateFieldFormula()
+}
+
+// 公式输入时实时验证（防抖）
+let formulaValidateTimer: ReturnType<typeof setTimeout> | null = null
+function onFormulaInput() {
+  if (formulaValidateTimer) clearTimeout(formulaValidateTimer)
+  formulaValidateTimer = setTimeout(() => {
+    validateFieldFormula()
+  }, 300)
+}
 
 function validateFieldFormula() {
   if (selectedField.value === null) return
@@ -1480,17 +1669,34 @@ function validateFieldFormula() {
     delete formulaValidation.value[selectedField.value]
     return
   }
-  // 简单前端语法检查
+  
+  // 检查字段引用有效性
   const fieldPattern = /\{([^}]+)\}/g
+  const validFieldNames = new Set(currentTemplate.fields.map((fld: any) => fld.name))
+  let match
+  let hasInvalidField = false
+  while ((match = fieldPattern.exec(formula)) !== null) {
+    if (!validFieldNames.has(match[1])) {
+      hasInvalidField = true
+      formulaValidation.value[selectedField.value] = { 
+        valid: false, 
+        error: `未知字段: ${match[1]}` 
+      }
+      return
+    }
+  }
+  
+  // 语法检查
   let expr = formula.replace(fieldPattern, '1')
-  // 替换函数名
-  expr = expr.replace(/\b(ROUND|FLOOR|CEIL|ABS|SQRT|POWER|MAX|MIN|SUM|AVG|IF|AND|OR|NOT|LEN|CONCAT|DATEDIFF|TODAY|NOW)\b/gi, 'f')
+  expr = expr.replace(/\b(ROUND|FLOOR|CEIL|ABS|SQRT|POWER|MAX|MIN|SUM|AVG|COUNT|SUMIF|COUNTIF|AVGIF|IF|AND|OR|NOT|LEN|CONCAT|UPPER|LOWER|TRIM|LEFT|RIGHT|REPLACE|TODAY|NOW|YEAR|MONTH|DAY|DATEDIFF|DATE_FORMAT|ISNULL|ISEMPTY|SWITCH)\b/gi, 'f')
+  
   try {
     // eslint-disable-next-line no-new-func
     new Function(`return (${expr})`)
     formulaValidation.value[selectedField.value] = { valid: true, error: null }
   } catch (e: any) {
-    formulaValidation.value[selectedField.value] = { valid: false, error: '语法错误' }
+    const msg = e.message.includes('Unexpected') ? '语法错误' : e.message
+    formulaValidation.value[selectedField.value] = { valid: false, error: `语法错误: ${msg}` }
   }
 }
 

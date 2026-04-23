@@ -129,6 +129,7 @@ class FormRelationBase(BaseModel):
     display_field: Optional[str] = None
     on_delete: str = "set_null"
     reverse_name: Optional[str] = None
+    auto_fill_fields: Optional[List[Dict[str, str]]] = None  # [{"from": "name", "to": "customer_name"}]
 
 
 class FormRelationCreate(FormRelationBase):
@@ -141,6 +142,7 @@ class FormRelationUpdate(BaseModel):
     display_field: Optional[str] = None
     on_delete: Optional[str] = None
     reverse_name: Optional[str] = None
+    auto_fill_fields: Optional[List[Dict[str, str]]] = None  # [{"from": "name", "to": "customer_name"}]
 
 
 class FormRelationResponse(FormRelationBase):

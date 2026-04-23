@@ -239,6 +239,9 @@ export const knowledgeAPI = {
   deleteNote: (note_id: number) => api.delete(`/knowledge/notes/${note_id}`),
   // 知识图谱
   getGraph: (kb_id?: number) => api.get('/knowledge/graph', { params: { kb_id } }),
+  // 应用级知识搜索
+  searchApp: (app_id: number, query: string, top_k?: number) => 
+    api.post('/knowledge/app-search', null, { params: { app_id, query, top_k: top_k || 5 } }),
 }
 
 export const dashboardAPI = {

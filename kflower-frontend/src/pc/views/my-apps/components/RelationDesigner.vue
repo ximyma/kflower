@@ -25,6 +25,16 @@
       </el-table-column>
       <el-table-column prop="to_template_name" label="目标表单" width="180" />
       <el-table-column prop="display_field" label="显示字段" width="150" />
+      <el-table-column label="自动填充" width="150">
+        <template #default="{ row }">
+          <template v-if="row.auto_fill_fields && row.auto_fill_fields.length > 0">
+            <el-tag v-for="(mapping, idx) in row.auto_fill_fields" :key="idx" size="small" style="margin: 2px;">
+              {{ mapping.from }} -> {{ mapping.to }}
+            </el-tag>
+          </template>
+          <span v-else style="color: var(--el-text-color-secondary);">无</span>
+        </template>
+      </el-table-column>
       <el-table-column label="删除策略" width="120">
         <template #default="{ row }">
           {{ row.on_delete === 'cascade' ? '级联删除' : '置空' }}
@@ -100,6 +110,30 @@
           <el-input v-model="form.reverse_name" placeholder="如：orders" />
           <span class="form-tip">从目标表单查看时的字段名</span>
         </el-form-item>
+
+        <!-- 自动填充字段映射 -->
+        <el-divider content-position="left">自动填充配置</el-divider>
+        <el-alert
+          title="选择关联记录时，自动将目标表单的字段值填充到源表单的指定字段"
+          type="info"
+          :closable="false"
+          style="margin-bottom: 12px;"
+        />
+        <div v-for="(mapping, idx) in form.auto_fill_fields" :key="idx" class="mapping-row">
+          <el-select v-model="mapping.from" placeholder="目标字段" style="width: 40%;" :disabled="!form.to_template_id">
+            <el-option v-for="f in toTemplateFields" :key="f" :label="f" :value="f" />
+          </el-select>
+          <span class="mapping-arrow">-></span>
+          <el-select v-model="mapping.to" placeholder="源表单字段" style="width: 40%;" :disabled="!form.from_template_id">
+            <el-option v-for="f in fromTemplateFields" :key="f" :label="f" :value="f" />
+          </el-select>
+          <el-button type="danger" link @click="form.auto_fill_fields.splice(idx, 1)">
+            <el-icon><Delete /></el-icon>
+          </el-button>
+        </div>
+        <el-button type="primary" link @click="addAutoFillMapping" :disabled="!form.from_template_id || !form.to_template_id">
+          <el-icon><Plus /></el-icon> 添加字段映射
+        </el-button>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -112,7 +146,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Delete } from '@element-plus/icons-vue'
 import appAPI from '@/common/api/myApps'
 import { templateAPI } from '@/common/api/index'
 
@@ -133,7 +167,8 @@ const form = ref({
   relation_type: 'belongs_to',
   display_field: 'name',
   on_delete: 'set_null',
-  reverse_name: ''
+  reverse_name: '',
+  auto_fill_fields: [] as Array<{from: string, to: string}>
 })
 
 function getRelationTypeLabel(type: string) {
@@ -226,6 +261,37 @@ async function deleteRelation(row: any) {
   }
 }
 
+// 获取目标模板字段列表
+const toTemplateFields = ref<string[]>([])
+const fromTemplateFields = ref<string[]>([])
+
+// 当选择模板后，加载字段列表
+async function loadTemplateFields(templateId: number | null, target: 'from' | 'to') {
+  if (!templateId) {
+    if (target === 'from') fromTemplateFields.value = []
+    else toTemplateFields.value = []
+    return
+  }
+  try {
+    const res: any = await templateAPI.get(templateId)
+    const fields = (res.fields || res.data?.fields || []).map((f: any) => f.name || f.field_name || f.label).filter(Boolean)
+    if (target === 'from') fromTemplateFields.value = fields
+    else toTemplateFields.value = fields
+  } catch {
+    // ignore
+  }
+}
+
+// 添加字段映射
+function addAutoFillMapping() {
+  form.value.auto_fill_fields.push({ from: '', to: '' })
+}
+
+// 监听模板选择变化，加载字段
+import { watch } from 'vue'
+watch(() => form.value.to_template_id, (val) => loadTemplateFields(val, 'to'))
+watch(() => form.value.from_template_id, (val) => loadTemplateFields(val, 'from'))
+
 onMounted(async () => {
   await loadTemplates()
   await loadRelations()
@@ -251,5 +317,17 @@ onMounted(async () => {
 .option-desc {
   color: var(--el-text-color-secondary);
   font-size: 12px;
+}
+
+.mapping-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mapping-arrow {
+  color: var(--el-text-color-secondary);
+  font-weight: bold;
 }
 </style>

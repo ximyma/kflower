@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>我的应用</h2>
       <div class="header-actions">
+        <el-button type="success" @click="showAIGenerator = true">
+          <el-icon><MagicStick /></el-icon> AI 生成
+        </el-button>
         <el-button @click="goToAIDesigner">
           <el-icon><MagicStick /></el-icon> AI设计助手
         </el-button>
@@ -88,6 +91,9 @@
         <el-button type="primary" @click="saveApp" :loading="saving">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- AI 应用生成对话框 -->
+    <AIAppGeneratorDialog v-model:visible="showAIGenerator" />
   </div>
 </template>
 
@@ -97,10 +103,12 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, View, Edit, Promotion, Delete, SetUp, MagicStick, ArrowDown, RefreshRight } from '@element-plus/icons-vue'
 import appAPI from '@/common/api/myApps'
+import AIAppGeneratorDialog from './my-apps/components/AIAppGeneratorDialog.vue'
 
 const router = useRouter()
 const apps = ref<any[]>([])
 const showCreateDialog = ref(false)
+const showAIGenerator = ref(false)
 const editingApp = ref<any>(null)
 const saving = ref(false)
 

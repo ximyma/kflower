@@ -480,6 +480,39 @@ async def submit_template_data(
         except Exception as e:
             pass
     
+    # ===== RAG 自动索引（升级方案 7.1） =====
+    if app_id:
+        try:
+            from app.core.rag_autoindexer import get_rag_autoindexer
+            
+            # 构建字段标签映射
+            field_labels = {f.get("name", ""): f.get("label", f.get("name", "")) for f in template.fields}
+            
+            # 提取字段值
+            field_values = {}
+            for field in template.fields:
+                field_name = field.get("name", "")
+                if field_name in data:
+                    field_values[field_name] = data[field_name]
+            
+            # 执行自动索引
+            autoindexer = get_rag_autoindexer()
+            index_result = await autoindexer.index_form_submission(
+                app_id=app_id,
+                template_id=template_id,
+                template_name=template.name,
+                template_code=template.code,
+                data_id=data.get("id", 0),
+                field_values=field_values,
+                field_labels=field_labels,
+                db=db,
+            )
+            
+            if index_result.get("indexed_count", 0) > 0:
+                logger.info(f"RAG 自动索引成功: {index_result}")
+        except Exception as e:
+            logger.warning(f"RAG 自动索引失败: {e}")
+    
     # ===== 流程审批触发（升级方案 4.1） =====
     workflow_instance = None
     try:
@@ -1024,6 +1057,39 @@ async def update_template_data(
                         await plugin_executor.execute(plugin.script_code, context, timeout=5)
             except Exception as e:
                 pass
+        
+        # ===== RAG 自动索引（升级方案 7.1） =====
+        if app_id:
+            try:
+                from app.core.rag_autoindexer import get_rag_autoindexer
+                
+                # 构建字段标签映射
+                field_labels = {f.get("name", ""): f.get("label", f.get("name", "")) for f in template.fields}
+                
+                # 提取字段值
+                field_values = {}
+                for field in template.fields:
+                    field_name = field.get("name", "")
+                    if field_name in data:
+                        field_values[field_name] = data[field_name]
+                
+                # 执行自动索引
+                autoindexer = get_rag_autoindexer()
+                index_result = await autoindexer.index_form_submission(
+                    app_id=app_id,
+                    template_id=template_id,
+                    template_name=template.name,
+                    template_code=template.code,
+                    data_id=data_id,
+                    field_values=field_values,
+                    field_labels=field_labels,
+                    db=db,
+                )
+                
+                if index_result.get("indexed_count", 0) > 0:
+                    logger.info(f"RAG 自动索引成功（更新）: {index_result}")
+            except Exception as e:
+                logger.warning(f"RAG 自动索引失败（更新）: {e}")
         
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="数据不存在")

@@ -95,6 +95,7 @@ class FormRelation(Base):
     display_field = Column(String(100), nullable=True)
     on_delete = Column(String(20), default="set_null")
     reverse_name = Column(String(100), nullable=True)
+    auto_fill_fields = Column(JSON, nullable=True)  # 自动填充字段映射 [{"from": "name", "to": "customer_name"}]
     created_at = Column(DateTime, server_default=func.now())
 
     # 关系
