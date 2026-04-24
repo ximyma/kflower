@@ -531,7 +531,7 @@
                   <el-col :span="12">
                     <el-dropdown trigger="click" @command="insertFunctionToFormula">
                       <el-button size="small">
-                        <el-icon><Function /></el-icon> 插入函数
+                        <el-icon><Operation /></el-icon> 插入函数
                       </el-button>
                       <template #dropdown>
                         <el-dropdown-menu>
@@ -1335,7 +1335,7 @@ import {
   Brush, PictureFilled, User, OfficeBuilding, Link, Message, Phone,
   Lock, Timer, Alarm, DateRange, Share, Star, Notebook, Download,
   ArrowLeft, MoreFilled, Rank, RefreshRight, QuestionFilled, Promotion,
-  InfoFilled, Function, Coin, CircleCheck, CircleClose
+  InfoFilled, Coin, CircleCheck, CircleClose
 } from '@element-plus/icons-vue'
 import { templateAPI, userAPI } from '../../common/api'
 import { useAIStore } from '../../common/store/ai'
@@ -2228,10 +2228,13 @@ const AI_SYSTEM_PROMPT_HINT = `请输出字段定义格式（type/label/name）�
 const aiStore = useAIStore()
 const selectedModelId = ref('')
 
-// 加载模型列表
+// 加载模型列表 + 处理路由参数
 onMounted(async () => {
   await loadTemplates()
-  await aiStore.loadModels()
+  await Promise.all([
+    aiStore.loadModels(),
+    handleRouteParams()
+  ])
   // 设置默认模型
   if (aiStore.models.length > 0) {
     selectedModelId.value = aiStore.currentModel?.modelId || aiStore.models[0].modelId
@@ -3292,10 +3295,7 @@ async function handleRouteParams() {
   }
 }
 
-onMounted(async () => {
-  await loadTemplates()
-  await handleRouteParams()
-})
+
 
 
 </script>

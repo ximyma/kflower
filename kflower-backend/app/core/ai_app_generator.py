@@ -322,7 +322,7 @@ class AIAppGenerator:
         try:
             template = Template(
                 name=spec.get("name", "未命名模板"),
-                code=spec.get("code", f"tpl_{uuid.uuid4().hex[:6]}"),
+                code=f"tpl_{uuid.uuid4().hex[:8]}",
                 description=spec.get("description", ""),
                 config=spec.get("config", {}),  # fields存储在config中
                 category=spec.get("category", "custom"),

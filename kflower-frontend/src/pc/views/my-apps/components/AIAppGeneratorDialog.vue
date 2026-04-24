@@ -111,7 +111,7 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Document, Share, Connection, Grid, User } from '@element-plus/icons-vue'
-import appAPI from '../../common/api/myApps'
+import appAPI from '@/common/api/myApps'
 
 const visible = defineModel<boolean>('visible', { default: false })
 

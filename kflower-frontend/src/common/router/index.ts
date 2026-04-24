@@ -344,14 +344,19 @@ router.beforeEach(async (to, from, next) => {
   const isPublicRoute = ['/login', '/register', '/app/login', '/app/register'].includes(toPath)
   const isRootRoute = toPath === '/'
 
+  // DEBUG
+  console.log('[Router]', toPath, { requiresAuth, isMobile, isMobileRoute, isPublicRoute, isRootRoute, isLoggedIn: userStore.isLoggedIn })
+
   // 手机访问PC端根路径，跳转到手机版登录
   if (isMobile && (isRootRoute || (!isMobileRoute && !isPublicRoute))) {
+    console.log('[Router] → redirect to /app/login (mobile guard)')
     next('/app/login')
     return
   }
 
   // PC访问手机端路径，跳转到PC首页
   if (!isMobile && isMobileRoute && !isPublicRoute) {
+    console.log('[Router] → redirect to /home (PC->mobile guard)')
     next('/home')
     return
   }
@@ -365,11 +370,13 @@ router.beforeEach(async (to, from, next) => {
       if (!loggedIn) {
         // 根据设备类型跳转到对应登录页
         const loginPath = isMobile ? '/app/login' : '/login'
+        console.log('[Router] → redirect to', loginPath, '(autoLogin failed)')
         next({ path: loginPath, query: { redirect: to.fullPath } })
         return
       }
     } else {
       const loginPath = isMobile ? '/app/login' : '/login'
+      console.log('[Router] → redirect to', loginPath, '(no token)')
       next({ path: loginPath, query: { redirect: to.fullPath } })
       return
     }
@@ -378,6 +385,7 @@ router.beforeEach(async (to, from, next) => {
   // 检查管理员权限
   if (to.meta.requiresAdmin && !userStore.isAdmin) {
     // 非管理员访问需要管理员权限的页面，重定向到首页
+    console.log('[Router] → redirect to Home (no admin)')
     next({ name: 'Home' })
     return
   }
@@ -385,6 +393,7 @@ router.beforeEach(async (to, from, next) => {
   // 已登录访问登录页，根据设备类型重定向
   if ((to.name === 'Login' || to.name === 'AppLogin') && userStore.isLoggedIn) {
     const homePath = isMobile ? '/app/home' : '/home'
+    console.log('[Router] → redirect to', homePath, '(already logged in, visiting login)')
     next(homePath)
     return
   }
@@ -392,10 +401,12 @@ router.beforeEach(async (to, from, next) => {
   // 已登录用户访问根路径，根据设备类型跳转
   if (isRootRoute && userStore.isLoggedIn) {
     const homePath = isMobile ? '/app/home' : '/home'
+    console.log('[Router] → redirect to', homePath, '(root route)')
     next(homePath)
     return
   }
 
+  console.log('[Router] → allow', toPath)
   next()
 })
 

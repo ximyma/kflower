@@ -5,6 +5,19 @@
 - 前端 Vue 3 + Element Plus，后端 FastAPI + SQLAlchemy + SQLite
 - 当前专注动态表单系统：模板设计 → 发布 → 动态建表 → 表单填写
 
+**项目目录结构（重要）**
+```
+e:\kkflower\
+├── app/                   ← Kflower 后端的 Python app 包（FastAPI 应用模块，含 api/core/schemas/services/utils）
+├── kflower-backend/       ← Kflower 后端项目根（main.py 启动入口等）
+├── kflower-frontend/
+│   └── src/
+│       ├── app/           ← 前端移动端视图代码（手机版 Vue 页面）
+│       └── pc/            ← 前端 PC 端视图代码
+```
+- `e:\kkflower\app\` = 后端 Python 包，非前端手机版
+- `kflower-frontend/src/app/` = 前端移动端视图（手机版入口）
+
 **技术细节**
 - 模板编码自动生成：`form_{id}` 格式，后端 `create_template` 创建后更新
 - 动态建表：发布时根据 `modules[].fields[]` 定义，通过 `CREATE TABLE form_data_{template_id}` 创建

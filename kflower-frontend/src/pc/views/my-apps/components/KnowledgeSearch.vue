@@ -76,7 +76,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { knowledgeAPI } from '../../common/api'
+import { knowledgeAPI } from '@/common/api'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
