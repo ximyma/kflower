@@ -123,8 +123,10 @@ async function loadAppData() {
     const res: any = await appAPI.get(appId)
     appData.value = res
   } catch (e: any) {
-    ElMessage.error('加载应用失败：' + (e.message || ''))
-    router.push('/my-apps')
+    // API 失败时显示错误，但不跳转，让用户可以继续编辑
+    console.error('加载应用失败:', e)
+    ElMessage.error('加载应用详情失败：' + (e.message || e.response?.data?.detail || '请检查网络或刷新重试'))
+    // 不再跳转到 my-apps，允许用户继续在设计界面
   }
 }
 

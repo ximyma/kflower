@@ -470,21 +470,36 @@ async function generateForms() {
         }]
       }
 
+      console.log(`[AI Designer] Creating template: ${tpl.name}`, templateData)
+      
       const res: any = await templateAPI.create(templateData)
-      const tplId = res.id || res.data?.id
+      console.log(`[AI Designer] Template create response:`, res)
+      
+      const tplId = res?.id || res?.data?.id
+      console.log(`[AI Designer] Template ID: ${tplId}`)
 
       const idx = generatedTemplates.value.findIndex(t => t.name === tpl.name)
       if (idx >= 0) {
-        generatedTemplates.value[idx]._status = 'success'
-        generatedTemplates.value[idx]._id = tplId
+        if (tplId) {
+          generatedTemplates.value[idx]._status = 'success'
+          generatedTemplates.value[idx]._id = tplId
+          console.log(`[AI Designer] Saved template ID ${tplId} to generatedTemplates[${idx}]`)
+        } else {
+          generatedTemplates.value[idx]._status = 'error'
+          generatedTemplates.value[idx]._error = '未获取到模板ID'
+          console.error(`[AI Designer] Template ID is null for ${tpl.name}`)
+        }
       }
 
       // 创建后立即发布模板（后端默认 is_published=false）
       if (tplId) {
         try {
+          console.log(`[AI Designer] Publishing template ${tplId}...`)
           await templateAPI.publish(tplId)
+          console.log(`[AI Designer] Template ${tplId} published successfully`)
         } catch (pubErr: any) {
-          console.warn(`Publish template ${tpl.name} warning:`, pubErr)
+          console.error(`Publish template ${tpl.name} error:`, pubErr)
+          ElMessage.warning(`模板「${tpl.name}」创建成功但发布失败，请稍后手动发布`)
         }
       }
 
@@ -494,13 +509,17 @@ async function generateForms() {
       const idx = generatedTemplates.value.findIndex(t => t.name === tpl.name)
       if (idx >= 0) {
         generatedTemplates.value[idx]._status = 'error'
-        generatedTemplates.value[idx]._error = e.message
+        generatedTemplates.value[idx]._error = e.message || e.response?.data?.detail || '未知错误'
       }
-      ElMessage.error(`表单「${tpl.name}」创建失败`)
+      ElMessage.error(`表单「${tpl.name}」创建失败: ${e.message || e.response?.data?.detail || '未知错误'}`)
     }
   }
 
   generatingForms.value = false
+  
+  // 检查是否有成功的模板
+  const successCount = generatedTemplates.value.filter(t => t._status === 'success').length
+  console.log(`[AI Designer] Form generation complete. Success: ${successCount}, Total: ${generatedTemplates.value.length}`)
 }
 
 // 更新模板
@@ -575,8 +594,19 @@ async function createApplication() {
     return
   }
 
+  // 检查模板是否都已创建
+  const templatesWithId = generatedTemplates.value.filter(t => t._id)
+  console.log(`[AI Designer] Templates with ID: ${templatesWithId.length}/${generatedTemplates.value.length}`)
+  
+  if (templatesWithId.length === 0) {
+    ElMessage.error('没有已创建的表单模板，请先完成"表单生成"步骤')
+    creating.value = false
+    return
+  }
+
   creating.value = true
   try {
+    console.log(`[AI Designer] Creating application: ${appInfo.value.name}`)
     const appRes: any = await appAPI.create({
       name: appInfo.value.name,
       description: appInfo.value.description,
@@ -586,23 +616,34 @@ async function createApplication() {
 
     const appId = appRes.id || appRes.data?.id
     createdApp.value = { ...appRes, id: appId }
+    console.log(`[AI Designer] Application created with ID: ${appId}`)
 
+    // 创建菜单
+    let menuCount = 0
     for (const menu of menuConfig.value) {
+      console.log(`[AI Designer] Processing menu: ${menu.label}, template_id: ${menu.template_id}`)
       if (menu.template_id) {
         try {
-          await appAPI.addMenu(appId, {
+          const menuRes = await appAPI.addMenu(appId, {
             template_id: menu.template_id,
             menu_label: menu.label,
             menu_icon: menu.icon,
             menu_order: menu.menu_order,
             parent_id: undefined
           })
-        } catch (e) {
-          console.error('Add menu error:', e)
+          console.log(`[AI Designer] Menu created: ${menu.label}`, menuRes)
+          menuCount++
+        } catch (e: any) {
+          console.error(`Add menu error for ${menu.label}:`, e)
+          ElMessage.warning(`创建菜单「${menu.label}」失败: ${e.message || e.response?.data?.detail || '未知错误'}`)
         }
+      } else {
+        console.warn(`[AI Designer] Menu ${menu.label} has no template_id, skipping`)
       }
     }
+    console.log(`[AI Designer] Created ${menuCount} menus`)
 
+    // 创建关系
     for (const rel of designResult.value.relations || []) {
       const fromTpl = generatedTemplates.value.find(t => t.name === rel.from_template)
       const toTpl = generatedTemplates.value.find(t => t.name === rel.to_template)
@@ -614,6 +655,7 @@ async function createApplication() {
             to_template_id: toTpl._id,
             relation_type: rel.relation_type
           })
+          console.log(`[AI Designer] Relation created: ${rel.from_template} -> ${rel.to_template}`)
         } catch (e) {
           console.error('Add relation error:', e)
         }
@@ -621,6 +663,7 @@ async function createApplication() {
     }
 
     await appAPI.publish(appId)
+    console.log(`[AI Designer] Application published`)
 
     if (homepageConfig.value.widgets?.length) {
       try {

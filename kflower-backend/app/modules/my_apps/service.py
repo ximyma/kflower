@@ -303,26 +303,36 @@ class MyAppsService:
         root_menus = []
         
         for menu in menus:
-            node = MenuTreeNode(
-                id=menu.id,
-                label=menu.menu_label,
-                icon=menu.menu_icon,
-                path=f"/app/{app_id}/form/{menu.template_id}",
-                template_id=menu.template_id,
-                workflow_id=menu.workflow_id,
-                workflow_trigger=menu.workflow_trigger,
-                workflow_auto_approve=menu.workflow_auto_approve,
-                workflow_node_mapping=menu.workflow_node_mapping or [],
-                children=[]
-            )
-            menu_map[menu.id] = node
+            # 处理 template_id 为 None 的情况
+            template_id = menu.template_id if menu.template_id is not None else 0
             
-            if menu.parent_id is None:
-                root_menus.append(node)
-            else:
-                parent = menu_map.get(menu.parent_id)
-                if parent:
-                    parent.children.append(node)
+            try:
+                node = MenuTreeNode(
+                    id=menu.id,
+                    label=menu.menu_label or "未命名菜单",
+                    icon=menu.menu_icon,
+                    path=f"/app/{app_id}/form/{template_id}",
+                    template_id=template_id,
+                    workflow_id=menu.workflow_id,
+                    workflow_trigger=menu.workflow_trigger,
+                    workflow_auto_approve=menu.workflow_auto_approve,
+                    workflow_node_mapping=menu.workflow_node_mapping or [],
+                    children=[]
+                )
+                menu_map[menu.id] = node
+                
+                if menu.parent_id is None:
+                    root_menus.append(node)
+                else:
+                    parent = menu_map.get(menu.parent_id)
+                    if parent:
+                        parent.children.append(node)
+            except Exception as e:
+                # 记录错误但继续处理其他菜单
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"处理菜单 {menu.id} 时出错: {e}")
+                continue
         
         return root_menus
 

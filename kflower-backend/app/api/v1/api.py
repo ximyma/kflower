@@ -34,7 +34,9 @@ api_router.include_router(apps_router)  # 我的应用模块
 from app.modules.my_apps import endpoints_plugins
 from app.modules.my_apps import endpoints_dashboard
 from app.modules.my_apps import endpoints_permissions
+from app.modules.my_apps import endpoints_ai_design
 
 api_router.include_router(endpoints_plugins.router)  # 插件管理
 api_router.include_router(endpoints_dashboard.router)  # 仪表盘
 api_router.include_router(endpoints_permissions.router)  # 权限管理
+api_router.include_router(endpoints_ai_design.router)  # AI设计助手

@@ -173,14 +173,19 @@ async function generateDesign() {
                       e.message?.includes('timeout') ||
                       e.response?.status === 504
     
+    // 检查是否是配置错误
+    const isConfigError = e.response?.status === 431 ||
+                          e.message?.includes('AI') && e.message?.includes('配置')
+    
     if (isTimeout) {
       ElMessage.error('生成超时：AI 处理时间较长，请稍后重试或简化需求描述')
+    } else if (isConfigError) {
+      ElMessage.error('AI 配置问题，请检查 AI 设置后重试')
     } else {
-      ElMessage.error('生成失败：' + (e.message || 'AI服务暂不可用'))
+      ElMessage.error('生成失败：' + (e.message || e.response?.data?.detail || 'AI服务暂不可用'))
     }
     
-    // 演示模式：生成模拟数据
-    generateMockDesign()
+    // 不再自动使用演示模式，让用户看到真实错误
   } finally {
     generating.value = false
   }

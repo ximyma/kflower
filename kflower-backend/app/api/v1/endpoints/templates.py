@@ -485,12 +485,23 @@ async def submit_template_data(
         try:
             from app.core.rag_autoindexer import get_rag_autoindexer
             
+            # 从 modules 中提取所有字段（兼容新旧格式）
+            all_template_fields = []
+            modules_list = template.modules or []
+            if isinstance(modules_list, str):
+                import json as _json
+                modules_list = _json.loads(modules_list) if modules_list else []
+            
+            for mod in modules_list:
+                if isinstance(mod, dict) and 'fields' in mod:
+                    all_template_fields.extend(mod['fields'] or [])
+            
             # 构建字段标签映射
-            field_labels = {f.get("name", ""): f.get("label", f.get("name", "")) for f in template.fields}
+            field_labels = {f.get("name", ""): f.get("label", f.get("name", "")) for f in all_template_fields}
             
             # 提取字段值
             field_values = {}
-            for field in template.fields:
+            for field in all_template_fields:
                 field_name = field.get("name", "")
                 if field_name in data:
                     field_values[field_name] = data[field_name]

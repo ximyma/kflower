@@ -318,18 +318,46 @@ class AIAppGenerator:
         根据规格创建模板
         """
         from app.models.workflow import Template
+        from app.core.template_manager import template_manager
         
         try:
+            # 生成模板编码
+            template_code = spec.get("code") or f"tpl_{uuid.uuid4().hex[:8]}"
+            
+            # 构建字段配置
+            fields = spec.get("fields", [])
+            config = spec.get("config", {})
+            if not config.get("fields") and fields:
+                config["fields"] = fields
+            
+            # 构建 modules 配置（新版格式）
+            modules = spec.get("modules", [{
+                "name": spec.get("name", "未命名模板"),
+                "label": spec.get("name", "未命名模板"),
+                "fields": fields
+            }])
+            
             template = Template(
                 name=spec.get("name", "未命名模板"),
-                code=f"tpl_{uuid.uuid4().hex[:8]}",
+                code=template_code,
                 description=spec.get("description", ""),
-                config=spec.get("config", {}),  # fields存储在config中
+                config=config,
+                modules=modules,  # 新版模块配置
                 category=spec.get("category", "custom"),
                 created_by=user_id,
+                is_published=False,  # 先创建为草稿，然后发布
             )
             
             db.add(template)
+            await db.flush()  # 使用 flush 获取 ID
+            
+            # 发布模板（创建动态数据表）
+            try:
+                await template_manager.publish_template(db, template.id)
+                logger.info(f"[AIAppGenerator] 模板发布成功: {template.name} (ID: {template.id})")
+            except Exception as pub_err:
+                logger.warning(f"[AIAppGenerator] 模板发布失败: {pub_err}，模板已创建但未发布")
+            
             await db.commit()
             await db.refresh(template)
             
@@ -338,10 +366,11 @@ class AIAppGenerator:
                 "name": template.name,
                 "code": template.code,
                 "config": template.config,
+                "is_published": template.is_published,
             }
             
         except Exception as e:
-            logger.error(f"生成模板失败: {e}")
+            logger.error(f"生成模板失败: {e}", exc_info=True)
             return None
     
     async def _generate_workflow(

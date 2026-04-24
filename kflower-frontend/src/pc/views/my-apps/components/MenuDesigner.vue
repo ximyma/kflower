@@ -246,10 +246,15 @@ const saving = ref(false)
 async function loadMenuTree() {
   try {
     const res: any = await appAPI.getMenuTree(props.appId)
-    menuTree.value = res
-    allMenus.value = flattenMenus(res)
+    // 确保返回的是数组，空菜单也是有效数据
+    menuTree.value = Array.isArray(res) ? res : (res.data || [])
+    allMenus.value = flattenMenus(menuTree.value)
   } catch (e: any) {
-    ElMessage.error('加载菜单失败：' + (e.message || ''))
+    // 菜单加载失败时使用空数组，允许用户新建菜单
+    console.error('加载菜单失败:', e)
+    ElMessage.warning('加载菜单失败，将显示空菜单')
+    menuTree.value = []
+    allMenus.value = []
   }
 }
 
@@ -257,9 +262,13 @@ async function loadMenuTree() {
 async function loadTemplates() {
   try {
     const res: any = await templateAPI.list()
-    templates.value = res
+    // 确保返回的是数组
+    templates.value = Array.isArray(res) ? res : (res.data || [])
   } catch (e: any) {
-    ElMessage.error('加载模板失败：' + (e.message || ''))
+    // 模板加载失败时使用空数组
+    console.error('加载模板失败:', e)
+    ElMessage.warning('加载模板列表失败')
+    templates.value = []
   }
 }
 
