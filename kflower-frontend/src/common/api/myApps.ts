@@ -86,8 +86,11 @@ export const appAPI = {
   exportAuditLogs: (params?: any) => request.get('/permissions/audit-logs/export', { params }),
   
   // ============ AI设计助手 ============
-  generateAIDesign: (data: { app_id: number; prompt: string }) => request.post('/ai-design/generate', data),
-  applyAIDesign: (appId: number, design: any) => request.post(`/ai-design/apply/${appId}`, design),
+  // 超时时间 180 秒，因为 AI 生成需要较长时间
+  generateAIDesign: (data: { app_id: number; prompt: string }) => 
+    request.post('/ai-design/generate', data, { timeout: 180000 }),
+  applyAIDesign: (appId: number, design: any) => 
+    request.post(`/ai-design/apply/${appId}`, design, { timeout: 180000 }),
 
   // ============ 版本管理 ============
   listVersions: (appId: number) => request.get(`/apps/${appId}/versions`),
@@ -97,6 +100,7 @@ export const appAPI = {
     request.post(`/apps/${appId}/versions/${versionId}/restore`),
 
   // ============ AI 应用生成 ============
+  // 超时时间 300 秒（5分钟），因为 AI 生成整个应用需要更长时间
   aiGenerate: (description: string, appName?: string, options?: { skipWorkflow?: boolean; skipDashboard?: boolean; skipAgent?: boolean }) =>
     request.post('/apps/ai-generate', null, {
       params: {
@@ -105,7 +109,8 @@ export const appAPI = {
         skip_workflow: options?.skipWorkflow,
         skip_dashboard: options?.skipDashboard,
         skip_agent: options?.skipAgent,
-      }
+      },
+      timeout: 300000,
     }),
 }
 

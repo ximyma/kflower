@@ -358,7 +358,7 @@ ${requirement.value}
       model: selectedModelId.value,
       use_rag: false,
       enable_tools: false
-    }, { timeout: 120000 })
+    }, { timeout: 180000 })  // 180 秒超时
 
     const content = res.response || res.message || res.content || ''
 
@@ -402,11 +402,23 @@ ${requirement.value}
     ElMessage.success('设计方案生成成功')
   } catch (e: any) {
     console.error('Generate design error:', e)
+    
+    // 检查是否是超时错误
+    const isTimeout = e.code === 'ECONNABORTED' || 
+                      e.name === 'AbortError' || 
+                      e.message?.includes('timeout') ||
+                      e.response?.status === 504
+    
     let errMsg = e.message || '请检查AI配置'
     if (errMsg.length > 200) {
       errMsg = errMsg.substring(0, 200) + '...'
     }
-    ElMessage.error('生成设计方案失败：' + errMsg)
+    
+    if (isTimeout) {
+      ElMessage.error('生成超时：AI 处理时间较长，请稍后重试或简化需求描述')
+    } else {
+      ElMessage.error('生成设计方案失败：' + errMsg)
+    }
   } finally {
     generating.value = false
   }

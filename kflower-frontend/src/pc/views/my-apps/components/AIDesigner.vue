@@ -167,7 +167,17 @@ async function generateDesign() {
     
     ElMessage.success('设计方案生成成功')
   } catch (e: any) {
-    ElMessage.error('生成失败：' + (e.message || 'AI服务暂不可用'))
+    // 检查是否是超时错误
+    const isTimeout = e.code === 'ECONNABORTED' || 
+                      e.name === 'AbortError' || 
+                      e.message?.includes('timeout') ||
+                      e.response?.status === 504
+    
+    if (isTimeout) {
+      ElMessage.error('生成超时：AI 处理时间较长，请稍后重试或简化需求描述')
+    } else {
+      ElMessage.error('生成失败：' + (e.message || 'AI服务暂不可用'))
+    }
     
     // 演示模式：生成模拟数据
     generateMockDesign()
