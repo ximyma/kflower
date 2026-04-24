@@ -439,11 +439,45 @@ const uploadHeaders = computed(() => ({
 
 /**
  * 简单公式求值器（前端版）
- * 支持：四则运算、字段引用 {字段名}、常量
+ * 支持：四则运算、字段引用 {字段名}、常量、聚合函数
  */
 function evaluateFormula(formula: string, ctx: Record<string, any>): any {
   if (!formula) return undefined
   try {
+    // 先处理聚合函数：SUM({items.amt}), AVG({items.amt}), COUNT({items.amt}), MAX({items.amt}), MIN({items.amt})
+    const aggPattern = /(SUM|AVG|COUNT|MAX|MIN)\(\{([^}]+)\}\)/g
+    formula = formula.replace(aggPattern, (match: string, func: string, fieldRef: string) => {
+      const [tableName, fieldName] = fieldRef.split('.')
+      const tableData = ctx[tableName]
+      if (!Array.isArray(tableData)) return '0'
+      
+      const values = tableData
+        .map((row: any) => row?.[fieldName])
+        .filter((v: any) => v !== undefined && v !== null && v !== '')
+        .map((v: any) => Number(v))
+        .filter((v: number) => !isNaN(v))
+      
+      let result: number = 0
+      switch (func) {
+        case 'SUM':
+          result = values.reduce((a, b) => a + b, 0)
+          break
+        case 'AVG':
+          result = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
+          break
+        case 'COUNT':
+          result = values.length
+          break
+        case 'MAX':
+          result = values.length > 0 ? Math.max(...values) : 0
+          break
+        case 'MIN':
+          result = values.length > 0 ? Math.min(...values) : 0
+          break
+      }
+      return String(result)
+    })
+
     // 替换 {字段名} 为实际值
     let expr = formula.replace(/\{([^}]+)\}/g, (_match: string, fieldName: string) => {
       const val = ctx[fieldName.trim()]
@@ -452,8 +486,7 @@ function evaluateFormula(formula: string, ctx: Record<string, any>): any {
       return isNaN(num) ? JSON.stringify(String(val)) : String(num)
     })
 
-    // 安全求值（只允许数学表达式和内置函数）
-    // 支持：+ - * / % ** () 以及 Math 函数
+    // 支持函数
     expr = expr
       .replace(/\bROUND\b/g, 'Math.round')
       .replace(/\bFLOOR\b/g, 'Math.floor')

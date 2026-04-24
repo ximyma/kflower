@@ -317,13 +317,15 @@ class AIAppGenerator:
         """
         根据规格创建模板
         """
-        from app.models.template import Template
+        from app.models.workflow import Template
         
         try:
             template = Template(
                 name=spec.get("name", "未命名模板"),
                 code=spec.get("code", f"tpl_{uuid.uuid4().hex[:6]}"),
-                fields=spec.get("fields", []),
+                description=spec.get("description", ""),
+                config=spec.get("config", {}),  # fields存储在config中
+                category=spec.get("category", "custom"),
                 created_by=user_id,
             )
             
@@ -335,7 +337,7 @@ class AIAppGenerator:
                 "id": template.id,
                 "name": template.name,
                 "code": template.code,
-                "fields": template.fields,
+                "config": template.config,
             }
             
         except Exception as e:
@@ -351,36 +353,39 @@ class AIAppGenerator:
         """
         生成工作流
         """
-        from app.models.workflow import Workflow, WorkflowNode
+        from app.models.workflow import Workflow
         
         try:
+            # 将节点规格转换为Workflow的nodes JSON格式
+            nodes_spec = spec.get("nodes", [])
+            nodes_json = []
+            edges_json = []
+            for idx, node_spec in enumerate(nodes_spec):
+                node_id = f"node_{idx+1}"
+                nodes_json.append({
+                    "id": node_id,
+                    "type": node_spec.get("type", "approval"),
+                    "name": node_spec.get("name", f"节点{idx+1}"),
+                    "config": {
+                        "approver_role": node_spec.get("approver_role"),
+                    },
+                })
+                # 连接边
+                if idx > 0:
+                    edges_json.append({
+                        "source": f"node_{idx}",
+                        "target": node_id,
+                    })
+            
             workflow = Workflow(
                 name=spec.get("name", "未命名工作流"),
-                trigger_type="form",
-                trigger_config={
-                    "template_code": spec.get("trigger_template"),
-                    "event": spec.get("trigger_event", "create"),
-                },
+                nodes=nodes_json,
+                edges=edges_json,
+                variables=spec.get("variables", {}),
                 created_by=user_id,
             )
             
             db.add(workflow)
-            await db.flush()
-            
-            # 创建节点
-            nodes_spec = spec.get("nodes", [])
-            for idx, node_spec in enumerate(nodes_spec):
-                node = WorkflowNode(
-                    workflow_id=workflow.id,
-                    node_type=node_spec.get("type", "approval"),
-                    name=node_spec.get("name", f"节点{idx+1}"),
-                    config={
-                        "approver_role": node_spec.get("approver_role"),
-                    },
-                    order=idx,
-                )
-                db.add(node)
-            
             await db.commit()
             await db.refresh(workflow)
             
@@ -529,6 +534,9 @@ class AIAppGenerator:
         """
         组装应用
         """
+        # 强制加载所有模型，解决 SQLAlchemy mapper 初始化顺序问题
+        from app.models.user import User, Organization  # noqa: F401
+        from app.models.workflow import Template, Workflow  # noqa: F401
         from app.modules.my_apps.models import Application, AppMenu
         
         try:

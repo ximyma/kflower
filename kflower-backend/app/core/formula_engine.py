@@ -10,7 +10,7 @@
 
 表达式示例：
   {单价} * {数量}                          → 自动计算总价
-  SUM({明细.金额})                         → 子表金额求和
+  SUM({明细。金额})                         → 子表金额求和
   IF({年龄} >= 18, "成年", "未成年")       → 条件判断
   ROUND({金额} * 0.13, 2)                 → 保留两位小数
   DATEDIFF({结束日期}, {开始日期})         → 日期差（天）
@@ -198,7 +198,7 @@ class FormulaFunctions:
 
     @staticmethod
     def SWITCH(expr, *args):
-        """SWITCH(表达式, 值1, 结果1, 值2, 结果2, ..., 默认值)"""
+        """SWITCH(表达式，值 1, 结果 1, 值 2, 结果 2, ..., 默认值)"""
         pairs = list(args)
         i = 0
         while i + 1 < len(pairs):
@@ -273,7 +273,7 @@ class FormulaFunctions:
     # ---- 聚合函数（用于子表字段） ----
     @staticmethod
     def SUMIF(values, conditions, condition_values):
-        """SUMIF(金额列表, 条件列表, 条件值) → 条件求和"""
+        """SUMIF(金额列表，条件列表，条件值) → 条件求和"""
         if not isinstance(values, list):
             return 0
         result = 0
@@ -287,14 +287,14 @@ class FormulaFunctions:
 
     @staticmethod
     def COUNTIF(values, condition_value):
-        """COUNTIF(值列表, 条件值) → 条件计数"""
+        """COUNTIF(值列表，条件值) → 条件计数"""
         if not isinstance(values, list):
             return 0
         return sum(1 for v in values if str(v) == str(condition_value))
 
     @staticmethod
     def AVGIF(values, conditions, condition_value):
-        """AVGIF(金额列表, 条件列表, 条件值) → 条件平均"""
+        """AVGIF(金额列表，条件列表，条件值) → 条件平均"""
         if not isinstance(values, list):
             return 0
         nums = []
@@ -334,7 +334,9 @@ ALLOWED_NODE_TYPES = {
     ast.UAdd, ast.USub, ast.Not,
     ast.And, ast.Or,
     ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
-    ast.Load,
+    ast.Load, ast.Store,
+    # 支持子表字段引用：items.amt → Attribute
+    ast.Attribute,
 }
 
 
@@ -409,20 +411,31 @@ class FormulaEngine:
     def _preprocess(self, formula: str, context: Dict[str, Any]):
         """
         预处理：将 {字段名} 替换为安全的 Python 变量名，并准备变量字典
-        同时支持子表字段引用：{明细.金额} → _sub_明细__金额
+        同时支持子表字段引用：{明细。金额} → _sub_ 明细__金额
         """
         var_map = {}
         processed = formula
 
-        # 匹配 {字段名} 或 {模块.字段名}
+        # 匹配 {字段名} 或 {模块。字段名}
         pattern = re.compile(r'\{([^}]+)\}')
         matches = pattern.findall(formula)
 
-        for field_ref in set(matches):
-            # 生成安全变量名
-            safe_name = '_f_' + re.sub(r'[^a-zA-Z0-9]', '_', field_ref)
+        # 使用列表去重但保持顺序
+        seen = set()
+        unique_matches = []
+        for m in matches:
+            if m not in seen:
+                seen.add(m)
+                unique_matches.append(m)
 
-            # 解析字段路径（支持子表：明细.金额）
+        for field_ref in unique_matches:
+            # 生成安全变量名：使用字段的 Unicode 编码确保唯一性
+            # 例如：单价 → _f_ 单价_5355_4EF7
+            # 子表字段：items.amt → _f_items__amt_... (用__连接表名和字段名)
+            unicode_parts = [hex(ord(c))[2:] for c in field_ref.replace('.', '__')]
+            safe_name = '_f_' + field_ref.replace('.', '__') + '_' + '_'.join(unicode_parts)
+
+            # 解析字段路径（支持子表：明细。金额）
             if '.' in field_ref:
                 parts = field_ref.split('.', 1)
                 sub_table_name = parts[0].strip()
@@ -460,7 +473,7 @@ class FormulaEngine:
 
         :param form_data: 当前表单数据
         :param field_definitions: 字段定义列表
-        :param sub_tables: 子表数据 {子表名: [{行数据}, ...]}
+        :param sub_tables: 子表数据 {子表名：[{行数据}, ...]}
         :return: 包含公式计算结果的字典
         """
         result = {}
@@ -509,7 +522,7 @@ class FormulaEngine:
                 return {"valid": False, "error": "公式包含不允许的语法", "variables": variables}
             return {"valid": True, "error": None, "variables": variables}
         except SyntaxError as e:
-            return {"valid": False, "error": f"语法错误: {e.msg}", "variables": variables}
+            return {"valid": False, "error": f"语法错误：{e.msg}", "variables": variables}
         except Exception as e:
             return {"valid": False, "error": str(e), "variables": variables}
 
@@ -624,7 +637,7 @@ class ValidationEngine:
         form_data: Dict
     ) -> Dict[str, List[str]]:
         """
-        校验整个表单，返回 {字段名: [错误消息, ...]}
+        校验整个表单，返回 {字段名：[错误消息，...]}
         """
         errors = {}
         for field in field_definitions:
@@ -661,7 +674,7 @@ class VisibilityEngine:
     def is_visible(self, field_def: Dict, form_data: Dict) -> bool:
         """
         判断字段是否可见
-        :return: True=可见, False=隐藏
+        :return: True=可见，False=隐藏
         """
         rule = field_def.get('visibility_rule')
         if not rule:
@@ -694,7 +707,7 @@ class VisibilityEngine:
     def compute_visibility(self, field_definitions: List[Dict], form_data: Dict) -> Dict[str, bool]:
         """
         批量计算所有字段的可见性
-        :return: {字段名: bool}
+        :return: {字段名：bool}
         """
         result = {}
         for field in field_definitions:
