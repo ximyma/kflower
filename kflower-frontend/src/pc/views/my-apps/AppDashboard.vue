@@ -89,8 +89,12 @@
                 <span class="chart-value">{{ formatNumber(item.value) }}</span>
               </div>
             </div>
+            <div v-else-if="widgetData[widget.i]?.value !== undefined" class="kpi-simple">
+              <div class="kpi-value">{{ formatNumber(widgetData[widget.i]?.value) }}</div>
+              <div class="kpi-label" v-if="widget.data_source?.aggregate">{{ aggregateLabel(widget.data_source.aggregate) }}</div>
+            </div>
             <div v-else class="chart-empty">
-              <el-empty description="暂无分组数据" :image-size="60" />
+              <el-empty description="暂无数据" :image-size="60" />
             </div>
           </div>
         </el-card>
@@ -151,6 +155,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import appAPI from '@/common/api/myApps'
+import { templateAPI } from '@/common/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -159,7 +164,10 @@ const props = defineProps<{
   appId: number
 }>()
 
-const resolvedAppId = computed(() => props.appId || Number(route.params.appId) || 0)
+const resolvedAppId = computed(() => {
+  const id = props.appId || Number(route.params.appId) || 0
+  return id
+})
 
 const appData = ref<any>({ name: '应用' })
 const pages = ref<any[]>([{ name: '首页', widgets: [] }])
@@ -167,6 +175,7 @@ const activePage = ref('0')
 const widgetData = ref<Record<string, any>>({})
 const widgetLoading = ref<Record<string, boolean>>({})
 const refreshing = ref(false)
+const templateFieldLabels = ref<Record<number, Record<string, string>>>({})
 
 const currentWidgets = computed(() => {
   const idx = parseInt(activePage.value)
@@ -205,14 +214,43 @@ function getBarWidth(value: number, data: any) {
 function getTableColumns(widget: any, data: any) {
   if (!data?.data?.length) return []
   const first = data.data[0]
+  
+  // 获取模板的字段标签映射
+  const templateId = widget.data_source?.template_id
+  const fieldLabels = templateId 
+    ? templateFieldLabels.value[templateId] || {}
+    : {}
+  
+  // 系统字段列表，这些不需要显示中文标签
+  const systemFields = ['id', 'template_id', 'created_by', 'created_at', 'updated_at']
+  
+  // 如果widget.columns存在，优先使用它
   if (widget.columns?.length) {
-    return widget.columns.map((c: string) => ({ key: c, label: c }))
+    return widget.columns
+      .filter((c: string) => !systemFields.includes(c))
+      .map((c: string) => ({ key: c, label: fieldLabels[c] || c }))
   }
-  return Object.keys(first).slice(0, 8).map(k => ({
-    key: k,
-    label: k,
-    width: k === 'id' ? 60 : undefined,
-  }))
+  
+  // 否则从fieldLabels中提取有中文映射的字段
+  const labelKeys = Object.keys(fieldLabels).filter(k => !systemFields.includes(k))
+  
+  if (labelKeys.length > 0) {
+    return labelKeys.slice(0, 8).map(k => ({
+      key: k,
+      label: fieldLabels[k],
+      width: k === 'id' ? 60 : undefined,
+    }))
+  }
+  
+  // 最后才使用数据字段
+  return Object.keys(first)
+    .filter(k => !systemFields.includes(k))
+    .slice(0, 8)
+    .map(k => ({
+      key: k,
+      label: fieldLabels[k] || k,
+      width: k === 'id' ? 60 : undefined,
+    }))
 }
 
 function getTodoStatusType(item: any) {
@@ -242,15 +280,46 @@ async function loadAppData() {
   }
 }
 
+async function loadTemplateFieldLabels(templateId: number) {
+  if (templateFieldLabels.value[templateId]) {
+    return
+  }
+  
+  try {
+    const res: any = await templateAPI.get(templateId)
+    if (res.modules) {
+      const fieldLabels: Record<string, string> = {}
+      for (const mod of res.modules) {
+        if (mod.fields) {
+          for (const field of mod.fields) {
+            fieldLabels[field.name] = field.label || field.name
+          }
+        }
+      }
+      templateFieldLabels.value[templateId] = fieldLabels
+    }
+  } catch (e) {
+    console.error('获取模板字段定义失败:', e)
+  }
+}
+
 async function loadDashboard() {
   try {
     const res: any = await appAPI.getDashboard(resolvedAppId.value)
     const config = res.data
     if (config && config.pages && config.pages.length > 0) {
-      pages.value = config.pages
-      for (const page of pages.value) {
+      // 创建新的数组，确保响应式系统能检测到变化
+      const newPages = JSON.parse(JSON.stringify(config.pages))
+      
+      // 收集所有需要加载字段定义的模板ID
+      const templateIds = new Set<number>()
+      
+      for (const page of newPages) {
         for (const w of (page.widgets || [])) {
           if (w.data_source) {
+            if (w.data_source.template_id) {
+              templateIds.add(w.data_source.template_id)
+            }
             if (w.data_source.date_field === undefined) w.data_source.date_field = 'created_at'
             if (w.data_source.filters === undefined) w.data_source.filters = []
             if (w.data_source.type === undefined) {
@@ -261,20 +330,32 @@ async function loadDashboard() {
           }
         }
       }
+      
+      // 批量加载所有模板的字段定义
+      await Promise.all([...templateIds].map(id => loadTemplateFieldLabels(id)))
+      
+      // 赋值新数组
+      pages.value = newPages
+    } else {
+      pages.value = [{ name: '首页', widgets: [] }]
     }
   } catch (e) {
     console.error('加载仪表盘失败:', e)
+    pages.value = [{ name: '首页', widgets: [] }]
   }
 }
 
 async function refreshWidgetData(widget: any) {
-  if (!widget.data_source || !widget.data_source.template_id) return
+  if (!widget.data_source || !widget.data_source.template_id) {
+    return
+  }
 
   widgetLoading.value[widget.i] = true
   try {
     const res: any = await appAPI.getWidgetData(widget)
     widgetData.value[widget.i] = res.data || res
   } catch (e: any) {
+    console.error('刷新组件数据失败:', widget.title, e)
     widgetData.value[widget.i] = { error: e.message }
   } finally {
     widgetLoading.value[widget.i] = false
@@ -292,6 +373,9 @@ async function refreshAll() {
 onMounted(async () => {
   await loadAppData()
   await loadDashboard()
+  setTimeout(() => {
+    currentWidgets.value.forEach(w => refreshWidgetData(w))
+  }, 100)
 })
 
 watch(activePage, () => {
@@ -300,12 +384,11 @@ watch(activePage, () => {
   }, 200)
 })
 
-// Watch pages change (e.g. after loadDashboard resolves) to refresh widget data
 watch(pages, () => {
   setTimeout(() => {
     currentWidgets.value.forEach(w => refreshWidgetData(w))
   }, 300)
-}, { deep: true })
+})
 </script>
 
 <style scoped lang="scss">
@@ -365,6 +448,22 @@ watch(pages, () => {
     flex-direction: column;
     justify-content: center;
     height: 100%;
+  }
+}
+
+.kpi-simple {
+  text-align: center;
+  padding: 16px;
+  .kpi-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--el-color-primary);
+    line-height: 1.2;
+  }
+  .kpi-label {
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+    margin-top: 4px;
   }
 }
 

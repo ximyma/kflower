@@ -1,14 +1,14 @@
 {
   "models": {
-    "BAAI/bge-m3": {
+    "sentence-transformers/all-mpnet-base-v2": {
       "name": "all-mpnet-base-v2",
-      "model": "BAAI/bge-m3",
+      "model": "sentence-transformers/all-mpnet-base-v2",
       "provider": "local",
       "dimension": 1024,
       "description": "all-mpnet-base-v2",
       "api_key": "",
       "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "model_path": "E:\\models\\all-mpnet-base-v2",
+      "model_path": "D:\\models\\all-mpnet-base-v2",
       "device": "cpu",
       "batch_size": 32,
       "enabled": true
