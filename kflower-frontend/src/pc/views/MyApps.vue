@@ -3,9 +3,6 @@
     <div class="page-header">
       <h2>我的应用</h2>
       <div class="header-actions">
-        <el-button type="success" @click="goToAIGenerator">
-          <el-icon><MagicStick /></el-icon> AI 生成
-        </el-button>
         <el-button @click="goToAIDesigner">
           <el-icon><MagicStick /></el-icon> AI设计助手
         </el-button>
@@ -149,11 +146,6 @@ function editAppInfo(app: any) {
 // 进入应用设计器
 function designApp(app: any) {
   router.push(`/app-designer/${app.id}`)
-}
-
-// 进入AI生成（跳转到AI设计助手，但默认跳过工作流和智能体）
-function goToAIGenerator() {
-  router.push('/ai-app-designer?mode=generation&skipWorkflow=true&skipAgent=true')
 }
 
 // 进入AI设计助手
