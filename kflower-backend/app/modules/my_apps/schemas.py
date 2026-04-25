@@ -41,8 +41,8 @@ class ApplicationResponse(ApplicationBase):
     is_public: bool
     created_by: int
     organization_id: Optional[int] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -221,7 +221,8 @@ class VersionResponse(BaseModel):
     is_current: bool
     published_by: Optional[int] = None
     published_at: Optional[datetime] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None  # 数据库无 updated_at 列，只保留 created_at
+
     class Config:
         from_attributes = True
 

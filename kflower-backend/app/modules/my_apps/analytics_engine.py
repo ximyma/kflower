@@ -1,5 +1,5 @@
 """
-仪表盘分析引擎 - 执行聚合查询和数据统计
+仪表盘分析引擎 - 从数据库直接读取真实数据
 """
 import json
 from sqlalchemy import text
@@ -7,14 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
-from app.models.workflow import Template
-
 
 class AnalyticsEngine:
-    """分析引擎 - 执行各类聚合查询"""
+    """分析引擎 - 执行聚合查询，直接从 form_data_* 表读取数据"""
 
     @staticmethod
-    def _parse_template_config(raw: Any) -> dict:
+    def _parse_config(raw: Any) -> dict:
         """兼容 aiosqlite 下 JSON 字段为字符串的情况"""
         if isinstance(raw, str):
             return json.loads(raw) if raw else {}
@@ -28,41 +26,45 @@ class AnalyticsEngine:
     ) -> Dict[str, Any]:
         """
         执行聚合查询
-        config格式:
+        config 格式:
         {
             "type": "aggregation" | "grouped_aggregation" | "query",
-            "template_id": 123,
+            "template_id": 14,
             "aggregate": "count" | "sum" | "avg" | "max" | "min",
-            "field": "amount",
+            "field": "total_price",
             "filters": [{"field": "status", "op": "=", "value": "active"}],
-            "group_by": "category",
-            "date_range": "today" | "week" | "month" | "year"
+            "group_by": "department",
+            "date_range": "today" | "week" | "month" | "year",
+            "date_field": "created_at",
+            "order_by": "-created_at",
+            "limit": 10,
+            "max_rows": 10
         }
         """
         template_id = config.get("template_id")
         if not template_id:
-            return {"error": "template_id is required"}
+            return {"error": "template_id is required", "value": 0}
 
-        # 获取表名
+        # 获取模板配置，确定表名
         result = await db.execute(
             text("SELECT config FROM templates WHERE id = :tid"),
             {"tid": template_id}
         )
         row = result.fetchone()
         if not row:
-            return {"error": f"Template {template_id} not found"}
+            return {"error": f"Template {template_id} not found", "value": 0}
 
-        tpl_config = AnalyticsEngine._parse_template_config(row[0])
+        tpl_config = AnalyticsEngine._parse_config(row[0])
         table_name = tpl_config.get("table_name", f"form_data_{template_id}")
 
-        # 安全检查：表名必须以 form_data_ 开头
+        # 安全检查
         if not table_name.startswith("form_data_"):
-            return {"error": "Invalid table name"}
+            return {"error": "Invalid table name", "value": 0}
 
-        # 构建 WHERE 子句（含 user_id 过滤）
+        # 构建 WHERE 子句
         where_clause, params = AnalyticsEngine._build_where_clause(config, user_id)
 
-        # 执行聚合
+        # 执行对应类型的查询
         source_type = config.get("type", "aggregation")
 
         if source_type == "aggregation":
@@ -72,15 +74,15 @@ class AnalyticsEngine:
         elif source_type == "query":
             return await AnalyticsEngine._do_query(db, table_name, config, where_clause, params)
         else:
-            return {"error": f"Unknown aggregation type: {source_type}"}
+            return {"error": f"Unknown type: {source_type}", "value": 0}
 
     @staticmethod
     def _build_where_clause(config: Dict[str, Any], user_id: int = None) -> tuple:
-        """构建WHERE子句"""
+        """构建 WHERE 子句"""
         where_parts = []
         params = {}
 
-        # 用户过滤：如果提供了 user_id，只查该用户的数据
+        # 用户过滤
         if user_id is not None:
             where_parts.append("created_by = :user_id")
             params["user_id"] = user_id
@@ -92,21 +94,21 @@ class AnalyticsEngine:
             now = datetime.now()
             if date_range == "today":
                 start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                where_parts.append(f"{date_field} >= :dr_start AND {date_field} < :dr_end")
-                params["dr_start"] = start
-                params["dr_end"] = start + timedelta(days=1)
+                where_parts.append(f'"{date_field}" >= :dr_start AND "{date_field}" < :dr_end')
+                params["dr_start"] = start.strftime("%Y-%m-%d %H:%M:%S")
+                params["dr_end"] = (start + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
             elif date_range == "week":
                 start = now - timedelta(days=7)
-                where_parts.append(f"{date_field} >= :dr_start")
-                params["dr_start"] = start
+                where_parts.append(f'"{date_field}" >= :dr_start')
+                params["dr_start"] = start.strftime("%Y-%m-%d %H:%M:%S")
             elif date_range == "month":
                 start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                where_parts.append(f"{date_field} >= :dr_start")
-                params["dr_start"] = start
+                where_parts.append(f'"{date_field}" >= :dr_start')
+                params["dr_start"] = start.strftime("%Y-%m-%d %H:%M:%S")
             elif date_range == "year":
                 start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-                where_parts.append(f"{date_field} >= :dr_start")
-                params["dr_start"] = start
+                where_parts.append(f'"{date_field}" >= :dr_start')
+                params["dr_start"] = start.strftime("%Y-%m-%d %H:%M:%S")
 
         # 自定义过滤器
         filters = config.get("filters", [])
@@ -117,27 +119,27 @@ class AnalyticsEngine:
             key = f"f{i}"
 
             if op == "=":
-                where_parts.append(f"{field} = :{key}")
+                where_parts.append(f'"{field}" = :{key}')
                 params[key] = value
             elif op == ">":
-                where_parts.append(f"{field} > :{key}")
+                where_parts.append(f'CAST("{field}" AS REAL) > :{key}')
                 params[key] = value
             elif op == "<":
-                where_parts.append(f"{field} < :{key}")
+                where_parts.append(f'CAST("{field}" AS REAL) < :{key}')
                 params[key] = value
             elif op == ">=":
-                where_parts.append(f"{field} >= :{key}")
+                where_parts.append(f'CAST("{field}" AS REAL) >= :{key}')
                 params[key] = value
             elif op == "<=":
-                where_parts.append(f"{field} <= :{key}")
+                where_parts.append(f'CAST("{field}" AS REAL) <= :{key}')
                 params[key] = value
             elif op == "like":
-                where_parts.append(f"{field} LIKE :{key}")
+                where_parts.append(f'"{field}" LIKE :{key}')
                 params[key] = f"%{value}%"
             elif op == "in":
                 if isinstance(value, list) and value:
                     placeholders = [f":{key}_{j}" for j in range(len(value))]
-                    where_parts.append(f"{field} IN ({','.join(placeholders)})")
+                    where_parts.append(f'"{field}" IN ({",".join(placeholders)})')
                     for j, v in enumerate(value):
                         params[f"{key}_{j}"] = v
 
@@ -152,29 +154,28 @@ class AnalyticsEngine:
         where_clause: str,
         params: dict
     ) -> Dict[str, Any]:
-        """执行单值聚合"""
+        """执行单值聚合 - COUNT/SUM/AVG/MAX/MIN"""
         aggregate = config.get("aggregate", "count")
         field = config.get("field", "")
 
-        # COUNT 用 * 确保始终有效；SUM/AVG 需要数值字段
         if aggregate == "count":
             select_expr = "COUNT(*) as value"
         elif aggregate == "sum":
             if not field:
-                return {"type": "single", "aggregate": "sum", "value": 0, "error": "SUM 需要指定统计字段"}
-            select_expr = f"SUM(CAST(\"{field}\" AS REAL)) as value"
+                return {"type": "single", "aggregate": "sum", "value": 0}
+            select_expr = f'SUM(CAST("{field}" AS REAL)) as value'
         elif aggregate == "avg":
             if not field:
-                return {"type": "single", "aggregate": "avg", "value": 0, "error": "AVG 需要指定统计字段"}
-            select_expr = f"AVG(CAST(\"{field}\" AS REAL)) as value"
+                return {"type": "single", "aggregate": "avg", "value": 0}
+            select_expr = f'AVG(CAST("{field}" AS REAL)) as value'
         elif aggregate == "max":
             if not field:
-                return {"type": "single", "aggregate": "max", "value": 0, "error": "MAX 需要指定统计字段"}
-            select_expr = f"MAX(\"{field}\") as value"
+                return {"type": "single", "aggregate": "max", "value": 0}
+            select_expr = f'MAX(CAST("{field}" AS REAL)) as value'
         elif aggregate == "min":
             if not field:
-                return {"type": "single", "aggregate": "min", "value": 0, "error": "MIN 需要指定统计字段"}
-            select_expr = f"MIN(\"{field}\") as value"
+                return {"type": "single", "aggregate": "min", "value": 0}
+            select_expr = f'MIN(CAST("{field}" AS REAL)) as value'
         else:
             select_expr = "COUNT(*) as value"
 
@@ -189,7 +190,7 @@ class AnalyticsEngine:
         return {
             "type": "single",
             "aggregate": aggregate,
-            "value": value
+            "value": value,
         }
 
     @staticmethod
@@ -212,28 +213,28 @@ class AnalyticsEngine:
             select_expr = "COUNT(*) as value"
         elif aggregate == "sum":
             if not field:
-                return {"type": "grouped", "aggregate": "sum", "data": [], "total": 0, "error": "SUM 需要指定统计字段"}
-            select_expr = f"SUM(CAST(\"{field}\" AS REAL)) as value"
+                return {"type": "grouped", "aggregate": "sum", "data": [], "total": 0}
+            select_expr = f'SUM(CAST("{field}" AS REAL)) as value'
         elif aggregate == "avg":
             if not field:
-                return {"type": "grouped", "aggregate": "avg", "data": [], "total": 0, "error": "AVG 需要指定统计字段"}
-            select_expr = f"AVG(CAST(\"{field}\" AS REAL)) as value"
+                return {"type": "grouped", "aggregate": "avg", "data": [], "total": 0}
+            select_expr = f'AVG(CAST("{field}" AS REAL)) as value'
         elif aggregate == "max":
             if not field:
-                return {"type": "grouped", "aggregate": "max", "data": [], "total": 0, "error": "MAX 需要指定统计字段"}
-            select_expr = f"MAX(\"{field}\") as value"
+                return {"type": "grouped", "aggregate": "max", "data": [], "total": 0}
+            select_expr = f'MAX(CAST("{field}" AS REAL)) as value'
         elif aggregate == "min":
             if not field:
-                return {"type": "grouped", "aggregate": "min", "data": [], "total": 0, "error": "MIN 需要指定统计字段"}
-            select_expr = f"MIN(\"{field}\") as value"
+                return {"type": "grouped", "aggregate": "min", "data": [], "total": 0}
+            select_expr = f'MIN(CAST("{field}" AS REAL)) as value'
         else:
             select_expr = "COUNT(*) as value"
 
         sql = f"""
-            SELECT \"{group_by}\" as name, {select_expr}
+            SELECT "{group_by}" as name, {select_expr}
             FROM {table_name}
             WHERE {where_clause}
-            GROUP BY \"{group_by}\"
+            GROUP BY "{group_by}"
             ORDER BY value DESC
             LIMIT 20
         """
@@ -249,7 +250,7 @@ class AnalyticsEngine:
             "aggregate": aggregate,
             "group_by": group_by,
             "data": data,
-            "total": total
+            "total": total,
         }
 
     @staticmethod
@@ -260,15 +261,15 @@ class AnalyticsEngine:
         where_clause: str,
         params: dict
     ) -> Dict[str, Any]:
-        """执行列表查询"""
+        """执行列表查询 - 返回数据行"""
         order_by = config.get("order_by", "-created_at")
         if order_by.startswith("-"):
             order_field = order_by[1:]
-            order_clause = f"ORDER BY \"{order_field}\" DESC"
+            order_clause = f'ORDER BY "{order_field}" DESC'
         else:
-            order_clause = f"ORDER BY \"{order_by}\" ASC"
+            order_clause = f'ORDER BY "{order_by}" ASC'
 
-        limit = min(config.get("limit", 10), 100)
+        limit = min(config.get("limit", 10) or config.get("max_rows", 10), 100)
 
         sql = f"""
             SELECT * FROM {table_name}
@@ -287,7 +288,7 @@ class AnalyticsEngine:
         return {
             "type": "query",
             "data": data,
-            "count": len(data)
+            "count": len(data),
         }
 
 

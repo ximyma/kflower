@@ -9,7 +9,6 @@
       </div>
     </div>
 
-    <!-- 页面 Tabs（多页） -->
     <el-tabs v-model="activePage" class="dashboard-tabs" v-if="pages.length > 1">
       <el-tab-pane
         v-for="(page, idx) in pages"
@@ -19,7 +18,6 @@
       />
     </el-tabs>
 
-    <!-- 组件网格 -->
     <div class="dashboard-grid">
       <div v-if="currentWidgets.length === 0" class="empty-dashboard">
         <el-empty description="暂无仪表盘组件，请在应用设计中配置" />
@@ -139,7 +137,6 @@
           </div>
         </el-card>
 
-        <!-- 加载中/错误 -->
         <div v-if="widgetData[widget.i]?.error" class="widget-error">
           <el-alert :title="widgetData[widget.i].error" type="error" show-icon :closable="false" />
         </div>
@@ -162,7 +159,6 @@ const props = defineProps<{
   appId: number
 }>()
 
-// 确保 appId 有效：优先使用 props，fallback 到路由参数
 const resolvedAppId = computed(() => props.appId || Number(route.params.appId) || 0)
 
 const appData = ref<any>({ name: '应用' })
@@ -178,10 +174,7 @@ const currentWidgets = computed(() => {
 })
 
 function getWidgetStyle(widget: any) {
-  const w = widget.width || 6
-  return {
-    gridColumn: `span ${w}`,
-  }
+  return { gridColumn: `span ${widget.width || 6}` }
 }
 
 function formatNumber(val: any) {
@@ -212,11 +205,9 @@ function getBarWidth(value: number, data: any) {
 function getTableColumns(widget: any, data: any) {
   if (!data?.data?.length) return []
   const first = data.data[0]
-  // 如果有自定义列配置，使用它
   if (widget.columns?.length) {
     return widget.columns.map((c: string) => ({ key: c, label: c }))
   }
-  // 否则自动从第一行数据推断
   return Object.keys(first).slice(0, 8).map(k => ({
     key: k,
     label: k,
@@ -257,7 +248,6 @@ async function loadDashboard() {
     const config = res.data
     if (config && config.pages && config.pages.length > 0) {
       pages.value = config.pages
-      // 补充 data_source 默认字段（兼容旧配置）
       for (const page of pages.value) {
         for (const w of (page.widgets || [])) {
           if (w.data_source) {
@@ -266,6 +256,8 @@ async function loadDashboard() {
             if (w.data_source.type === undefined) {
               w.data_source.type = w.type === 'table' ? 'query' : 'aggregation'
             }
+            if (w.data_source.max_rows === undefined) w.data_source.max_rows = 10
+            if (w.data_source.order_by === undefined) w.data_source.order_by = '-created_at'
           }
         }
       }
@@ -300,10 +292,6 @@ async function refreshAll() {
 onMounted(async () => {
   await loadAppData()
   await loadDashboard()
-  // 延迟加载数据，确保 DOM 已渲染
-  setTimeout(() => {
-    currentWidgets.value.forEach(w => refreshWidgetData(w))
-  }, 300)
 })
 
 watch(activePage, () => {
@@ -311,6 +299,13 @@ watch(activePage, () => {
     currentWidgets.value.forEach(w => refreshWidgetData(w))
   }, 200)
 })
+
+// Watch pages change (e.g. after loadDashboard resolves) to refresh widget data
+watch(pages, () => {
+  setTimeout(() => {
+    currentWidgets.value.forEach(w => refreshWidgetData(w))
+  }, 300)
+}, { deep: true })
 </script>
 
 <style scoped lang="scss">

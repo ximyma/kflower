@@ -1,10 +1,11 @@
-"""
+﻿"""
 仪表盘管理 API
 """
 import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 from typing import Dict, Any
 
 from app.core.database import get_db
@@ -58,6 +59,8 @@ async def save_dashboard_config(
     app_config = _parse_config(app.config)
     app_config["dashboard"] = config
     app.config = app_config
+    # aiosqlite 下 JSON 列直接赋值不会触发 SA 脏检测，必须显式标记
+    flag_modified(app, "config")
     await db.commit()
 
     return BaseResponse(message="仪表盘配置已保存")

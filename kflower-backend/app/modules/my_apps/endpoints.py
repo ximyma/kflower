@@ -4,6 +4,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 from typing import List
 
 from app.core.database import get_db
@@ -75,8 +76,12 @@ async def update_app(
     
     # 直接更新，返回简化响应避免序列化问题
     update_data = data.model_dump(exclude_unset=True)
+    # aiosqlite 下 JSON 列需要 flag_modified 才能触发脏检测
+    json_columns = {'config', 'workflow_ids', 'workflow_config', 'knowledge_base_ids', 'knowledge_config', 'bound_agents'}
     for key, value in update_data.items():
         setattr(app, key, value)
+        if key in json_columns:
+            flag_modified(app, key)
     await db.commit()
     await db.refresh(app)
     
@@ -453,6 +458,9 @@ async def restore_version(
     app.knowledge_config = snapshot.get("knowledge_config", {})
     app.bound_agents = snapshot.get("bound_agents", [])
     app.current_version = version.version
+    # aiosqlite 下 JSON 列需要 flag_modified 才能触发脏检测
+    for col in ['config', 'workflow_ids', 'workflow_config', 'knowledge_base_ids', 'knowledge_config', 'bound_agents']:
+        flag_modified(app, col)
     
     # 删除现有菜单/关系/插件
     for m in await db.execute(select(AppMenu).where(AppMenu.app_id == app_id)):
