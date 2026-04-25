@@ -199,6 +199,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
     children: [
       {
+        path: '',
+        name: 'AppDashboard',
+        component: () => import('../../pc/views/my-apps/AppDashboard.vue'),
+        meta: { title: '应用首页' }
+      },
+      {
         path: 'form/:templateId',
         name: 'AppFormList',
         component: () => import('../../pc/views/FormListPage.vue'),

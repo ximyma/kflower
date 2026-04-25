@@ -13,7 +13,7 @@ from app.models.user import User
 from app.modules.my_apps.service import my_apps_service
 from app.modules.my_apps.schemas import (
     ApplicationCreate, ApplicationUpdate, ApplicationResponse, AppDetailResponse,
-    AppMenuCreate, AppMenuUpdate, AppMenuResponse,
+    AppMenuCreate, AppMenuUpdate, AppMenuResponse, AppMenuSimple,
     FormRelationCreate, FormRelationUpdate, FormRelationResponse,
     AppPluginCreate, AppPluginUpdate, AppPluginResponse,
     MenuTreeNode, VersionCreate, VersionResponse
@@ -134,7 +134,7 @@ async def unpublish_app_endpoint(
 
 
 # ============ 菜单管理 ============
-@router.post("/{app_id}/menus", response_model=AppMenuResponse)
+@router.post("/{app_id}/menus", response_model=AppMenuSimple)
 async def add_menu(
     app_id: int,
     data: AppMenuCreate,

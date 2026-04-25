@@ -31,11 +31,31 @@
           :prop="field.name"
           :label="field.label"
         />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="提交时间" width="160">
           <template #default="{ row }">
-            <el-button size="small" @click="viewRow(row)">查看</el-button>
-            <el-button size="small" type="primary" @click="editRow(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="deleteRow(row)">删除</el-button>
+            {{ formatDateTime(row.created_at) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="340" fixed="right" align="center">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" text @click="viewDataDetail(row)" title="查看">
+              <el-icon><View /></el-icon>查看
+            </el-button>
+            <el-button size="small" type="warning" text @click="editDataItem(row)" title="编辑">
+              <el-icon><Edit /></el-icon>编辑
+            </el-button>
+            <el-button size="small" type="success" text @click="openFormSubmit(row)" title="填写表单">
+              <el-icon><EditPen /></el-icon>填表
+            </el-button>
+            <el-button size="small" type="info" text @click="openFormList(row)" title="数据列表">
+              <el-icon><List /></el-icon>列表
+            </el-button>
+            <el-button size="small" text @click="openPermissionDialog(row)" title="权限设置">
+              <el-icon><Key /></el-icon>权限
+            </el-button>
+            <el-button size="small" type="danger" text @click="deleteDataItem(row)" title="删除">
+              <el-icon><Delete /></el-icon>删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -53,14 +73,176 @@
         />
       </div>
     </el-card>
+
+    <!-- 新增/编辑弹窗 -->
+    <el-dialog v-model="showFormDialog" :title="isEditMode ? '编辑数据' : '新增数据'" width="600px" destroy-on-close>
+      <el-form :model="formData" label-width="120px">
+        <el-form-item
+          v-for="field in formFields"
+          :key="field.name"
+          :label="field.label"
+          :required="field.required"
+        >
+          <!-- 文本类型 -->
+          <el-input
+            v-if="field.type === 'text' || field.type === 'phone' || field.type === 'email'"
+            v-model="formData[field.name]"
+            :placeholder="field.placeholder || `请输入${field.label}`"
+          />
+
+          <!-- 数字类型 -->
+          <el-input-number
+            v-else-if="field.type === 'number' || field.type === 'money' || field.type === 'percent'"
+            v-model="formData[field.name]"
+            :placeholder="field.placeholder || `请输入${field.label}`"
+            :precision="field.type === 'percent' ? 2 : 0"
+            style="width:100%"
+          />
+
+          <!-- 日期类型 -->
+          <el-date-picker
+            v-else-if="field.type === 'date'"
+            v-model="formData[field.name]"
+            type="date"
+            :placeholder="field.placeholder || `请选择${field.label}`"
+            value-format="YYYY-MM-DD"
+            style="width:100%"
+          />
+
+          <!-- 下拉选择 -->
+          <el-select
+            v-else-if="field.type === 'select'"
+            v-model="formData[field.name]"
+            :placeholder="field.placeholder || `请选择${field.label}`"
+            style="width:100%"
+            clearable
+          >
+            <el-option
+              v-for="opt in (field.options || [])"
+              :key="opt.value || opt"
+              :label="opt.label || opt"
+              :value="opt.value || opt"
+            />
+          </el-select>
+
+          <!-- 单选 -->
+          <el-radio-group v-else-if="field.type === 'radio'" v-model="formData[field.name]">
+            <el-radio v-for="opt in (field.options || [])" :key="opt.value || opt" :label="opt.value || opt">
+              {{ opt.label || opt }}
+            </el-radio>
+          </el-radio-group>
+
+          <!-- 多选 -->
+          <el-checkbox-group v-else-if="field.type === 'checkbox'" v-model="formData[field.name]">
+            <el-checkbox v-for="opt in (field.options || [])" :key="opt.value || opt" :label="opt.value || opt">
+              {{ opt.label || opt }}
+            </el-checkbox>
+          </el-checkbox-group>
+
+          <!-- 开关 -->
+          <el-switch v-else-if="field.type === 'switch'" v-model="formData[field.name]" />
+
+          <!-- 多行文本 -->
+          <el-input
+            v-else-if="field.type === 'textarea'"
+            v-model="formData[field.name]"
+            type="textarea"
+            :rows="4"
+            :placeholder="field.placeholder || `请输入${field.label}`"
+          />
+
+          <!-- 其他类型默认用文本 -->
+          <el-input
+            v-else
+            v-model="formData[field.name]"
+            :placeholder="field.placeholder || `请输入${field.label}`"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showFormDialog = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="saveFormData">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 查看详情弹窗 -->
+    <el-dialog v-model="showDetailDialog" title="数据详情" width="600px" destroy-on-close>
+      <el-form :model="detailData" label-width="120px">
+        <el-form-item
+          v-for="field in formFields"
+          :key="field.name"
+          :label="field.label"
+        >
+          <span>{{ detailData[field.name] ?? '-' }}</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showDetailDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 填写数据弹窗 -->
+    <el-dialog v-model="showDataForm" :title="'填写数据 - ' + (templateData?.name || '')" width="700px" destroy-on-close>
+      <el-form :model="dataFormData" label-width="120px">
+        <template v-for="f in formFields" :key="f.name">
+          <el-form-item :label="f.label + (f.required ? ' *' : '')" :required="f.required">
+            <el-input v-if="['text','email','phone','url','password'].includes(f.type)" v-model="dataFormData[f.name]" :placeholder="f.placeholder || ('请输入' + f.label)" />
+            <el-input v-else-if="f.type === 'textarea'" type="textarea" v-model="dataFormData[f.name]" :placeholder="f.placeholder || ('请输入' + f.label)" :rows="3" />
+            <el-input-number v-else-if="['number','money','percent'].includes(f.type)" v-model="dataFormData[f.name]" :min="f.min || 0" :max="f.max || 999999999" style="width:100%" />
+            <el-select v-else-if="['select','radio'].includes(f.type)" v-model="dataFormData[f.name]" placeholder="请选择" style="width:100%">
+              <el-option v-for="opt in (f.options || [])" :key="opt" :label="opt" :value="opt" />
+            </el-select>
+            <el-date-picker v-else-if="f.type === 'date'" v-model="dataFormData[f.name]" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width:100%" />
+            <el-date-picker v-else-if="f.type === 'datetime'" v-model="dataFormData[f.name]" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="选择日期时间" style="width:100%" />
+            <el-switch v-else-if="f.type === 'switch'" v-model="dataFormData[f.name]" />
+            <el-checkbox-group v-else-if="f.type === 'checkbox'" v-model="dataFormData[f.name]">
+              <el-checkbox v-for="opt in (f.options || [])" :key="opt" :label="opt">{{ opt }}</el-checkbox>
+            </el-checkbox-group>
+            <el-rate v-else-if="f.type === 'rate'" v-model="dataFormData[f.name]" />
+            <span v-else>{{ dataFormData[f.name] || '-' }}</span>
+          </el-form-item>
+        </template>
+      </el-form>
+      <template #footer>
+        <el-button @click="showDataForm = false">取消</el-button>
+        <el-button type="primary" :loading="dataFormLoading" @click="submitDataForm">提交数据</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 权限设置弹窗 -->
+    <el-dialog v-model="showPermissionDialog" :title="'权限设置 - ' + (templateData?.name || '')" width="550px">
+      <el-form label-width="90px">
+        <el-form-item label="模板名称">
+          <span style="font-weight:500">{{ templateData?.name }}</span>
+        </el-form-item>
+        <el-form-item label="访问权限">
+          <el-radio-group v-model="permForm.is_public">
+            <el-radio :label="false">私有（仅自己可见）</el-radio>
+            <el-radio :label="true">公开（所有用户可见）</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="说明">
+          <div style="color: var(--el-text-color-secondary);font-size:12px;line-height:1.6">
+            <p>• <strong>私有</strong>：只有创建者可以看到和使用</p>
+            <p>• <strong>公开</strong>：组织内所有用户都可以看到和使用</p>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPermissionDialog = false">取消</el-button>
+        <el-button type="primary" :loading="permLoading" @click="savePermission">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search } from '@element-plus/icons-vue'
+import {
+  Plus, Search, View, Edit, EditPen, List, Key, Delete
+} from '@element-plus/icons-vue'
 import { templateAPI } from '@/common/api/index'
 
 const route = useRoute()
@@ -77,6 +259,28 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 
+// 表单弹窗
+const showFormDialog = ref(false)
+const isEditMode = ref(false)
+const editDataId = ref<number | null>(null)
+const formFields = ref<any[]>([])
+const formData = ref<Record<string, any>>({})
+const saving = ref(false)
+
+// 查看详情弹窗
+const showDetailDialog = ref(false)
+const detailData = ref<Record<string, any>>({})
+
+// 填写数据弹窗
+const showDataForm = ref(false)
+const dataFormData = reactive<Record<string, any>>({})
+const dataFormLoading = ref(false)
+
+// 权限设置弹窗
+const showPermissionDialog = ref(false)
+const permForm = reactive({ is_public: false })
+const permLoading = ref(false)
+
 // 加载模板数据
 async function loadTemplate() {
   try {
@@ -86,6 +290,7 @@ async function loadTemplate() {
     // 提取字段（从 modules 中）
     const modules = res.modules || []
     displayFields.value = []
+    formFields.value = []
     for (const mod of modules) {
       if (mod.fields) {
         displayFields.value.push(...mod.fields.map((f: any) => ({
@@ -93,6 +298,7 @@ async function loadTemplate() {
           label: f.label,
           type: f.type
         })))
+        formFields.value.push(...mod.fields)
       }
     }
   } catch (e: any) {
@@ -130,35 +336,148 @@ function handleSearch() {
   loadData()
 }
 
-// 新增
-function createNew() {
-  router.push(`/app/${appId}/form/${templateId}/edit`)
+// 初始化表单数据
+function initFormData() {
+  Object.keys(formData.value).forEach(k => delete formData.value[k])
+  formFields.value.forEach((field: any) => {
+    if (field.type === 'checkbox') {
+      formData.value[field.name] = []
+    } else if (field.type === 'switch') {
+      formData.value[field.name] = false
+    } else if (field.type === 'number' || field.type === 'money' || field.type === 'percent') {
+      formData.value[field.name] = field.defaultValue !== undefined ? Number(field.defaultValue) : null
+    } else {
+      formData.value[field.name] = field.defaultValue || ''
+    }
+  })
 }
 
-// 查看
-function viewRow(row: any) {
-  router.push(`/app/${appId}/form/${templateId}/edit/${row.id}`)
+// 新增
+function createNew() {
+  isEditMode.value = false
+  editDataId.value = null
+  initFormData()
+  showFormDialog.value = true
+}
+
+// 查看详情
+function viewDataDetail(row: any) {
+  Object.keys(detailData.value).forEach(k => delete detailData.value[k])
+  formFields.value.forEach((field: any) => {
+    detailData.value[field.name] = row[field.name] ?? (field.type === 'checkbox' ? [] : '')
+  })
+  showDetailDialog.value = true
 }
 
 // 编辑
-function editRow(row: any) {
-  router.push(`/app/${appId}/form/${templateId}/edit/${row.id}`)
+function editDataItem(row: any) {
+  isEditMode.value = true
+  editDataId.value = row.id
+  initFormData()
+  // 填充已有数据
+  formFields.value.forEach((field: any) => {
+    if (row[field.name] !== undefined) {
+      formData.value[field.name] = row[field.name]
+    }
+  })
+  showFormDialog.value = true
+}
+
+// 保存表单数据
+async function saveFormData() {
+  saving.value = true
+  try {
+    if (isEditMode.value && editDataId.value) {
+      await templateAPI.updateData(templateId.value, editDataId.value, { ...formData.value })
+      ElMessage.success('更新成功')
+    } else {
+      await templateAPI.submitData(templateId.value, { ...formData.value })
+      ElMessage.success('创建成功')
+    }
+    showFormDialog.value = false
+    loadData()
+  } catch (e: any) {
+    ElMessage.error('保存失败：' + (e.message || ''))
+  } finally {
+    saving.value = false
+  }
 }
 
 // 删除
-async function deleteRow(row: any) {
+async function deleteDataItem(row: any) {
   try {
-    await ElMessageBox.confirm('确定删除这条数据吗？', '确认删除', {
-      type: 'warning'
-    })
-    await templateAPI.deleteData(templateId, row.id)
-    ElMessage.success('删除成功')
+    await ElMessageBox.confirm('确定删除该条数据？', '删除确认', { type: 'warning' })
+    await templateAPI.deleteData(templateId.value, row.id)
+    ElMessage.success('数据已删除')
+    loadData()
+  } catch {}
+}
+
+// 填写表单
+function openFormSubmit(row: any) {
+  Object.keys(dataFormData).forEach(k => delete dataFormData[k])
+  formFields.value.forEach((f: any) => {
+    if (f.type === 'checkbox') {
+      dataFormData[f.name] = []
+    } else if (f.type === 'switch') {
+      dataFormData[f.name] = false
+    } else if (f.type === 'rate') {
+      dataFormData[f.name] = 0
+    } else {
+      dataFormData[f.name] = f.defaultValue || ''
+    }
+  })
+  showDataForm.value = true
+}
+
+// 提交表单数据
+async function submitDataForm() {
+  dataFormLoading.value = true
+  try {
+    await templateAPI.submitData(templateId.value, { ...dataFormData })
+    ElMessage.success('数据提交成功！')
+    showDataForm.value = false
     loadData()
   } catch (e: any) {
-    if (e !== 'cancel') {
-      ElMessage.error('删除失败：' + (e.message || ''))
-    }
+    ElMessage.error(e.message || '提交失败')
+  } finally {
+    dataFormLoading.value = false
   }
+}
+
+// 打开数据列表
+function openFormList(row: any) {
+  router.push(`/form/${templateId.value}/data`)
+}
+
+// 打开权限设置弹窗
+function openPermissionDialog(row: any) {
+  permForm.is_public = row.is_public ?? false
+  showPermissionDialog.value = true
+}
+
+// 保存权限设置
+async function savePermission() {
+  permLoading.value = true
+  try {
+    await templateAPI.update(templateId.value, { is_public: permForm.is_public })
+    ElMessage.success('权限保存成功')
+    showPermissionDialog.value = false
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败')
+  } finally {
+    permLoading.value = false
+  }
+}
+
+// 格式化时间
+function formatDateTime(s: string | null): string {
+  if (!s) return '-'
+  const d = new Date(s)
+  return d.toLocaleString('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  })
 }
 
 onMounted(() => {

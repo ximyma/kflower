@@ -50,8 +50,8 @@ class ApplicationResponse(ApplicationBase):
 
 # ============ AppMenu ============
 class AppMenuBase(BaseModel):
-    template_id: int
-    menu_label: str
+    template_id: Optional[int] = None  # 允许为空，支持文件夹类型菜单
+    menu_label: Optional[str] = None
     menu_icon: Optional[str] = None
     menu_order: int = 0
     is_visible: bool = True
@@ -108,13 +108,13 @@ class AppMenuSimple(BaseModel):
     id: int
     app_id: int
     parent_id: Optional[int] = None
-    template_id: int
-    menu_label: str
+    template_id: Optional[int] = None
+    menu_label: Optional[str] = None
     menu_icon: Optional[str] = None
     menu_order: int = 0
     is_visible: bool = True
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -197,8 +197,8 @@ class MenuTreeNode(BaseModel):
     id: int
     label: str
     icon: Optional[str] = None
-    path: str
-    template_id: int
+    path: Optional[str] = None  # 当没有模板时可能为空
+    template_id: Optional[int] = None  # 允许为空，支持文件夹类型菜单
     workflow_id: Optional[int] = None
     workflow_trigger: Optional[str] = None
     workflow_auto_approve: Optional[bool] = None

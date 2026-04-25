@@ -23,7 +23,7 @@
         <el-button @click="goBack">
           <el-icon><ArrowLeft /></el-icon> 返回
         </el-button>
-        <h2>AI 应用设计助手</h2>
+        <h2>{{ pageTitle }}</h2>
       </div>
       <div class="header-right">
         <!-- AI 模型状态指示器 -->
@@ -78,6 +78,10 @@
         v-if="currentStep === 0"
         v-model:requirement="requirement"
         :loading="generating"
+        :is-generation-mode="isGenerationMode"
+        v-model:skip-workflow="skipWorkflow"
+        v-model:skip-agent="skipAgent"
+        v-model:skip-dashboard="skipDashboard"
         @generate="generateDesign"
         @load-example="loadExample"
       />
@@ -132,6 +136,9 @@
         :homepage="homepageConfig"
         :app-info="appInfo"
         :creating="creating"
+        :skip-workflow="skipWorkflow"
+        :skip-agent="skipAgent"
+        :skip-dashboard="skipDashboard"
         @prev="currentStep--"
         @create="createApplication"
         @update-app-info="appInfo = $event"
@@ -154,7 +161,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Setting, CircleCheckFilled, WarningFilled } from '@element-plus/icons-vue'
 import { useAIStore } from '@/common/store/ai'
@@ -171,6 +178,7 @@ import Step5HomepageConfig from './components/ai-designer/Step5HomepageConfig.vu
 import Step6FinalConfirm from './components/ai-designer/Step6FinalConfirm.vue'
 
 const router = useRouter()
+const route = useRoute()
 const aiStore = useAIStore()
 
 // 状态
@@ -182,6 +190,18 @@ const generatingForms = ref(false)
 const creating = ref(false)
 const showSuccessDialog = ref(false)
 const createdApp = ref<any>(null)
+
+// 从 URL 参数读取模式配置
+const mode = ref((route.query.mode as string) || 'designer')
+const skipWorkflow = ref(route.query.skipWorkflow === 'true')
+const skipAgent = ref(route.query.skipAgent === 'true')
+const skipDashboard = ref(route.query.skipDashboard === 'true')
+
+// 是否为"AI 生成"模式（默认跳过工作流和智能体）
+const isGenerationMode = computed(() => mode.value === 'generation')
+
+// 标题根据模式变化
+const pageTitle = computed(() => isGenerationMode.value ? 'AI 应用生成' : 'AI 应用设计助手')
 
 // 从配置状态获取可用的模型列表
 const availableModels = computed(() => {
@@ -293,11 +313,18 @@ async function generateDesign() {
 
   generating.value = true
   try {
+    // 根据跳过选项调整 prompt 提示
+    const skipNotes = []
+    if (skipWorkflow.value) skipNotes.push('- 不需要工作流/审批流程')
+    if (skipAgent.value) skipNotes.push('- 不需要智能体/Agent')
+    if (skipDashboard.value) skipNotes.push('- 不需要仪表盘/主页统计')
+    const skipSection = skipNotes.length > 0 ? `\n注意：以下内容不需要生成：\n${skipNotes.join('\n')}\n` : ''
+
     const prompt = `请根据以下需求设计一个业务应用，返回标准的JSON格式设计方案：
 
 需求描述：
 ${requirement.value}
-
+${skipSection}
 请返回以下格式的JSON（不要包含任何其他文字，只返回JSON）：
 {
   "app_name": "应用名称",
@@ -561,7 +588,7 @@ function goToStep4() {
 
 // 进入步骤5
 function goToStep5() {
-  if (!homepageConfig.value.widgets?.length) {
+  if (!skipDashboard.value && !homepageConfig.value.widgets?.length) {
     homepageConfig.value = {
       type: 'dashboard',
       title: `${appInfo.value.name}主页`,
@@ -579,7 +606,12 @@ function goToStep5() {
       }))
     }
   }
-  currentStep.value = 4
+  // 如果跳过了仪表盘，直接跳到步骤6
+  if (skipDashboard.value) {
+    currentStep.value = 5
+  } else {
+    currentStep.value = 4
+  }
 }
 
 // 进入步骤6
@@ -665,7 +697,8 @@ async function createApplication() {
     await appAPI.publish(appId)
     console.log(`[AI Designer] Application published`)
 
-    if (homepageConfig.value.widgets?.length) {
+    // 仅在未跳过仪表盘且有组件时保存
+    if (!skipDashboard.value && homepageConfig.value.widgets?.length) {
       try {
         await appAPI.saveDashboard(appId, {
           pages: [{

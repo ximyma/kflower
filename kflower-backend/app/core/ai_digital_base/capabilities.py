@@ -170,13 +170,26 @@ async def natural_language_query(input_data: Dict[str, Any], context: Dict = Non
         if not template:
             return {"success": False, "error": "模板不存在"}
         
-        # 获取字段定义
+        # 获取字段定义（兼容 aiosqlite 下 JSON 字段为字符串的情况）
+        import json as _json
+        modules_raw = template.modules
+        if isinstance(modules_raw, str):
+            modules_list = _json.loads(modules_raw) if modules_raw else []
+        else:
+            modules_list = modules_raw or []
         fields = []
-        for mod in template.modules or []:
-            for f in mod.get("fields", []):
-                fields.append({"name": f.get("name"), "label": f.get("label"), "type": f.get("type")})
+        for mod in modules_list:
+            if isinstance(mod, dict):
+                for f in mod.get("fields", []):
+                    fields.append({"name": f.get("name"), "label": f.get("label"), "type": f.get("type")})
         
-        table_name = template.config.get("table_name", f"form_data_{template_id}")
+        # 获取表名（兼容 aiosqlite 下 JSON 字段为字符串的情况）
+        config_raw = template.config
+        if isinstance(config_raw, str):
+            config = _json.loads(config_raw) if config_raw else {}
+        else:
+            config = config_raw or {}
+        table_name = config.get("table_name", f"form_data_{template_id}")
         
         # 构建提示词，让 AI 生成 SQL
         system_prompt = f"""你是一个数据查询专家。根据用户的自然语言查询，生成 SQL 语句。

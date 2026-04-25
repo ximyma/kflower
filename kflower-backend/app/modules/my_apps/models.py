@@ -42,12 +42,11 @@ class Application(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    # 关系
-    menus = relationship("AppMenu", back_populates="app", cascade="all, delete-orphan")
-    relations = relationship("FormRelation", back_populates="app", cascade="all, delete-orphan")
-    plugins = relationship("AppPlugin", back_populates="app", cascade="all, delete-orphan")
-    versions = relationship("AppVersion", back_populates="app", cascade="all, delete-orphan")
-    creator = relationship("User", foreign_keys=[created_by])
+    # 关系（暂不配置跨模块关系，避免加载时问题）
+    # menus = relationship("AppMenu", back_populates="app", cascade="all, delete-orphan")
+    # relations = relationship("FormRelation", back_populates="app", cascade="all, delete-orphan")
+    # plugins = relationship("AppPlugin", back_populates="app", cascade="all, delete-orphan")
+    # versions = relationship("AppVersion", back_populates="app", cascade="all, delete-orphan")
 
 
 class AppMenu(Base):
@@ -56,9 +55,9 @@ class AppMenu(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     app_id = Column(Integer, ForeignKey("applications.id"), nullable=False)
-    parent_id = Column(Integer, ForeignKey("app_menus.id"), nullable=True)
-    template_id = Column(Integer, ForeignKey("templates.id"), nullable=False)
-    menu_label = Column(String(100), nullable=False)
+    parent_id = Column(Integer, ForeignKey("app_menus.id", use_alter=True), nullable=True)
+    template_id = Column(Integer, ForeignKey("templates.id", use_alter=True), nullable=True)  # 允许为空，支持文件夹类型菜单
+    menu_label = Column(String(100), nullable=True)  # 允许为空，文件夹菜单可能没有label
     menu_icon = Column(String(100), nullable=True)
     menu_order = Column(Integer, default=0)
     is_visible = Column(Boolean, default=True)
@@ -66,7 +65,7 @@ class AppMenu(Base):
     form_page_config = Column(JSON, default=dict)
     
     # ===== 流程审批集成（升级方案 4.1） =====
-    workflow_id = Column(Integer, ForeignKey("workflows.id"), nullable=True, comment="关联的工作流ID")
+    workflow_id = Column(Integer, ForeignKey("workflows.id", use_alter=True), nullable=True, comment="关联的工作流ID")
     workflow_trigger = Column(String(20), default="manual", comment="触发方式: manual/submit/update")
     workflow_field_permissions = Column(JSON, default=dict, comment="流程中字段权限: {node_id: {field: readonly/hidden/edit}}")
     workflow_auto_approve = Column(Boolean, default=False, comment="提交后自动发起流程")
@@ -75,11 +74,7 @@ class AppMenu(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    # 关系
-    app = relationship("Application", back_populates="menus")
-    parent = relationship("AppMenu", remote_side=[id], backref="children")
-    template = relationship("Template")
-    workflow = relationship("Workflow")
+    # 注意：暂不配置跨模块关系，避免加载时问题
 
 
 class FormRelation(Base):
@@ -88,20 +83,16 @@ class FormRelation(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     app_id = Column(Integer, ForeignKey("applications.id"), nullable=False)
-    from_template_id = Column(Integer, ForeignKey("templates.id"), nullable=False)
+    from_template_id = Column(Integer, ForeignKey("templates.id", use_alter=True), nullable=False)
     from_field_name = Column(String(100), nullable=False)
-    to_template_id = Column(Integer, ForeignKey("templates.id"), nullable=False)
+    to_template_id = Column(Integer, ForeignKey("templates.id", use_alter=True), nullable=False)
     relation_type = Column(String(20), nullable=False)  # belongs_to, has_many, many_to_many
     display_field = Column(String(100), nullable=True)
     on_delete = Column(String(20), default="set_null")
     reverse_name = Column(String(100), nullable=True)
-    auto_fill_fields = Column(JSON, nullable=True)  # 自动填充字段映射 [{"from": "name", "to": "customer_name"}]
     created_at = Column(DateTime, server_default=func.now())
 
-    # 关系
-    app = relationship("Application", back_populates="relations")
-    from_template = relationship("Template", foreign_keys=[from_template_id])
-    to_template = relationship("Template", foreign_keys=[to_template_id])
+    # 注意：暂不配置跨模块关系，避免加载时问题
 
 
 class AppPlugin(Base):
@@ -112,15 +103,13 @@ class AppPlugin(Base):
     app_id = Column(Integer, ForeignKey("applications.id"), nullable=False)
     name = Column(String(100), nullable=False)
     trigger_event = Column(String(50), nullable=False)  # before_save, after_save, before_delete, after_delete, on_load
-    target_template_id = Column(Integer, ForeignKey("templates.id"), nullable=True)
+    target_template_id = Column(Integer, ForeignKey("templates.id", use_alter=True), nullable=True)
     script_code = Column(Text, nullable=False)
     is_enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    # 关系
-    app = relationship("Application", back_populates="plugins")
-    target_template = relationship("Template")
+    # 注意：暂不配置跨模块关系，避免加载时问题
 
 
 class AppVersion(Base):
@@ -134,13 +123,11 @@ class AppVersion(Base):
     changelog = Column(Text, nullable=True, comment="变更日志")
     is_stable = Column(Boolean, default=False, comment="是否稳定版")
     is_current = Column(Boolean, default=False, comment="是否为当前版本")
-    published_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    published_by = Column(Integer, ForeignKey("users.id", use_alter=True), nullable=True)
     published_at = Column(DateTime, nullable=True, comment="发布时间")
     created_at = Column(DateTime, server_default=func.now())
 
-    # 关系
-    app = relationship("Application", back_populates="versions")
-    publisher = relationship("User")
+    # 注意：暂不配置跨模块关系，避免加载时问题
 
     def __repr__(self):
         return f"<AppVersion app={self.app_id} v{self.version}>"

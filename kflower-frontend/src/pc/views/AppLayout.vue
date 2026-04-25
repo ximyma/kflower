@@ -13,6 +13,12 @@
         text-color="#bfcbd9"
         active-text-color="#409eff"
       >
+        <!-- 首页入口 -->
+        <el-menu-item :index="`/app/${appId}`">
+          <el-icon><HomeFilled /></el-icon>
+          <template #title>首页</template>
+        </el-menu-item>
+        <!-- 表单菜单项 -->
         <el-menu-item
           v-for="menu in menuTree"
           :key="menu.id"
@@ -26,7 +32,7 @@
 
     <!-- 右侧内容区 -->
     <el-main class="app-main">
-      <router-view :key="$route.fullPath" />
+      <router-view :key="$route.fullPath" :app-id="appId" />
     </el-main>
   </div>
 </template>
@@ -35,6 +41,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { HomeFilled } from '@element-plus/icons-vue'
 import appAPI from '@/common/api/myApps'
 
 const route = useRoute()

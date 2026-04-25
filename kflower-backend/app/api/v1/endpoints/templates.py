@@ -279,10 +279,17 @@ async def submit_template_data(
     if not template.is_published:
         raise HTTPException(status_code=400, detail="模板未发布，无法提交数据")
     
-    # 获取字段定义用于验证
+    # 获取字段定义用于验证（兼容 aiosqlite 下 JSON 字段为字符串的情况）
+    import json as _json
+    modules_raw = template.modules
+    if isinstance(modules_raw, str):
+        modules_list = _json.loads(modules_raw) if modules_raw else []
+    else:
+        modules_list = modules_raw or []
+    
     all_fields = []
     field_map = {}  # name -> field
-    for mod in (template.modules or []):
+    for mod in modules_list:
         if isinstance(mod, dict) and 'fields' in mod:
             for f in mod['fields']:
                 if isinstance(f, dict):
@@ -359,8 +366,12 @@ async def submit_template_data(
     # 用计算后的 main_data 替换原始 data
     data = main_data
     
-    # 获取表名
-    config = template.config or {}
+    # 获取表名（兼容 aiosqlite 下 JSON 字段为字符串的情况）
+    config_raw = template.config
+    if isinstance(config_raw, str):
+        config = _json.loads(config_raw) if config_raw else {}
+    else:
+        config = config_raw or {}
     table_name = config.get('table_name', f'form_data_{template_id}')
     
     # 构建字段名映射（原始名称 -> 安全名称）
@@ -388,11 +399,8 @@ async def submit_template_data(
     insert_sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
     
     # ===== 插件触发：before_save =====
-    # 获取 app_id（从模板配置中）
-    app_id = None
-    template_config = template.config or {}
-    if isinstance(template_config, dict):
-        app_id = template_config.get('app_id')
+    # 获取 app_id（从模板配置中，复用上面已解析的 config 变量）
+    app_id = config.get('app_id') if isinstance(config, dict) else None
     
     if app_id:
         try:
@@ -615,8 +623,12 @@ async def get_template_data_list(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
     
-    # 获取表名
-    config = template.config or {}
+    # 获取表名（兼容 aiosqlite 下 JSON 字段为字符串的情况）
+    config_raw = template.config
+    if isinstance(config_raw, str):
+        config = json.loads(config_raw) if config_raw else {}
+    else:
+        config = config_raw or {}
     table_name = config.get('table_name', f'form_data_{template_id}')
 
     # 获取字段定义（与 export_template_data 一致）
@@ -702,8 +714,12 @@ async def get_template_data_count(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
     
-    # 获取表名
-    config = template.config or {}
+    # 获取表名（兼容 aiosqlite 下 JSON 字段为字符串的情况）
+    config_raw = template.config
+    if isinstance(config_raw, str):
+        config = json.loads(config_raw) if config_raw else {}
+    else:
+        config = config_raw or {}
     table_name = config.get('table_name', f'form_data_{template_id}')
     
     try:
@@ -910,8 +926,12 @@ async def get_template_data_detail(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
     
-    # 获取表名
-    config = template.config or {}
+    # 获取表名（兼容 aiosqlite 下 JSON 字段为字符串的情况）
+    config_raw = template.config
+    if isinstance(config_raw, str):
+        config = json.loads(config_raw) if config_raw else {}
+    else:
+        config = config_raw or {}
     table_name = config.get('table_name', f'form_data_{template_id}')
     
     try:
@@ -977,14 +997,38 @@ async def update_template_data(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
     
-    # 获取表名
-    config = template.config or {}
+    # 获取表名（兼容 aiosqlite 下 JSON 字段为字符串的情况）
+    import json as _json2
+    config_raw = template.config
+    if isinstance(config_raw, str):
+        config = _json2.loads(config_raw) if config_raw else {}
+    else:
+        config = config_raw or {}
     table_name = config.get('table_name', f'form_data_{template_id}')
     
-    # 构建更新语句
+    # 获取字段定义用于公式计算（兼容 aiosqlite 下 JSON 字段为字符串的情况）
+    modules_raw = template.modules
+    if isinstance(modules_raw, str):
+        modules_list = _json2.loads(modules_raw) if modules_raw else []
+    else:
+        modules_list = modules_raw or []
+    all_fields = []
+    for mod in modules_list:
+        if isinstance(mod, dict) and 'fields' in mod:
+            for f in mod['fields']:
+                if isinstance(f, dict):
+                    all_fields.append(f)
+    
+    # ===== 公式计算 =====
     data = request.data
     if not data:
         raise HTTPException(status_code=400, detail="没有要更新的数据")
+    
+    try:
+        computed = formula_engine.compute_form(data, all_fields)
+        data.update(computed)
+    except Exception:
+        pass  # 公式计算失败不阻止更新
     
     # 构建字段名映射
     name_to_safe = {}
@@ -1007,10 +1051,8 @@ async def update_template_data(
     update_sql = f"UPDATE {table_name} SET {', '.join(set_clauses)} WHERE id = :id AND template_id = :template_id"
     
     # ===== 插件触发：before_update =====
-    app_id = None
-    template_config = template.config or {}
-    if isinstance(template_config, dict):
-        app_id = template_config.get('app_id')
+    # 获取 app_id（复用上面已解析的 config 变量）
+    app_id = config.get('app_id') if isinstance(config, dict) else None
     
     if app_id:
         try:
@@ -1145,8 +1187,12 @@ async def delete_template_data(
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
     
-    # 获取表名
-    config = template.config or {}
+    # 获取表名（兼容 aiosqlite 下 JSON 字段为字符串的情况）
+    config_raw = template.config
+    if isinstance(config_raw, str):
+        config = json.loads(config_raw) if config_raw else {}
+    else:
+        config = config_raw or {}
     table_name = config.get('table_name', f'form_data_{template_id}')
     
     # ===== 插件触发：before_delete =====
@@ -1262,7 +1308,12 @@ async def get_template_stats(
     
     field_stats = {}
     all_fields = []
-    for mod in (template.modules or []):
+    modules_raw = template.modules
+    if isinstance(modules_raw, str):
+        modules_list = json.loads(modules_raw) if modules_raw else []
+    else:
+        modules_list = modules_raw or []
+    for mod in modules_list:
         if isinstance(mod, dict) and 'fields' in mod:
             all_fields.extend(mod['fields'])
     
@@ -1329,7 +1380,11 @@ async def publish_template(
         raise HTTPException(status_code=403, detail="只有模板创建者可以发布")
     
     # 检查是否需要创建表：如果 config 里没有 table_name，需要创建
-    config = template.config or {}
+    config_raw = template.config
+    if isinstance(config_raw, str):
+        config = json.loads(config_raw) if config_raw else {}
+    else:
+        config = config_raw or {}
     table_name = config.get('table_name')
     
     if template.is_published and table_name:
@@ -1341,7 +1396,12 @@ async def publish_template(
     
     # 获取所有字段定义
     all_fields = []
-    for mod in (template.modules or []):
+    modules_raw = template.modules
+    if isinstance(modules_raw, str):
+        modules_list = json.loads(modules_raw) if modules_raw else []
+    else:
+        modules_list = modules_raw or []
+    for mod in modules_list:
         if isinstance(mod, dict) and 'fields' in mod:
             for f in mod['fields']:
                 if isinstance(f, dict):
@@ -1402,8 +1462,12 @@ async def publish_template(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"创建数据表失败: {str(e)}")
     
-    # 保存表名到配置
-    config = template.config or {}
+    # 保存表名到配置（兼容 aiosqlite 下 JSON 字段为字符串的情况）
+    config_raw = template.config
+    if isinstance(config_raw, str):
+        config = json.loads(config_raw) if config_raw else {}
+    else:
+        config = config_raw or {}
     config['table_name'] = table_name
     template.config = config
     
@@ -1499,7 +1563,7 @@ class FormVisibilityRequest(BaseModel):
 async def validate_formula(request: FormulaValidateRequest, current_user: User = Depends(get_current_user)):
     """验证公式语法"""
     try:
-        result = formula_engine.validate(request.formula)
+        result = formula_engine.validate_formula(request.formula)
         return {"success": True, "result": result}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -1522,8 +1586,18 @@ async def compute_form_formulas(request: FormComputeRequest, current_user: User 
         template = (await db.execute(select(Template).where(Template.id == request.template_id))).scalar_one_or_none()
         if not template:
             return {"success": False, "error": "模板不存在"}
-        config = json.loads(template.config) if template.config else {}
-        field_defs = list(config.get('fields', {}).values())
+        # 从 modules 中提取字段定义（字段存储在 modules[].fields[] 中，兼容 aiosqlite 下 JSON 字段为字符串的情况）
+        field_defs = []
+        modules_raw = template.modules
+        if isinstance(modules_raw, str):
+            modules_list = json.loads(modules_raw) if modules_raw else []
+        else:
+            modules_list = modules_raw or []
+        for mod in modules_list:
+            if isinstance(mod, dict) and 'fields' in mod:
+                for f in mod['fields']:
+                    if isinstance(f, dict):
+                        field_defs.append(f)
         computed = formula_engine.compute_form(request.data, field_defs)
         return {"success": True, "results": computed}
     except Exception as e:

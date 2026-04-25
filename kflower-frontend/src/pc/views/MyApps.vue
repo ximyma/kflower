@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2>我的应用</h2>
       <div class="header-actions">
-        <el-button type="success" @click="showAIGenerator = true">
+        <el-button type="success" @click="goToAIGenerator">
           <el-icon><MagicStick /></el-icon> AI 生成
         </el-button>
         <el-button @click="goToAIDesigner">
@@ -92,8 +92,6 @@
       </template>
     </el-dialog>
 
-    <!-- AI 应用生成对话框 -->
-    <AIAppGeneratorDialog v-model:visible="showAIGenerator" />
   </div>
 </template>
 
@@ -103,12 +101,10 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, View, Edit, Promotion, Delete, SetUp, MagicStick, ArrowDown, RefreshRight } from '@element-plus/icons-vue'
 import appAPI from '@/common/api/myApps'
-import AIAppGeneratorDialog from './my-apps/components/AIAppGeneratorDialog.vue'
 
 const router = useRouter()
 const apps = ref<any[]>([])
 const showCreateDialog = ref(false)
-const showAIGenerator = ref(false)
 const editingApp = ref<any>(null)
 const saving = ref(false)
 
@@ -155,9 +151,14 @@ function designApp(app: any) {
   router.push(`/app-designer/${app.id}`)
 }
 
+// 进入AI生成（跳转到AI设计助手，但默认跳过工作流和智能体）
+function goToAIGenerator() {
+  router.push('/ai-app-designer?mode=generation&skipWorkflow=true&skipAgent=true')
+}
+
 // 进入AI设计助手
 function goToAIDesigner() {
-  router.push('/ai-app-designer')
+  router.push('/ai-app-designer?mode=designer')
 }
 
 // 保存应用

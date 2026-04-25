@@ -1,6 +1,7 @@
 """
 仪表盘管理 API
 """
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -16,6 +17,13 @@ from app.schemas.schemas import BaseResponse
 router = APIRouter(prefix="/apps", tags=["仪表盘管理"])
 
 
+def _parse_config(raw: Any) -> dict:
+    """兼容 aiosqlite 下 JSON 字段为字符串的情况"""
+    if isinstance(raw, str):
+        return json.loads(raw) if raw else {}
+    return raw or {}
+
+
 @router.get("/{app_id}/dashboard", response_model=BaseResponse)
 async def get_dashboard_config(
     app_id: int,
@@ -28,7 +36,7 @@ async def get_dashboard_config(
     if not app:
         return BaseResponse(success=False, message="应用不存在")
 
-    config = app.config or {}
+    config = _parse_config(app.config)
     dashboard_config = config.get("dashboard", {"pages": [{"name": "首页", "widgets": []}]})
 
     return BaseResponse(data=dashboard_config)
@@ -47,7 +55,7 @@ async def save_dashboard_config(
     if not app:
         return BaseResponse(success=False, message="应用不存在")
 
-    app_config = app.config or {}
+    app_config = _parse_config(app.config)
     app_config["dashboard"] = config
     app.config = app_config
     await db.commit()
@@ -62,11 +70,32 @@ async def get_widget_data(
     current_user: User = Depends(get_current_user)
 ):
     """获取仪表盘组件的数据（实时刷新）"""
-    data_source = widget_config.get("data_source")
-    if not data_source:
-        return BaseResponse(success=False, message="未配置数据源")
-
     try:
+        # 兼容两种请求格式：
+        # 1. 直接发送 data_source 对象
+        # 2. 发送完整 widget 对象，data_source 在内部
+        data_source = widget_config.get("data_source") or widget_config
+
+        if not data_source:
+            return BaseResponse(success=False, message="未配置数据源")
+
+        # 如果 data_source 是字符串，尝试解析
+        if isinstance(data_source, str):
+            try:
+                data_source = json.loads(data_source)
+            except:
+                return BaseResponse(success=False, message="数据源格式不正确（JSON字符串解析失败）")
+
+        if not isinstance(data_source, dict):
+            return BaseResponse(success=False, message=f"数据源格式不正确（期望dict，实际{type(data_source).__name__}）")
+
+        # 兼容 aiosqlite 下 JSON 字符串字段
+        if isinstance(data_source.get("filters"), str):
+            try:
+                data_source["filters"] = json.loads(data_source["filters"])
+            except:
+                data_source["filters"] = []
+
         result = await analytics_engine.execute_aggregation(db, data_source, current_user.id)
 
         if "error" in result:

@@ -113,10 +113,10 @@
               <span>{{ formatDate(row.created_at) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="280" fixed="right" align="center">
+          <el-table-column label="操作" width="340" fixed="right" align="center">
             <template #default="{ row }">
-              <el-button size="small" type="primary" text @click="openDesigner(row)" title="查看/设计">
-                <el-icon><SetUp /></el-icon>查看
+              <el-button size="small" type="primary" text @click="openDesigner(row)" title="查看">
+                <el-icon><View /></el-icon>查看
               </el-button>
               <el-button size="small" type="warning" text @click="openEditDialog(row)" title="编辑">
                 <el-icon><Edit /></el-icon>编辑
@@ -126,6 +126,12 @@
               </el-button>
               <el-button v-else size="small" type="success" text @click="publishTemplate(row)" title="发布">
                 <el-icon><Promotion /></el-icon>发布
+              </el-button>
+              <el-button v-if="row.is_published" size="small" type="info" text @click="openFormList(row)" title="数据列表">
+                <el-icon><List /></el-icon>列表
+              </el-button>
+              <el-button size="small" text @click="openPermissionDialog(row)" title="权限设置">
+                <el-icon><Key /></el-icon>权限
               </el-button>
               <el-button size="small" type="danger" text @click="deleteTemplate(row)" title="删除">
                 <el-icon><Delete /></el-icon>删除
@@ -1067,28 +1073,30 @@
       <el-form :model="dataFormData" label-width="120px" ref="dataFormRef">
         <template v-for="f in dataFormFields" :key="f.name">
           <el-form-item :label="f.label + (f.required ? ' *' : '')" :required="f.required">
-            <el-input v-if="['text','email','phone','url','password'].includes(f.type)" v-model="dataFormData[f.name]" :placeholder="f.placeholder || ('请输入' + f.label)" />
-            <el-input v-else-if="f.type === 'textarea'" type="textarea" v-model="dataFormData[f.name]" :placeholder="f.placeholder || ('请输入' + f.label)" :rows="3" />
-            <el-input-number v-else-if="f.type === 'number'" v-model="dataFormData[f.name]" style="width:100%" :min="f.min" :max="f.max" />
-            <el-input v-else-if="f.type === 'money'" v-model="dataFormData[f.name]" :placeholder="'请输入' + f.label">
+            <!-- 公式字段：只读显示 -->
+            <el-input v-if="f.is_formula || f.formula" :model-value="dataFormData[f.name]" disabled :placeholder="'由公式自动计算'" />
+            <el-input v-else-if="['text','email','phone','url','password'].includes(f.type)" v-model="dataFormData[f.name]" :placeholder="f.placeholder || ('请输入' + f.label)" @input="onDataFormFieldChange(f.name)" />
+            <el-input v-else-if="f.type === 'textarea'" type="textarea" v-model="dataFormData[f.name]" :placeholder="f.placeholder || ('请输入' + f.label)" :rows="3" @input="onDataFormFieldChange(f.name)" />
+            <el-input-number v-else-if="f.type === 'number'" v-model="dataFormData[f.name]" style="width:100%" :min="f.min" :max="f.max" @change="onDataFormFieldChange(f.name)" />
+            <el-input v-else-if="f.type === 'money'" v-model="dataFormData[f.name]" :placeholder="'请输入' + f.label" @input="onDataFormFieldChange(f.name)">
               <template #prepend>¥</template>
             </el-input>
-            <el-date-picker v-else-if="f.type === 'date'" v-model="dataFormData[f.name]" type="date" style="width:100%" value-format="YYYY-MM-DD" />
-            <el-date-picker v-else-if="f.type === 'datetime'" v-model="dataFormData[f.name]" type="datetime" style="width:100%" value-format="YYYY-MM-DD HH:mm:ss" />
-            <el-time-picker v-else-if="f.type === 'time'" v-model="dataFormData[f.name]" style="width:100%" />
-            <el-select v-else-if="f.type === 'select'" v-model="dataFormData[f.name]" style="width:100%" :placeholder="'请选择' + f.label" clearable>
+            <el-date-picker v-else-if="f.type === 'date'" v-model="dataFormData[f.name]" type="date" style="width:100%" value-format="YYYY-MM-DD" @change="onDataFormFieldChange(f.name)" />
+            <el-date-picker v-else-if="f.type === 'datetime'" v-model="dataFormData[f.name]" type="datetime" style="width:100%" value-format="YYYY-MM-DD HH:mm:ss" @change="onDataFormFieldChange(f.name)" />
+            <el-time-picker v-else-if="f.type === 'time'" v-model="dataFormData[f.name]" style="width:100%" @change="onDataFormFieldChange(f.name)" />
+            <el-select v-else-if="f.type === 'select'" v-model="dataFormData[f.name]" style="width:100%" :placeholder="'请选择' + f.label" clearable @change="onDataFormFieldChange(f.name)">
               <el-option v-for="o in (f.options || [])" :key="o" :label="o" :value="o" />
             </el-select>
-            <el-radio-group v-else-if="f.type === 'radio'" v-model="dataFormData[f.name]">
+            <el-radio-group v-else-if="f.type === 'radio'" v-model="dataFormData[f.name]" @change="onDataFormFieldChange(f.name)">
               <el-radio v-for="o in (f.options || [])" :key="o" :label="o">{{ o }}</el-radio>
             </el-radio-group>
-            <el-checkbox-group v-else-if="f.type === 'checkbox'" v-model="dataFormData[f.name]">
+            <el-checkbox-group v-else-if="f.type === 'checkbox'" v-model="dataFormData[f.name]" @change="onDataFormFieldChange(f.name)">
               <el-checkbox v-for="o in (f.options || [])" :key="o" :label="o">{{ o }}</el-checkbox>
             </el-checkbox-group>
-            <el-switch v-else-if="f.type === 'switch'" v-model="dataFormData[f.name]" />
-            <el-rate v-else-if="f.type === 'rate'" v-model="dataFormData[f.name]" />
-            <el-slider v-else-if="f.type === 'slider'" v-model="dataFormData[f.name]" :min="f.min||0" :max="f.max||100" />
-            <el-input v-else v-model="dataFormData[f.name]" :placeholder="'请输入' + f.label" />
+            <el-switch v-else-if="f.type === 'switch'" v-model="dataFormData[f.name]" @change="onDataFormFieldChange(f.name)" />
+            <el-rate v-else-if="f.type === 'rate'" v-model="dataFormData[f.name]" @change="onDataFormFieldChange(f.name)" />
+            <el-slider v-else-if="f.type === 'slider'" v-model="dataFormData[f.name]" :min="f.min||0" :max="f.max||100" @change="onDataFormFieldChange(f.name)" />
+            <el-input v-else v-model="dataFormData[f.name]" :placeholder="'请输入' + f.label" @input="onDataFormFieldChange(f.name)" />
           </el-form-item>
         </template>
         <el-empty v-if="dataFormFields.length === 0" description="该模板暂无字段，请先设计模板" />
@@ -1320,6 +1328,31 @@
       </template>
     </el-dialog>
 
+    <!-- 权限设置弹窗 -->
+    <el-dialog v-model="showPermissionDialog" :title="'权限设置 - ' + (permTemplate?.name || '')" width="550px">
+      <el-form label-width="90px">
+        <el-form-item label="模板名称">
+          <span style="font-weight:500">{{ permTemplate?.name }}</span>
+        </el-form-item>
+        <el-form-item label="访问权限">
+          <el-radio-group v-model="permForm.is_public">
+            <el-radio :label="false">私有（仅自己可见）</el-radio>
+            <el-radio :label="true">公开（所有用户可见）</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="说明">
+          <div style="color: var(--el-text-color-secondary);font-size:12px;line-height:1.6">
+            <p>• <strong>私有</strong>：只有创建者可以看到和使用</p>
+            <p>• <strong>公开</strong>：组织内所有用户都可以看到和使用</p>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPermissionDialog = false">取消</el-button>
+        <el-button type="primary" :loading="permLoading" @click="savePermission">保存</el-button>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -1335,7 +1368,7 @@ import {
   Brush, PictureFilled, User, OfficeBuilding, Link, Message, Phone,
   Lock, Timer, Alarm, DateRange, Share, Star, Notebook, Download,
   ArrowLeft, MoreFilled, Rank, RefreshRight, QuestionFilled, Promotion,
-  InfoFilled, Coin, CircleCheck, CircleClose
+  InfoFilled, Coin, CircleCheck, CircleClose, Key
 } from '@element-plus/icons-vue'
 import { templateAPI, userAPI } from '../../common/api'
 import { useAIStore } from '../../common/store/ai'
@@ -2010,7 +2043,7 @@ async function confirmPublishFromPreview() {
   const tpl = currentTemplate
   publishing.value = true
   try {
-    // 构建发布数据
+    // 构建发布数据（保留所有字段属性，只过滤前端专用属性）
     const publishData = {
       name: tpl.name,
       code: tpl.code || tpl.name.toLowerCase().replace(/\s+/g, '_'),
@@ -2024,15 +2057,10 @@ async function confirmPublishFromPreview() {
       },
       modules: [{
         name: 'main',
-        fields: tpl.fields.map((f: any) => ({
-          type: f.type,
-          label: f.label,
-          name: f.name,
-          required: f.required,
-          width: f.width,
-          options: f.options || [],
-          placeholder: f.placeholder || ''
-        }))
+        fields: tpl.fields.map((f: any) => {
+          const { _key, _value, optionsText, ...rest } = f
+          return rest
+        })
       }]
     }
     
@@ -2151,6 +2179,39 @@ async function deleteTemplate(t: any) {
     ElMessage.success('已删除')
   } catch {}
 }
+
+// 打开数据列表
+function openFormList(t: any) {
+  router.push(`/form/${t.id}/data`)
+}
+
+// 打开权限设置弹窗
+const showPermissionDialog = ref(false)
+const permTemplate = ref<any>(null)
+const permForm = reactive({ is_public: false })
+const permLoading = ref(false)
+
+function openPermissionDialog(row: any) {
+  permTemplate.value = row
+  permForm.is_public = row.is_public ?? false
+  showPermissionDialog.value = true
+}
+
+async function savePermission() {
+  if (!permTemplate.value) return
+  permLoading.value = true
+  try {
+    await templateAPI.update(permTemplate.value.id, { is_public: permForm.is_public })
+    ElMessage.success('权限保存成功')
+    showPermissionDialog.value = false
+    loadTemplates()
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败')
+  } finally {
+    permLoading.value = false
+  }
+}
+
 async function duplicateTemplate(t: any) {
   try {
     const res: any = await templateAPI.create({ name:t.name+' (副本)', code:t.code+'_copy', description:t.description, category:t.category, fields:t.fields })
@@ -3072,6 +3133,58 @@ function getTemplateFields(t: any): any[] {
   return fields
 }
 
+// 前端公式求值器（简单版）
+function evaluateFormula(formula: string, ctx: Record<string, any>): any {
+  if (!formula) return undefined
+  try {
+    // 替换 {字段名} 为实际值
+    let expr = formula.replace(/\{([^}]+)\}/g, (_match: string, fieldName: string) => {
+      const val = ctx[fieldName.trim()]
+      if (val === undefined || val === null || val === '') return '0'
+      const num = Number(val)
+      return isNaN(num) ? JSON.stringify(String(val)) : String(num)
+    })
+    // 支持函数
+    expr = expr
+      .replace(/\bROUND\b/g, 'Math.round')
+      .replace(/\bFLOOR\b/g, 'Math.floor')
+      .replace(/\bCEIL\b/g, 'Math.ceil')
+      .replace(/\bABS\b/g, 'Math.abs')
+      .replace(/\bSQRT\b/g, 'Math.sqrt')
+      .replace(/\bPOWER\b/g, 'Math.pow')
+      .replace(/\bMAX\b/g, 'Math.max')
+      .replace(/\bMIN\b/g, 'Math.min')
+    // eslint-disable-next-line no-new-func
+    const fn = new Function('Math', `"use strict"; return (${expr})`)
+    const result = fn(Math)
+    if (typeof result === 'number' && !isNaN(result)) {
+      return Math.round(result * 1e10) / 1e10
+    }
+    return result
+  } catch {
+    return undefined
+  }
+}
+
+// 计算所有公式字段
+function computeDataFormFormulas() {
+  const ctx: Record<string, any> = { ...dataFormData }
+  dataFormFields.value.forEach((field: any) => {
+    if (!field.formula && !field.is_formula) return
+    if (!field.formula) return
+    const result = evaluateFormula(field.formula, ctx)
+    if (result !== undefined) {
+      dataFormData[field.name] = result
+      ctx[field.name] = result  // 链式计算
+    }
+  })
+}
+
+// 字段值变化时触发公式重算
+function onDataFormFieldChange(_fieldName: string) {
+  computeDataFormFormulas()
+}
+
 // 打开表单填写页（从列表操作列点击"填表"）
 function openFormSubmit(t: any) {
   openDataForm(t)
@@ -3095,11 +3208,15 @@ function openDataForm(t: any) {
       dataFormData[f.name] = f.defaultValue || ''
     }
   })
+  // 打开弹窗后立即计算公式字段（处理默认值公式）
+  setTimeout(() => computeDataFormFormulas(), 50)
   showDataForm.value = true
 }
 
 async function submitDataForm() {
   if (!dataFormTemplate.value) return
+  // 先计算一次公式，确保最新值
+  computeDataFormFormulas()
   // 验证必填字段
   for (const f of dataFormFields.value) {
     if (f.required) {

@@ -1,6 +1,7 @@
 """
 仪表盘分析引擎 - 执行聚合查询和数据统计
 """
+import json
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, List, Optional
@@ -11,6 +12,13 @@ from app.models.workflow import Template
 
 class AnalyticsEngine:
     """分析引擎 - 执行各类聚合查询"""
+
+    @staticmethod
+    def _parse_template_config(raw: Any) -> dict:
+        """兼容 aiosqlite 下 JSON 字段为字符串的情况"""
+        if isinstance(raw, str):
+            return json.loads(raw) if raw else {}
+        return raw or {}
 
     @staticmethod
     async def execute_aggregation(
@@ -44,15 +52,15 @@ class AnalyticsEngine:
         if not row:
             return {"error": f"Template {template_id} not found"}
 
-        tpl_config = row[0] or {}
+        tpl_config = AnalyticsEngine._parse_template_config(row[0])
         table_name = tpl_config.get("table_name", f"form_data_{template_id}")
 
         # 安全检查：表名必须以 form_data_ 开头
         if not table_name.startswith("form_data_"):
             return {"error": "Invalid table name"}
 
-        # 构建 WHERE 子句
-        where_clause, params = AnalyticsEngine._build_where_clause(config)
+        # 构建 WHERE 子句（含 user_id 过滤）
+        where_clause, params = AnalyticsEngine._build_where_clause(config, user_id)
 
         # 执行聚合
         source_type = config.get("type", "aggregation")
@@ -67,10 +75,15 @@ class AnalyticsEngine:
             return {"error": f"Unknown aggregation type: {source_type}"}
 
     @staticmethod
-    def _build_where_clause(config: Dict[str, Any]) -> tuple:
+    def _build_where_clause(config: Dict[str, Any], user_id: int = None) -> tuple:
         """构建WHERE子句"""
         where_parts = []
         params = {}
+
+        # 用户过滤：如果提供了 user_id，只查该用户的数据
+        if user_id is not None:
+            where_parts.append("created_by = :user_id")
+            params["user_id"] = user_id
 
         # 日期范围
         date_range = config.get("date_range")
@@ -141,18 +154,27 @@ class AnalyticsEngine:
     ) -> Dict[str, Any]:
         """执行单值聚合"""
         aggregate = config.get("aggregate", "count")
-        field = config.get("field", "id")
+        field = config.get("field", "")
 
+        # COUNT 用 * 确保始终有效；SUM/AVG 需要数值字段
         if aggregate == "count":
-            select_expr = f"COUNT({field}) as value"
+            select_expr = "COUNT(*) as value"
         elif aggregate == "sum":
-            select_expr = f"SUM(CAST({field} AS REAL)) as value"
+            if not field:
+                return {"type": "single", "aggregate": "sum", "value": 0, "error": "SUM 需要指定统计字段"}
+            select_expr = f"SUM(CAST(\"{field}\" AS REAL)) as value"
         elif aggregate == "avg":
-            select_expr = f"AVG(CAST({field} AS REAL)) as value"
+            if not field:
+                return {"type": "single", "aggregate": "avg", "value": 0, "error": "AVG 需要指定统计字段"}
+            select_expr = f"AVG(CAST(\"{field}\" AS REAL)) as value"
         elif aggregate == "max":
-            select_expr = f"MAX({field}) as value"
+            if not field:
+                return {"type": "single", "aggregate": "max", "value": 0, "error": "MAX 需要指定统计字段"}
+            select_expr = f"MAX(\"{field}\") as value"
         elif aggregate == "min":
-            select_expr = f"MIN({field}) as value"
+            if not field:
+                return {"type": "single", "aggregate": "min", "value": 0, "error": "MIN 需要指定统计字段"}
+            select_expr = f"MIN(\"{field}\") as value"
         else:
             select_expr = "COUNT(*) as value"
 
@@ -184,26 +206,34 @@ class AnalyticsEngine:
             return await AnalyticsEngine._do_aggregation(db, table_name, config, where_clause, params)
 
         aggregate = config.get("aggregate", "count")
-        field = config.get("field", "id")
+        field = config.get("field", "")
 
         if aggregate == "count":
-            select_expr = f"COUNT({field}) as value"
+            select_expr = "COUNT(*) as value"
         elif aggregate == "sum":
-            select_expr = f"SUM(CAST({field} AS REAL)) as value"
+            if not field:
+                return {"type": "grouped", "aggregate": "sum", "data": [], "total": 0, "error": "SUM 需要指定统计字段"}
+            select_expr = f"SUM(CAST(\"{field}\" AS REAL)) as value"
         elif aggregate == "avg":
-            select_expr = f"AVG(CAST({field} AS REAL)) as value"
+            if not field:
+                return {"type": "grouped", "aggregate": "avg", "data": [], "total": 0, "error": "AVG 需要指定统计字段"}
+            select_expr = f"AVG(CAST(\"{field}\" AS REAL)) as value"
         elif aggregate == "max":
-            select_expr = f"MAX({field}) as value"
+            if not field:
+                return {"type": "grouped", "aggregate": "max", "data": [], "total": 0, "error": "MAX 需要指定统计字段"}
+            select_expr = f"MAX(\"{field}\") as value"
         elif aggregate == "min":
-            select_expr = f"MIN({field}) as value"
+            if not field:
+                return {"type": "grouped", "aggregate": "min", "data": [], "total": 0, "error": "MIN 需要指定统计字段"}
+            select_expr = f"MIN(\"{field}\") as value"
         else:
             select_expr = "COUNT(*) as value"
 
         sql = f"""
-            SELECT {group_by} as name, {select_expr}
+            SELECT \"{group_by}\" as name, {select_expr}
             FROM {table_name}
             WHERE {where_clause}
-            GROUP BY {group_by}
+            GROUP BY \"{group_by}\"
             ORDER BY value DESC
             LIMIT 20
         """
@@ -233,9 +263,10 @@ class AnalyticsEngine:
         """执行列表查询"""
         order_by = config.get("order_by", "-created_at")
         if order_by.startswith("-"):
-            order_clause = f"ORDER BY {order_by[1:]} DESC"
+            order_field = order_by[1:]
+            order_clause = f"ORDER BY \"{order_field}\" DESC"
         else:
-            order_clause = f"ORDER BY {order_by} ASC"
+            order_clause = f"ORDER BY \"{order_by}\" ASC"
 
         limit = min(config.get("limit", 10), 100)
 

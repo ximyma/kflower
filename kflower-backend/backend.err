@@ -1,0 +1,24 @@
+Building prefix dict from C:\Users\Administrator\AppData\Roaming\Python\Python311\site-packages\jieba\dict.txt ...
+Loading model from cache C:\Users\ADMINI~1\AppData\Local\Temp\jieba.cache
+Loading model cost 0.84084153175354 seconds.
+Prefix dict has been built succesfully.
+RestrictedPython not installed, using safe eval fallback
+C:\Users\Administrator\AppData\Roaming\Python\Python311\site-packages\pydantic\_internal\_fields.py:151: UserWarning: Field "model_override" has conflict with protected namespace "model_".
+
+You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+  warnings.warn(
+INFO:     Will watch for changes in these directories: ['E:\\kkflower\\kflower-backend']
+INFO:     Uvicorn running on http://0.0.0.0:8788 (Press CTRL+C to quit)
+INFO:     Started reloader process [12320] using WatchFiles
+Building prefix dict from C:\Users\Administrator\AppData\Roaming\Python\Python311\site-packages\jieba\dict.txt ...
+Loading model from cache C:\Users\ADMINI~1\AppData\Local\Temp\jieba.cache
+Loading model cost 0.7640640735626221 seconds.
+Prefix dict has been built succesfully.
+RestrictedPython not installed, using safe eval fallback
+C:\Users\Administrator\AppData\Roaming\Python\Python311\site-packages\pydantic\_internal\_fields.py:151: UserWarning: Field "model_override" has conflict with protected namespace "model_".
+
+You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+  warnings.warn(
+INFO:     Started server process [13052]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

@@ -37,6 +37,19 @@
         </el-form>
       </div>
 
+      <!-- 跳过选项提示 -->
+      <div v-if="hasSkipOptions" class="skip-summary">
+        <el-alert title="生成选项" type="warning" :closable="false" show-icon>
+          <template #default>
+            <div class="skip-items">
+              <span v-if="skipWorkflow">✅ 跳过工作流</span>
+              <span v-if="skipAgent">✅ 跳过智能体</span>
+              <span v-if="skipDashboard">✅ 跳过仪表盘</span>
+            </div>
+          </template>
+        </el-alert>
+      </div>
+
       <!-- 创建内容预览 -->
       <div class="section">
         <h3>即将创建的内容</h3>
@@ -50,7 +63,7 @@
           <el-statistic title="表单关系" :value="design.relations?.length || 0">
             <template #suffix>个</template>
           </el-statistic>
-          <el-statistic title="主页组件" :value="homepage.widgets?.length || 0">
+          <el-statistic title="主页组件" :value="skipDashboard ? 0 : (homepage.widgets?.length || 0)">
             <template #suffix>个</template>
           </el-statistic>
         </div>
@@ -102,7 +115,7 @@
           </el-collapse-item>
 
           <!-- 主页配置 -->
-          <el-collapse-item title="主页配置" name="homepage">
+          <el-collapse-item v-if="!skipDashboard" title="主页配置" name="homepage">
             <el-descriptions :column="2" border size="small">
               <el-descriptions-item label="主页类型">
                 {{ homepage.type === 'dashboard' ? '仪表盘' : homepage.type === 'list' ? '列表' : '自定义' }}
@@ -119,7 +132,7 @@
       <!-- 确认提示 -->
       <el-alert
         title="确认创建"
-        description="点击创建按钮后，系统将创建应用、发布所有表单、配置菜单和主页。创建完成后即可使用应用。"
+        :description="confirmDescription"
         type="info"
         show-icon
         :closable="false"
@@ -149,6 +162,9 @@ const props = defineProps<{
   homepage: any
   appInfo: any
   creating: boolean
+  skipWorkflow?: boolean
+  skipAgent?: boolean
+  skipDashboard?: boolean
 }>()
 
 const emit = defineEmits(['update:appInfo', 'prev', 'create'])
@@ -161,6 +177,19 @@ const localAppInfo = computed({
 const successTemplates = computed(() => 
   props.templates.filter(t => t._status === 'success')
 )
+
+const hasSkipOptions = computed(() =>
+  props.skipWorkflow || props.skipAgent || props.skipDashboard
+)
+
+const confirmDescription = computed(() => {
+  const parts = ['点击创建按钮后，系统将创建应用、发布所有表单、配置菜单']
+  if (!props.skipDashboard) {
+    parts.push('和主页')
+  }
+  parts.push('。创建完成后即可使用应用。')
+  return parts.join('')
+})
 
 const activeCollapse = ref(['templates', 'menus'])
 </script>
@@ -193,6 +222,17 @@ const activeCollapse = ref(['templates', 'menus'])
     border-bottom: 1px solid var(--el-border-color-light);
     color: var(--el-text-color-primary);
     font-size: 16px;
+  }
+}
+
+.skip-summary {
+  margin-bottom: 20px;
+
+  .skip-items {
+    display: flex;
+    gap: 16px;
+    margin-top: 4px;
+    font-size: 13px;
   }
 }
 

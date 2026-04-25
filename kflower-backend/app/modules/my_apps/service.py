@@ -52,19 +52,26 @@ class MyAppsService:
     @staticmethod
     async def get_app(db: AsyncSession, app_id: int, user: User) -> Optional[dict]:
         """获取应用详情，返回 dict 避免 ORM lazy-load"""
-        query = (
-            select(Application)
-            .options(
-                selectinload(Application.menus),
-                selectinload(Application.relations),
-                selectinload(Application.plugins),
-            )
-            .where(Application.id == app_id, Application.created_by == user.id)
+        # 直接查询，不使用 selectinload（因为我们移除了跨模块关系定义）
+        query = select(Application).where(
+            Application.id == app_id,
+            Application.created_by == user.id
         )
         result = await db.execute(query)
         app = result.scalar_one_or_none()
         if not app:
             return None
+
+        # 单独查询关联数据
+        menus_result = await db.execute(select(AppMenu).where(AppMenu.app_id == app_id))
+        menus = menus_result.scalars().all()
+
+        relations_result = await db.execute(select(FormRelation).where(FormRelation.app_id == app_id))
+        relations = relations_result.scalars().all()
+
+        plugins_result = await db.execute(select(AppPlugin).where(AppPlugin.app_id == app_id))
+        plugins = plugins_result.scalars().all()
+
         return {
             "id": app.id,
             "code": app.code,
@@ -95,7 +102,7 @@ class MyAppsService:
                     "created_at": m.created_at,
                     "updated_at": m.updated_at,
                 }
-                for m in app.menus
+                for m in menus  # 使用前面查询的 menus 变量
             ],
             "relations": [
                 {
@@ -110,7 +117,7 @@ class MyAppsService:
                     "reverse_name": r.reverse_name,
                     "created_at": r.created_at,
                 }
-                for r in app.relations
+                for r in relations  # 使用前面查询的 relations 变量
             ],
             "plugins": [
                 {
@@ -124,7 +131,7 @@ class MyAppsService:
                     "created_at": p.created_at,
                     "updated_at": p.updated_at,
                 }
-                for p in app.plugins
+                for p in plugins  # 使用前面查询的 plugins 变量
             ],
         }
 
@@ -231,17 +238,28 @@ class MyAppsService:
     # ========== 菜单管理 ==========
     @staticmethod
     async def add_menu(db: AsyncSession, app_id: int, data: AppMenuCreate) -> dict:
-        """添加菜单，返回可安全序列化的 dict（避免 ORM lazy-load 导致 500）"""
+        """添加菜单，返回可安全序列化的 dict"""
+        from datetime import datetime
+        now = datetime.utcnow()
+        # 处理 parent_id = 0 作为 None（前端使用 0 表示根菜单）
+        parent_id = data.parent_id if data.parent_id and data.parent_id != 0 else None
+        # 处理 template_id = 0 作为 None（允许创建没有模板的菜单）
+        template_id = data.template_id if data.template_id and data.template_id != 0 else None
+        # 处理 menu_label 为空的情况
+        menu_label = data.menu_label or "未命名菜单"
+
         menu = AppMenu(
             app_id=app_id,
-            parent_id=data.parent_id,
-            template_id=data.template_id,
-            menu_label=data.menu_label,
+            parent_id=parent_id,
+            template_id=template_id,
+            menu_label=menu_label,
             menu_icon=data.menu_icon,
             menu_order=data.menu_order,
             is_visible=data.is_visible,
-            list_page_config=data.list_page_config,
-            form_page_config=data.form_page_config,
+            list_page_config=data.list_page_config or {},
+            form_page_config=data.form_page_config or {},
+            created_at=now,
+            updated_at=now,
         )
         db.add(menu)
         await db.commit()
@@ -257,18 +275,20 @@ class MyAppsService:
             "is_visible": menu.is_visible,
             "list_page_config": menu.list_page_config,
             "form_page_config": menu.form_page_config,
-            "created_at": menu.created_at,
-            "updated_at": menu.updated_at,
+            "created_at": menu.created_at or now,
+            "updated_at": menu.updated_at or now,
         }
 
     @staticmethod
     async def update_menu(db: AsyncSession, menu: AppMenu, data: AppMenuUpdate) -> dict:
         """更新菜单，返回可安全序列化的 dict"""
+        from datetime import datetime
         update_data = data.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(menu, key, value)
         await db.commit()
         await db.refresh(menu)
+        now = datetime.utcnow()
         return {
             "id": menu.id,
             "app_id": menu.app_id,
@@ -280,8 +300,8 @@ class MyAppsService:
             "is_visible": menu.is_visible,
             "list_page_config": menu.list_page_config,
             "form_page_config": menu.form_page_config,
-            "created_at": menu.created_at,
-            "updated_at": menu.updated_at,
+            "created_at": menu.created_at or now,
+            "updated_at": menu.updated_at or now,
         }
 
     @staticmethod
@@ -303,15 +323,16 @@ class MyAppsService:
         root_menus = []
         
         for menu in menus:
-            # 处理 template_id 为 None 的情况
-            template_id = menu.template_id if menu.template_id is not None else 0
-            
+            # 处理 template_id 为 None 的情况（文件夹类型菜单）
+            template_id = menu.template_id
+            path = f"/app/{app_id}/form/{template_id}" if template_id else None
+
             try:
                 node = MenuTreeNode(
                     id=menu.id,
                     label=menu.menu_label or "未命名菜单",
                     icon=menu.menu_icon,
-                    path=f"/app/{app_id}/form/{template_id}",
+                    path=path,
                     template_id=template_id,
                     workflow_id=menu.workflow_id,
                     workflow_trigger=menu.workflow_trigger,
@@ -320,7 +341,7 @@ class MyAppsService:
                     children=[]
                 )
                 menu_map[menu.id] = node
-                
+
                 if menu.parent_id is None:
                     root_menus.append(node)
                 else:

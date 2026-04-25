@@ -171,11 +171,11 @@
         </el-form-item>
         <el-form-item label="父菜单">
           <el-select v-model="menuForm.parent_id" placeholder="根菜单" clearable style="width: 100%">
-            <el-option label="根菜单" :value="null" />
+            <el-option label="（根菜单）" :value="0" />
             <el-option
               v-for="menu in flatMenus"
               :key="menu.id"
-              :label="menu.menu_label"
+              :label="menu.menu_label || '未命名'"
               :value="menu.id"
             />
           </el-select>
