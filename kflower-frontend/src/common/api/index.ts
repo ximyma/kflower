@@ -422,4 +422,58 @@ export const docConverterAPI = {
   },
 }
 
+// 数据建模 API
+export const dataModelAPI = {
+  // 数据模型 CRUD
+  listModels: (params?: { skip?: number; limit?: number }) => 
+    api.get('/data-models/models', { params }),
+  getModel: (id: number) => api.get(`/data-models/models/${id}`),
+  createModel: (data: any) => api.post('/data-models/models', data),
+  updateModel: (id: number, data: any) => api.put(`/data-models/models/${id}`, data),
+  deleteModel: (id: number) => api.delete(`/data-models/models/${id}`),
+  
+  // 字段管理
+  addField: (modelId: number, data: any) => api.post(`/data-models/models/${modelId}/fields`, data),
+  updateField: (modelId: number, fieldId: number, data: any) => 
+    api.put(`/data-models/models/${modelId}/fields/${fieldId}`, data),
+  deleteField: (modelId: number, fieldId: number) => 
+    api.delete(`/data-models/models/${modelId}/fields/${fieldId}`),
+  
+  // 关联关系
+  addRelation: (modelId: number, data: any) => 
+    api.post(`/data-models/models/${modelId}/relations`, data),
+  deleteRelation: (modelId: number, relationId: number) => 
+    api.delete(`/data-models/models/${modelId}/relations/${relationId}`),
+  
+  // 生成操作
+  createTable: (modelId: number) => api.post(`/data-models/models/${modelId}/create-table`),
+  generateTemplate: (modelId: number) => api.post(`/data-models/models/${modelId}/generate-template`),
+  syncTable: (modelId: number) => api.post(`/data-models/models/${modelId}/sync-table`),
+  
+  // Kflower 内部表
+  listKflowerTables: () => api.get('/data-models/kflower-tables'),
+  copyKflowerTable: (tableName: string, newTemplateName: string) => 
+    api.post(`/data-models/kflower-tables/${tableName}/copy-to-template`, { new_template_name: newTemplateName }),
+  
+  // 数据库连接
+  listConnections: () => api.get('/data-models/connections'),
+  createConnection: (data: any) => api.post('/data-models/connections', data),
+  testConnection: (id: number) => api.post(`/data-models/connections/${id}/test`),
+  deleteConnection: (id: number) => api.delete(`/data-models/connections/${id}`),
+  
+  // 外部数据库
+  listExternalTables: (connId: number) => api.get(`/data-models/connections/${connId}/tables`),
+  getExternalTableSchema: (connId: number, tableName: string) => 
+    api.get(`/data-models/connections/${connId}/tables/${tableName}/schema`),
+  importExternalTables: (connId: number, tableNames: string[]) => 
+    api.post(`/data-models/connections/${connId}/import`, tableNames),
+  
+  // AI 建模
+  aiGenerate: (requirement: string, modelNameHint?: string) => 
+    api.post('/data-models/ai/generate', { requirement, model_name_hint: modelNameHint }),
+  
+  // 统计
+  getStats: () => api.get('/data-models/stats'),
+}
+
 export default api

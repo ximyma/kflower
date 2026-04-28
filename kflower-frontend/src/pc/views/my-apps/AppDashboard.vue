@@ -89,9 +89,9 @@
                 <span class="chart-value">{{ formatNumber(item.value) }}</span>
               </div>
             </div>
-            <div v-else-if="widgetData[widget.i]?.type === 'single'" class="single-value-container">
-              <span class="single-value-number">{{ formatNumber(widgetData[widget.i]?.value) }}</span>
-              <span class="single-value-label">{{ widgetData[widget.i]?.label || widget.title }}</span>
+            <div v-else-if="widgetData[widget.i]?.value !== undefined" class="kpi-simple">
+              <div class="kpi-value">{{ formatNumber(widgetData[widget.i]?.value) }}</div>
+              <div class="kpi-label">{{ widgetData[widget.i]?.label || widget.title }}</div>
             </div>
             <div v-else class="chart-empty">
               <el-empty description="暂无数据" :image-size="60" />
@@ -155,6 +155,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import appAPI from '@/common/api/myApps'
+import { templateAPI } from '@/common/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -163,7 +164,10 @@ const props = defineProps<{
   appId: number
 }>()
 
-const resolvedAppId = computed(() => props.appId || Number(route.params.appId) || 0)
+const resolvedAppId = computed(() => {
+  const id = props.appId || Number(route.params.appId) || 0
+  return id
+})
 
 const appData = ref<any>({ name: '应用' })
 const pages = ref<any[]>([{ name: '首页', widgets: [] }])
@@ -172,6 +176,7 @@ const widgetData = ref<Record<string, any>>({})
 const fieldLabels = ref<Record<number, Record<string, string>>>({})
 const widgetLoading = ref<Record<string, boolean>>({})
 const refreshing = ref(false)
+const templateFieldLabels = ref<Record<number, Record<string, string>>>({})
 
 const currentWidgets = computed(() => {
   const idx = parseInt(activePage.value)
@@ -210,26 +215,35 @@ function getBarWidth(value: number, data: any) {
 function getTableColumns(widget: any, data: any) {
   if (!data?.data?.length) return []
   const first = data.data[0]
-  const allKeys = Object.keys(first)
-  // Exclude system fields
+  // 获取模板的字段标签映射（优先使用 fieldLabels API，其次用 templateFieldLabels 本地缓存）
+  const templateId = widget.data_source?.template_id
+  const labelMap = templateId 
+    ? fieldLabels.value[templateId] || templateFieldLabels.value[templateId] || {}
+    : {}
+  
+  // 系统字段列表
   const SYSTEM_FIELDS = new Set(['id', 'template_id', 'created_by', 'created_at', 'updated_at', 'deleted_at'])
-  const bizKeys = allKeys.filter(k => !SYSTEM_FIELDS.has(k))
-
+  
   // Priority 1: widget.columns (configured columns)
   if (widget.columns?.length) {
-    const tid = widget.data_source?.template_id
-    const labelMap = tid ? fieldLabels.value[tid] || {} : {}
-    return widget.columns.map((col: string) => ({
-      key: col,
-      label: labelMap[col] || col,
+    return widget.columns
+      .filter((c: string) => !SYSTEM_FIELDS.has(c))
+      .map((col: string) => ({ key: col, label: labelMap[col] || col }))
+  }
+
+  // Priority 2: 从 labelMap 中提取有中文映射的字段
+  const labelKeys = Object.keys(labelMap).filter(k => !SYSTEM_FIELDS.has(k))
+  if (labelKeys.length > 0) {
+    return labelKeys.slice(0, 8).map(k => ({
+      key: k,
+      label: labelMap[k],
+      width: k === 'id' ? 60 : undefined,
     }))
   }
 
-  // Priority 2: fieldLabels (from template modules)
-  const tid = widget.data_source?.template_id
-  const labelMap = tid ? fieldLabels.value[tid] || {} : {}
-  const labelKeys = bizKeys.slice(0, 8)
-  return labelKeys.map(k => ({
+  // Priority 3: 从数据字段推断
+  const bizKeys = Object.keys(first).filter(k => !SYSTEM_FIELDS.has(k)).slice(0, 8)
+  return bizKeys.map(k => ({
     key: k,
     label: labelMap[k] || k,
     width: k === 'id' ? 60 : undefined,
@@ -263,15 +277,46 @@ async function loadAppData() {
   }
 }
 
+async function loadTemplateFieldLabels(templateId: number) {
+  if (templateFieldLabels.value[templateId]) {
+    return
+  }
+  
+  try {
+    const res: any = await templateAPI.get(templateId)
+    if (res.modules) {
+      const fieldLabels: Record<string, string> = {}
+      for (const mod of res.modules) {
+        if (mod.fields) {
+          for (const field of mod.fields) {
+            fieldLabels[field.name] = field.label || field.name
+          }
+        }
+      }
+      templateFieldLabels.value[templateId] = fieldLabels
+    }
+  } catch (e) {
+    console.error('获取模板字段定义失败:', e)
+  }
+}
+
 async function loadDashboard() {
   try {
     const res: any = await appAPI.getDashboard(resolvedAppId.value)
     const config = res.data
     if (config && config.pages && config.pages.length > 0) {
-      pages.value = config.pages
-      for (const page of pages.value) {
+      // 创建新的数组，确保响应式系统能检测到变化
+      const newPages = JSON.parse(JSON.stringify(config.pages))
+      
+      // 收集所有需要加载字段定义的模板ID
+      const templateIds = new Set<number>()
+      
+      for (const page of newPages) {
         for (const w of (page.widgets || [])) {
           if (w.data_source) {
+            if (w.data_source.template_id) {
+              templateIds.add(w.data_source.template_id)
+            }
             if (w.data_source.date_field === undefined) w.data_source.date_field = 'created_at'
             if (w.data_source.filters === undefined) w.data_source.filters = []
             if (w.data_source.type === undefined) {
@@ -288,9 +333,18 @@ async function loadDashboard() {
           }
         }
       }
+      
+      // 批量加载所有模板的字段定义
+      await Promise.all([...templateIds].map(id => loadTemplateFieldLabels(id)))
+      
+      // 赋值新数组
+      pages.value = newPages
+    } else {
+      pages.value = [{ name: '首页', widgets: [] }]
     }
   } catch (e) {
     console.error('加载仪表盘失败:', e)
+    pages.value = [{ name: '首页', widgets: [] }]
   }
 }
 
@@ -314,13 +368,16 @@ async function loadFieldLabels() {
 }
 
 async function refreshWidgetData(widget: any) {
-  if (!widget.data_source || !widget.data_source.template_id) return
+  if (!widget.data_source || !widget.data_source.template_id) {
+    return
+  }
 
   widgetLoading.value[widget.i] = true
   try {
     const res: any = await appAPI.getWidgetData(widget)
     widgetData.value[widget.i] = res.data || res
   } catch (e: any) {
+    console.error('刷新组件数据失败:', widget.title, e)
     widgetData.value[widget.i] = { error: e.message }
   } finally {
     widgetLoading.value[widget.i] = false
@@ -339,6 +396,9 @@ onMounted(async () => {
   await loadAppData()
   await loadDashboard()
   await loadFieldLabels()
+  setTimeout(() => {
+    currentWidgets.value.forEach(w => refreshWidgetData(w))
+  }, 100)
 })
 
 watch(activePage, () => {
@@ -347,13 +407,12 @@ watch(activePage, () => {
   }, 200)
 })
 
-// Watch pages change (e.g. after loadDashboard resolves) to refresh widget data
 watch(pages, () => {
   setTimeout(async () => {
     await loadFieldLabels()
     currentWidgets.value.forEach(w => refreshWidgetData(w))
   }, 300)
-}, { deep: true })
+})
 </script>
 
 <style scoped lang="scss">
@@ -413,6 +472,22 @@ watch(pages, () => {
     flex-direction: column;
     justify-content: center;
     height: 100%;
+  }
+}
+
+.kpi-simple {
+  text-align: center;
+  padding: 16px;
+  .kpi-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--el-color-primary);
+    line-height: 1.2;
+  }
+  .kpi-label {
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+    margin-top: 4px;
   }
 }
 

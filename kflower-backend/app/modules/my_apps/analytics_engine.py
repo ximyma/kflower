@@ -82,10 +82,10 @@ class AnalyticsEngine:
         where_parts = []
         params = {}
 
-        # 用户过滤
-        if user_id is not None:
-            where_parts.append("created_by = :user_id")
-            params["user_id"] = user_id
+        # 用户过滤 - 暂时注释掉，允许查看所有用户的数据
+        # if user_id is not None:
+        #     where_parts.append("created_by = :user_id")
+        #     params["user_id"] = user_id
 
         # 日期范围
         date_range = config.get("date_range")

@@ -166,6 +166,24 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '应用设计', hideInMenu: true }
       },
       {
+        path: 'data-modeling',
+        name: 'DataModeling',
+        component: () => import('../../pc/views/DataModeling.vue'),
+        meta: { title: '数据建模' }
+      },
+      {
+        path: 'data-modeling/designer/:id?',
+        name: 'DataModelDesigner',
+        component: () => import('../../pc/views/DataModelDesigner.vue'),
+        meta: { title: '模型设计', hideInMenu: true }
+      },
+      {
+        path: 'data-modeling/import',
+        name: 'DataModelImport',
+        component: () => import('../../pc/views/DataModelImport.vue'),
+        meta: { title: '导入数据表', hideInMenu: true }
+      },
+      {
         path: 'migration',
         name: 'Migration',
         component: () => import('../../pc/views/Migration.vue'),

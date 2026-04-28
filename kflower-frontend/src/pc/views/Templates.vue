@@ -27,6 +27,9 @@
           <el-button @click="showImport = true">
             <el-icon><Upload /></el-icon> 导入文件
           </el-button>
+          <el-button @click="goDataModeling">
+            <el-icon><Coin /></el-icon> 数据建模
+          </el-button>
           <el-button @click="showAIHelper = true">
             <el-icon><MagicStick /></el-icon> AI 设计
           </el-button>
@@ -2860,6 +2863,10 @@ const jsonInputText = ref('')
 function openJsonImport() {
   jsonInputText.value = ''
   showJsonImport.value = true
+}
+
+function goDataModeling() {
+  router.push('/data-modeling')
 }
 
 function importFromJson() {
