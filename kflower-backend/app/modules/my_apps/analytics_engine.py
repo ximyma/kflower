@@ -203,8 +203,17 @@ class AnalyticsEngine:
     ) -> Dict[str, Any]:
         """执行分组聚合"""
         group_by = config.get("group_by")
-        if not group_by:
-            return await AnalyticsEngine._do_aggregation(db, table_name, config, where_clause, params)
+        
+        # 只有当 group_by 真正未设置时才 fallback 到单值聚合
+        if not group_by or (isinstance(group_by, str) and not group_by.strip()):
+            # 返回空分组数据（type=grouped），让前端显示"暂无分组数据"
+            return {
+                "type": "grouped",
+                "aggregate": config.get("aggregate", "count"),
+                "data": [],
+                "total": 0,
+                "message": "未配置分组字段" if not group_by else "暂无分组数据"
+            }
 
         aggregate = config.get("aggregate", "count")
         field = config.get("field", "")

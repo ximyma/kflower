@@ -89,8 +89,12 @@
                 <span class="chart-value">{{ formatNumber(item.value) }}</span>
               </div>
             </div>
+            <div v-else-if="widgetData[widget.i]?.type === 'single'" class="single-value-container">
+              <span class="single-value-number">{{ formatNumber(widgetData[widget.i]?.value) }}</span>
+              <span class="single-value-label">{{ widgetData[widget.i]?.label || widget.title }}</span>
+            </div>
             <div v-else class="chart-empty">
-              <el-empty description="暂无分组数据" :image-size="60" />
+              <el-empty description="暂无数据" :image-size="60" />
             </div>
           </div>
         </el-card>
@@ -165,6 +169,7 @@ const appData = ref<any>({ name: '应用' })
 const pages = ref<any[]>([{ name: '首页', widgets: [] }])
 const activePage = ref('0')
 const widgetData = ref<Record<string, any>>({})
+const fieldLabels = ref<Record<number, Record<string, string>>>({})
 const widgetLoading = ref<Record<string, boolean>>({})
 const refreshing = ref(false)
 
@@ -205,12 +210,28 @@ function getBarWidth(value: number, data: any) {
 function getTableColumns(widget: any, data: any) {
   if (!data?.data?.length) return []
   const first = data.data[0]
+  const allKeys = Object.keys(first)
+  // Exclude system fields
+  const SYSTEM_FIELDS = new Set(['id', 'template_id', 'created_by', 'created_at', 'updated_at', 'deleted_at'])
+  const bizKeys = allKeys.filter(k => !SYSTEM_FIELDS.has(k))
+
+  // Priority 1: widget.columns (configured columns)
   if (widget.columns?.length) {
-    return widget.columns.map((c: string) => ({ key: c, label: c }))
+    const tid = widget.data_source?.template_id
+    const labelMap = tid ? fieldLabels.value[tid] || {} : {}
+    return widget.columns.map((col: string) => ({
+      key: col,
+      label: labelMap[col] || col,
+    }))
   }
-  return Object.keys(first).slice(0, 8).map(k => ({
+
+  // Priority 2: fieldLabels (from template modules)
+  const tid = widget.data_source?.template_id
+  const labelMap = tid ? fieldLabels.value[tid] || {} : {}
+  const labelKeys = bizKeys.slice(0, 8)
+  return labelKeys.map(k => ({
     key: k,
-    label: k,
+    label: labelMap[k] || k,
     width: k === 'id' ? 60 : undefined,
   }))
 }
@@ -256,6 +277,12 @@ async function loadDashboard() {
             if (w.data_source.type === undefined) {
               w.data_source.type = w.type === 'table' ? 'query' : 'aggregation'
             }
+            // chart 类型且有 group_by（非空）时，强制设为 grouped_aggregation
+            if (w.type === 'chart' && w.group_by && w.group_by.length > 0) {
+              w.data_source.type = 'grouped_aggregation'
+              if (!w.data_source.group_by) w.data_source.group_by = w.group_by
+              if (!w.data_source.aggregate) w.data_source.aggregate = w.aggregate || 'count'
+            }
             if (w.data_source.max_rows === undefined) w.data_source.max_rows = 10
             if (w.data_source.order_by === undefined) w.data_source.order_by = '-created_at'
           }
@@ -264,6 +291,25 @@ async function loadDashboard() {
     }
   } catch (e) {
     console.error('加载仪表盘失败:', e)
+  }
+}
+
+async function loadFieldLabels() {
+  // Collect unique template_ids
+  const tidSet = new Set<number>()
+  for (const page of pages.value) {
+    for (const w of (page.widgets || [])) {
+      if (w.data_source?.template_id) tidSet.add(w.data_source.template_id)
+    }
+  }
+  if (tidSet.size === 0) return
+
+  try {
+    const res = await appAPI.getFieldLabels([...tidSet])
+    const labels = (res.data || {}) as Record<number, Record<string, string>>
+    fieldLabels.value = labels
+  } catch (e: any) {
+    console.error('加载字段标签失败:', e)
   }
 }
 
@@ -292,6 +338,7 @@ async function refreshAll() {
 onMounted(async () => {
   await loadAppData()
   await loadDashboard()
+  await loadFieldLabels()
 })
 
 watch(activePage, () => {
@@ -302,7 +349,8 @@ watch(activePage, () => {
 
 // Watch pages change (e.g. after loadDashboard resolves) to refresh widget data
 watch(pages, () => {
-  setTimeout(() => {
+  setTimeout(async () => {
+    await loadFieldLabels()
     currentWidgets.value.forEach(w => refreshWidgetData(w))
   }, 300)
 }, { deep: true })
@@ -445,6 +493,27 @@ watch(pages, () => {
   font-weight: 500;
   text-align: right;
   flex-shrink: 0;
+}
+
+.single-value-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 0;
+  gap: 6px;
+}
+
+.single-value-number {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--el-color-primary);
+  line-height: 1;
+}
+
+.single-value-label {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 
 // 快捷入口

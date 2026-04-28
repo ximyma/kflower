@@ -104,6 +104,34 @@ async def get_widget_data(
         if "error" in result:
             return BaseResponse(success=False, message=result["error"])
 
+        # 把列名替换为中文标签
+        template_id = data_source.get("template_id")
+        if template_id and result.get("data"):
+            try:
+                from app.modules.my_apps.analytics_engine import AnalyticsEngine
+                fields_result = await db.execute(
+                    text("SELECT modules FROM templates WHERE id = :tid"),
+                    {"tid": template_id}
+                )
+                fields_row = fields_result.fetchone()
+                if fields_row:
+                    modules = AnalyticsEngine._parse_config(fields_row[0])
+                    field_labels = {}
+                    for mod in (modules if isinstance(modules, list) else []):
+                        for f in mod.get("fields", []):
+                            fname = f.get("name", "")
+                            if fname:
+                                field_labels[fname] = f.get("label", fname)
+                    if field_labels:
+                        for row in result["data"]:
+                            for k in list(row.keys()):
+                                if k in field_labels:
+                                    new_key = field_labels[k]
+                                    if new_key != k:
+                                        row[new_key] = row.pop(k)
+            except Exception:
+                pass
+
         return BaseResponse(data=result)
     except Exception as e:
         return BaseResponse(success=False, message=str(e))

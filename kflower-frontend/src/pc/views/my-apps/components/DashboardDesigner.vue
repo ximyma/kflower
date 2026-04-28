@@ -446,24 +446,32 @@ function editWidget(w: any) {
 }
 function saveWidgetConfig() {
   if (!editingWidget.value) return
+  const w = editingWidget.value
+  const dsType = widgetForm.type === 'table' ? 'query'
+    : (widgetForm.type === 'chart' && widgetForm.group_by ? 'grouped_aggregation' : 'aggregation')
   const ds = widgetForm.template_id ? {
-    type: widgetForm.type === 'table' ? 'query' : 'aggregation',
+    type: dsType,
     template_id: widgetForm.template_id,
     aggregate: widgetForm.aggregate,
     field: widgetForm.field,
     date_range: widgetForm.date_range,
-    date_field: 'created_at',
+    group_by: widgetForm.group_by,
+    order_by: widgetForm.order_by,
+    max_rows: widgetForm.max_rows,
     filters: [],
+    date_field: 'created_at',
   } : undefined
-  Object.assign(editingWidget.value, {
+  Object.assign(w, {
     title: widgetForm.title, type: widgetForm.type, template_id: widgetForm.template_id,
-    aggregate: widgetForm.aggregate, field: widgetForm.field, date_range: widgetForm.date_range,
-    width: widgetForm.width,
+    aggregate: widgetForm.aggregate, field: widgetForm.field,
+    group_by: widgetForm.group_by,
+    date_range: widgetForm.date_range, width: widgetForm.width,
+    max_rows: widgetForm.max_rows, order_by: widgetForm.order_by,
     data_source: ds,
   })
   widgetDialogVisible.value = false
-  syncPropForm(editingWidget.value)
-  refreshWidgetData(editingWidget.value)
+  syncPropForm(w)
+  refreshWidgetData(w)
 }
 
 function addPage() { pages.value.push({ name: `页面 ${pages.value.length + 1}`, widgets: [] }); activePage.value = String(pages.value.length - 1) }

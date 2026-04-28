@@ -78,6 +78,8 @@ export const appAPI = {
   getDashboard: (appId: number) => request.get(`/apps/${appId}/dashboard`),
   saveDashboard: (appId: number, config: any) => request.put(`/apps/${appId}/dashboard`, config),
   getWidgetData: (widgetConfig: any) => request.post('/apps/dashboard/widget/data', widgetConfig),
+  getFieldLabels: (templateIds: number[]) =>
+    request.get('/apps/field-labels', { params: { ids: templateIds.join(',') } }),
   
   // ============ 权限 ============
   getPermissions: (appId: number) => request.get(`/permissions/app/${appId}`),
