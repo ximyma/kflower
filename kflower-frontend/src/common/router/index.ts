@@ -105,6 +105,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('../../pc/views/Users.vue'),
         meta: { title: '用户管理', requiresAdmin: true }
       },
+      
       {
         path: 'ai-digital-base',
         name: 'AIDigitalBase',
@@ -170,6 +171,24 @@ const routes: RouteRecordRaw[] = [
         name: 'DataModeling',
         component: () => import('../../pc/views/DataModeling.vue'),
         meta: { title: '数据建模' }
+      },
+      {
+        path: 'plugins',
+        name: 'PluginManager',
+        component: () => import('../../pc/views/PluginManager.vue'),
+        meta: { title: '插件管理' }
+      },
+      {
+        path: 'plugin-designer/:id?',
+        name: 'PluginDesigner',
+        component: () => import('../../pc/views/PluginDesigner.vue'),
+        meta: { title: '插件设计器', hideInMenu: true }
+      },
+      {
+        path: 'plugin-market',
+        name: 'PluginMarket',
+        component: () => import('../../pc/views/PluginMarket.vue'),
+        meta: { title: '插件市场' }
       },
       {
         path: 'data-modeling/designer/:id?',

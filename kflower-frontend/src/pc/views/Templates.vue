@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="template-page">
 
     <!-- 列表视图 -->
@@ -132,6 +132,9 @@
               </el-button>
               <el-button v-if="row.is_published" size="small" type="info" text @click="openFormList(row)" title="数据列表">
                 <el-icon><List /></el-icon>列表
+              </el-button>
+              <el-button size="small" text @click="openTemplatePluginDialog(row)" title="插件管理">
+                <el-icon><Box /></el-icon>插件
               </el-button>
               <el-button size="small" text @click="openPermissionDialog(row)" title="权限设置">
                 <el-icon><Key /></el-icon>权限
@@ -1356,6 +1359,13 @@
       </template>
     </el-dialog>
 
+    <!-- 模板插件管理弹窗 -->
+    <el-dialog v-model="showTemplatePluginDialog" :title="'插件管理 - ' + (pluginTemplate?.name || '')" width="800px" top="5vh">
+      <div v-if="pluginTemplate" style="max-height: 70vh; overflow-y: auto;">
+        <TemplatePluginManager :template-id="pluginTemplate.id" />
+      </div>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -1376,6 +1386,7 @@ import {
 import { templateAPI, userAPI } from '../../common/api'
 import { useAIStore } from '../../common/store/ai'
 import { useUserStore } from '../../common/store/user'
+import TemplatePluginManager from '../components/TemplatePluginManager.vue'
 
 // 路由
 const router = useRouter()
@@ -2193,6 +2204,15 @@ const showPermissionDialog = ref(false)
 const permTemplate = ref<any>(null)
 const permForm = reactive({ is_public: false })
 const permLoading = ref(false)
+
+// 模板插件管理
+const showTemplatePluginDialog = ref(false)
+const pluginTemplate = ref<any>(null)
+
+function openTemplatePluginDialog(row: any) {
+  pluginTemplate.value = row
+  showTemplatePluginDialog.value = true
+}
 
 function openPermissionDialog(row: any) {
   permTemplate.value = row

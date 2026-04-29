@@ -19,9 +19,10 @@ from app.schemas.schemas import (
     TemplateDataSubmit, TemplateDataUpdate, TemplateDataResponse, TemplateStatsResponse
 )
 from app.core.formula_engine import formula_engine, validation_engine, visibility_engine
+from app.core.plugin_manager import get_plugin_manager
 from pydantic import BaseModel as PydanticBaseModel, BaseModel
 from app.modules.my_apps.plugin_executor import plugin_executor, PluginContext
-from app.modules.my_apps.models import AppPlugin
+from app.modules.my_apps.models import AppPluginBinding
 
 router = APIRouter(prefix="/templates", tags=["模板管理"])
 
@@ -397,7 +398,21 @@ async def submit_template_data(
         values[safe_name] = json.dumps(value, ensure_ascii=False) if isinstance(value, (list, dict)) else value
     
     insert_sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
-    
+
+    # ===== 模板级插件触发：before_form_submit =====
+    try:
+        from app.services.template_plugin_service import TemplatePluginService
+        pm = get_plugin_manager()
+        hook_context = {
+            "data": data,
+            "user_id": current_user.id,
+            "template_id": template_id,
+            "db": db
+        }
+        await TemplatePluginService.trigger_hook(template_id, "before_form_submit", hook_context)
+    except Exception:
+        pass  # 模板插件执行失败不影响主流程
+
     # ===== 插件触发：before_save =====
     # 获取 app_id（从模板配置中，复用上面已解析的 config 变量）
     app_id = config.get('app_id') if isinstance(config, dict) else None
@@ -487,7 +502,20 @@ async def submit_template_data(
                     await plugin_executor.execute(plugin.script_code, context, timeout=5)
         except Exception as e:
             pass
-    
+
+    # ===== 模板级插件触发：after_form_submit =====
+    try:
+        from app.services.template_plugin_service import TemplatePluginService
+        hook_context = {
+            "data": data,
+            "user_id": current_user.id,
+            "template_id": template_id,
+            "db": db
+        }
+        await TemplatePluginService.trigger_hook(template_id, "after_form_submit", hook_context)
+    except Exception:
+        pass  # 模板插件执行失败不影响主流程
+
     # ===== RAG 自动索引（升级方案 7.1） =====
     if app_id:
         try:
@@ -1798,3 +1826,136 @@ async def get_lookup_record_detail(
         raise
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ============ 模板插件管理 ============
+
+@router.get("/{template_id}/plugins", response_model=BaseResponse)
+async def get_template_plugins(
+    template_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取模板绑定的插件列表"""
+    from app.services.template_plugin_service import TemplatePluginService
+
+    try:
+        plugins = await TemplatePluginService.get_template_plugins(template_id)
+        return BaseResponse(success=True, data=plugins)
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))
+
+
+@router.post("/{template_id}/plugins/bind", response_model=BaseResponse)
+async def bind_plugin_to_template(
+    template_id: int,
+    bind_data: Dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """将插件绑定到模板"""
+    from app.services.template_plugin_service import TemplatePluginService
+
+    plugin_id = bind_data.get("plugin_id")
+    if not plugin_id:
+        raise HTTPException(status_code=400, detail="plugin_id 不能为空")
+
+    config = bind_data.get("config", {})
+    sort_order = bind_data.get("sort_order", 0)
+
+    try:
+        result = await TemplatePluginService.bind_plugin(
+            template_id=template_id,
+            plugin_id=plugin_id,
+            config=config,
+            sort_order=sort_order
+        )
+        return BaseResponse(success=result["success"], message=result.get("message"), data=result.get("data"))
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))
+
+
+@router.delete("/{template_id}/plugins/{binding_id}", response_model=BaseResponse)
+async def unbind_plugin_from_template(
+    template_id: int,
+    binding_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """解除插件与模板的绑定"""
+    from app.services.template_plugin_service import TemplatePluginService
+
+    try:
+        result = await TemplatePluginService.unbind_plugin(template_id, binding_id)
+        return BaseResponse(success=result["success"], message=result.get("message"))
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))
+
+
+@router.put("/{template_id}/plugins/{binding_id}", response_model=BaseResponse)
+async def update_template_plugin_binding(
+    template_id: int,
+    binding_id: int,
+    update_data: Dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """更新模板插件绑定配置"""
+    from app.services.template_plugin_service import TemplatePluginService
+
+    try:
+        result = await TemplatePluginService.update_binding(
+            template_id=template_id,
+            binding_id=binding_id,
+            is_enabled=update_data.get("is_enabled"),
+            config=update_data.get("config"),
+            sort_order=update_data.get("sort_order")
+        )
+        return BaseResponse(success=result["success"], message=result.get("message"))
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))
+
+
+@router.post("/{template_id}/plugins/trigger", response_model=BaseResponse)
+async def trigger_template_plugin_hook(
+    template_id: int,
+    hook_data: Dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """手动触发模板插件钩子（用于测试）"""
+    from app.services.template_plugin_service import TemplatePluginService
+
+    hook_name = hook_data.get("hook_name")
+    context = hook_data.get("context", {})
+
+    if not hook_name:
+        raise HTTPException(status_code=400, detail="hook_name 不能为空")
+
+    try:
+        result = await TemplatePluginService.trigger_hook(template_id, hook_name, context)
+        return BaseResponse(success=True, data=result)
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))
+
+
+@router.get("/{template_id}/plugins/available", response_model=BaseResponse)
+async def get_available_plugins_for_template(
+    template_id: int,
+    category: Optional[str] = None,
+    search: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取可绑定到模板的插件列表"""
+    from app.services.template_plugin_service import TemplatePluginService
+
+    try:
+        plugins = await TemplatePluginService.get_available_plugins(
+            template_id=template_id,
+            category=category,
+            search=search
+        )
+        return BaseResponse(success=True, data=plugins)
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))

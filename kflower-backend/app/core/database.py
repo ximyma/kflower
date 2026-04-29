@@ -7,6 +7,7 @@ SQLite 优化配置：
 - PRAGMA temp_store=MEMORY    # 临时表存储在内存
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import create_engine as create_sync_engine
 from sqlalchemy.orm import declarative_base
 from app.core.config import settings
 
@@ -22,6 +23,18 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DB_ECHO,
     connect_args=sqlite_kwargs,
+)
+
+# 创建同步引擎（供插件管理等需要同步 session 的模块使用）
+# 注意：使用 AUTOCOMMIT 避免与 aiosqlite 异步引擎的 WAL 锁冲突
+_sync_url = settings.DATABASE_URL
+if _sync_url.startswith('sqlite+aiosqlite://'):
+    _sync_url = _sync_url.replace('sqlite+aiosqlite://', 'sqlite://', 1)
+engine_sync = create_sync_engine(
+    _sync_url,
+    echo=settings.DB_ECHO,
+    connect_args=sqlite_kwargs,
+    isolation_level="AUTOCOMMIT",
 )
 
 # 创建会话工厂
@@ -67,3 +80,4 @@ async def init_db():
 async def close_db():
     """关闭数据库连接"""
     await engine.dispose()
+    engine_sync.dispose()

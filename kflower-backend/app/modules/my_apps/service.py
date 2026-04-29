@@ -6,9 +6,10 @@ from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import uuid
+from datetime import datetime
 from fastapi import HTTPException
 
-from app.modules.my_apps.models import Application, AppMenu, FormRelation, AppPlugin
+from app.modules.my_apps.models import Application, AppMenu, FormRelation, AppPluginBinding
 from app.modules.my_apps.schemas import (
     ApplicationCreate, ApplicationUpdate,
     AppMenuCreate, AppMenuUpdate,
@@ -69,7 +70,7 @@ class MyAppsService:
         relations_result = await db.execute(select(FormRelation).where(FormRelation.app_id == app_id))
         relations = relations_result.scalars().all()
 
-        plugins_result = await db.execute(select(AppPlugin).where(AppPlugin.app_id == app_id))
+        plugins_result = await db.execute(select(AppPluginBinding).where(AppPluginBinding.app_id == app_id))
         plugins = plugins_result.scalars().all()
 
         return {
@@ -171,8 +172,8 @@ class MyAppsService:
             await db.delete(rel)
         
         # 删除插件
-        plugin_query = select(AppPlugin).where(AppPlugin.app_id == app_id)
-        plugin_query = select(AppPlugin).where(AppPlugin.app_id == app_id)
+        plugin_query = select(AppPluginBinding).where(AppPluginBinding.app_id == app_id)
+        plugin_query = select(AppPluginBinding).where(AppPluginBinding.app_id == app_id)
         plugin_result = await db.execute(plugin_query)
         plugins = plugin_result.scalars().all()
         for plugin in plugins:
@@ -184,15 +185,39 @@ class MyAppsService:
 
     @staticmethod
     async def publish_app(db: AsyncSession, app_id: int) -> dict:
-        """发布应用，返回 dict 避免 ORM lazy-load"""
+        """发布应用，返回 dict 避免 ORM lazy-load，包含插件打包"""
         query = select(Application).where(Application.id == app_id)
         result = await db.execute(query)
         app = result.scalar_one_or_none()
         if not app:
             raise HTTPException(status_code=404, detail="应用不存在")
+        
+        # 获取应用关联的插件并打包
+        plugins_result = await db.execute(select(AppPluginBinding).where(AppPluginBinding.app_id == app_id))
+        plugins = plugins_result.scalars().all()
+        
+        # 打包插件配置和代码
+        packaged_plugins = []
+        for plugin in plugins:
+            packaged_plugins.append({
+                "id": plugin.id,
+                "name": plugin.name,
+                "trigger_event": plugin.trigger_event,
+                "target_template_id": plugin.target_template_id,
+                "script_code": plugin.script_code,
+                "is_enabled": plugin.is_enabled,
+            })
+        
+        # 更新应用配置，包含打包的插件
+        if not app.config:
+            app.config = {}
+        app.config['packaged_plugins'] = packaged_plugins
+        app.config['publish_time'] = datetime.utcnow().isoformat()
         app.is_published = True
+        
         await db.commit()
         await db.refresh(app)
+        
         return {
             "id": app.id,
             "code": app.code,
@@ -207,8 +232,11 @@ class MyAppsService:
             "organization_id": app.organization_id,
             "created_at": app.created_at,
             "updated_at": app.updated_at,
+            "packaged_plugins": packaged_plugins,
+            "plugin_count": len(packaged_plugins),
         }
 
+    @staticmethod
     async def unpublish_app(db: AsyncSession, app_id: int) -> dict:
         """撤回应用（取消发布）"""
         query = select(Application).where(Application.id == app_id)
@@ -391,9 +419,9 @@ class MyAppsService:
 
     # ========== 插件管理 ==========
     @staticmethod
-    async def add_plugin(db: AsyncSession, app_id: int, data: AppPluginCreate) -> AppPlugin:
+    async def add_plugin(db: AsyncSession, app_id: int, data: AppPluginCreate) -> AppPluginBinding:
         """添加插件"""
-        plugin = AppPlugin(
+        plugin = AppPluginBinding(
             app_id=app_id,
             name=data.name,
             trigger_event=data.trigger_event,
@@ -407,14 +435,14 @@ class MyAppsService:
         return plugin
 
     @staticmethod
-    async def get_plugins(db: AsyncSession, app_id: int) -> List[AppPlugin]:
+    async def get_plugins(db: AsyncSession, app_id: int) -> List[AppPluginBinding]:
         """获取应用的插件列表"""
-        query = select(AppPlugin).where(AppPlugin.app_id == app_id)
-        result = await db.execute(query.order_by(AppPlugin.created_at))
+        query = select(AppPluginBinding).where(AppPluginBinding.app_id == app_id)
+        result = await db.execute(query.order_by(AppPluginBinding.created_at))
         return result.scalars().all()
 
     @staticmethod
-    async def update_plugin(db: AsyncSession, plugin: AppPlugin, data: AppPluginUpdate) -> AppPlugin:
+    async def update_plugin(db: AsyncSession, plugin: AppPluginBinding, data: AppPluginUpdate) -> AppPluginBinding:
         """更新插件"""
         update_data = data.model_dump(exclude_unset=True)
         for key, value in update_data.items():
@@ -424,7 +452,7 @@ class MyAppsService:
         return plugin
 
     @staticmethod
-    async def delete_plugin(db: AsyncSession, plugin: AppPlugin):
+    async def delete_plugin(db: AsyncSession, plugin: AppPluginBinding):
         """删除插件"""
         await db.delete(plugin)
         await db.commit()

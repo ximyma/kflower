@@ -51,7 +51,7 @@ export default defineConfig(({ mode }) => {
       include: ['element-plus', 'echarts', '@element-plus/icons-vue']
     },
     server: {
-      port: 5123,
+      port: 5173,
       proxy: {
         '/api': {
           target: 'http://127.0.0.1:8788',

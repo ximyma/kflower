@@ -18,6 +18,9 @@ def init_db():
     import app.models.ai  # noqa
     import app.models.permission  # noqa
     import app.models.notification_template  # noqa
+    import app.models.data_model  # noqa
+    import app.models.plugin  # noqa
+    import app.models.plugin_binding  # noqa
     import app.modules.my_apps.models  # noqa
 
 
@@ -50,6 +53,22 @@ async def lifespan(app: FastAPI):
     # 创建数据库表
     await create_tables()
     await create_default_user()
+
+    # 初始化插件管理器（注册内置插件 + 加载用户插件）
+    try:
+        from app.core.plugin_manager import get_plugin_manager
+        pm = get_plugin_manager()
+        print(f"[PluginManager] 已加载 {len(pm._loaded_plugins)} 个插件: {list(pm._loaded_plugins.keys())}")
+    except Exception as e:
+        print(f"[PluginManager] 初始化警告: {e}")
+
+    # 同步 AI 工具插件状态到工具注册表
+    try:
+        from app.core.agent_engine.tools.registry import tool_registry
+        synced = tool_registry.sync_from_plugin_system()
+        print(f"[ToolRegistry] 同步 AI 工具插件状态完成，共 {synced} 个工具")
+    except Exception as e:
+        print(f"[ToolRegistry] 同步警告: {e}")
 
     # 启动 SLA 后台定时巡检
     import asyncio

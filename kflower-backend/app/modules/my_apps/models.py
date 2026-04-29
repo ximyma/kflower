@@ -42,11 +42,12 @@ class Application(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    # 关系（暂不配置跨模块关系，避免加载时问题）
-    # menus = relationship("AppMenu", back_populates="app", cascade="all, delete-orphan")
-    # relations = relationship("FormRelation", back_populates="app", cascade="all, delete-orphan")
-    # plugins = relationship("AppPlugin", back_populates="app", cascade="all, delete-orphan")
-    # versions = relationship("AppVersion", back_populates="app", cascade="all, delete-orphan")
+    # 关系
+    menus = relationship("AppMenu", back_populates="app", cascade="all, delete-orphan")
+    relations = relationship("FormRelation", back_populates="app", cascade="all, delete-orphan")
+    plugins = relationship("AppPlugin", cascade="all, delete-orphan")
+    plugin_bindings = relationship("AppPluginBinding", back_populates="app", cascade="all, delete-orphan")
+    versions = relationship("AppVersion", back_populates="app", cascade="all, delete-orphan")
 
 
 class AppMenu(Base):
@@ -74,7 +75,8 @@ class AppMenu(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    # 注意：暂不配置跨模块关系，避免加载时问题
+    # 关系
+    app = relationship("Application", back_populates="menus")
 
 
 class FormRelation(Base):
@@ -92,24 +94,30 @@ class FormRelation(Base):
     reverse_name = Column(String(100), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
-    # 注意：暂不配置跨模块关系，避免加载时问题
+    # 关系
+    app = relationship("Application", back_populates="relations")
 
 
-class AppPlugin(Base):
-    """应用插件"""
-    __tablename__ = "app_plugins"
+class AppPluginBinding(Base):
+    """应用插件绑定（旧版脚本插件，支持关联插件包）"""
+    __tablename__ = "app_plugin_bindings"
 
     id = Column(Integer, primary_key=True, index=True)
     app_id = Column(Integer, ForeignKey("applications.id"), nullable=False)
+    # plugin_id: 关联到新的 Plugin 包管理系统（可选，与旧脚本二选一）
+    plugin_id = Column(Integer, ForeignKey("plugins.id"), nullable=True)
     name = Column(String(100), nullable=False)
     trigger_event = Column(String(50), nullable=False)  # before_save, after_save, before_delete, after_delete, on_load
-    target_template_id = Column(Integer, ForeignKey("templates.id", use_alter=True), nullable=True)
-    script_code = Column(Text, nullable=False)
+    target_template_id = Column(Integer, ForeignKey("templates.id"), nullable=True)
+    script_code = Column(Text, nullable=False)  # 旧版脚本代码（plugin_id 存在时可选）
+    plugin_config = Column(JSON, default=dict)  # 插件配置参数
     is_enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    # 注意：暂不配置跨模块关系，避免加载时问题
+    # 关系
+    app = relationship("Application", back_populates="plugin_bindings")
+    plugin = relationship("Plugin")
 
 
 class AppVersion(Base):
@@ -127,7 +135,8 @@ class AppVersion(Base):
     published_at = Column(DateTime, nullable=True, comment="发布时间")
     created_at = Column(DateTime, server_default=func.now())
 
-    # 注意：暂不配置跨模块关系，避免加载时问题
+    # 关系
+    app = relationship("Application", back_populates="versions")
 
     def __repr__(self):
-        return f"<AppVersion app={self.app_id} v{self.version}>"
+        return f"<AppVersion app={self.app_id} v={self.version}>"

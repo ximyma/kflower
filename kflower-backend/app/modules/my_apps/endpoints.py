@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
-from typing import List
+from typing import List, Optional, Dict, Any
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -19,7 +19,8 @@ from app.modules.my_apps.schemas import (
     AppPluginCreate, AppPluginUpdate, AppPluginResponse,
     MenuTreeNode, VersionCreate, VersionResponse
 )
-from app.modules.my_apps.models import Application, AppMenu, FormRelation, AppPlugin, AppVersion
+from app.schemas.schemas import BaseResponse
+from app.modules.my_apps.models import Application, AppMenu, FormRelation, AppPluginBinding, AppVersion
 
 router = APIRouter(prefix="/apps", tags=["我的应用"])
 
@@ -295,6 +296,126 @@ async def delete_plugin(
         raise HTTPException(status_code=404, detail="插件不存在")
     await my_apps_service.delete_plugin(db, plugin)
     return {"message": "删除成功"}
+
+
+# ============ 新版插件系统集成（AppPluginService） ============
+@router.get("/{app_id}/plugins/bindings", response_model=BaseResponse)
+async def get_app_plugin_bindings(
+    app_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取应用的新版插件绑定列表"""
+    from app.services.app_plugin_service import AppPluginService
+    try:
+        plugins = await AppPluginService.get_app_plugins(app_id)
+        return BaseResponse(success=True, data=plugins)
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))
+
+
+@router.post("/{app_id}/plugins/bind", response_model=BaseResponse)
+async def bind_plugin_to_app(
+    app_id: int,
+    bind_data: Dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """将新版插件绑定到应用"""
+    from app.services.app_plugin_service import AppPluginService
+    plugin_id = bind_data.get("plugin_id")
+    if not plugin_id:
+        raise HTTPException(status_code=400, detail="plugin_id 不能为空")
+    try:
+        result = await AppPluginService.bind_plugin(
+            app_id=app_id,
+            plugin_id=plugin_id,
+            config=bind_data.get("config", {}),
+            sort_order=bind_data.get("sort_order", 0)
+        )
+        return BaseResponse(success=result["success"], message=result.get("message"), data=result.get("data"))
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))
+
+
+@router.delete("/{app_id}/plugins/{binding_id}", response_model=BaseResponse)
+async def unbind_app_plugin(
+    app_id: int,
+    binding_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """解除应用与插件的绑定"""
+    from app.services.app_plugin_service import AppPluginService
+    try:
+        result = await AppPluginService.unbind_plugin(app_id, binding_id)
+        return BaseResponse(success=result["success"], message=result.get("message"))
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))
+
+
+@router.put("/{app_id}/plugins/{binding_id}", response_model=BaseResponse)
+async def update_app_plugin_binding(
+    app_id: int,
+    binding_id: int,
+    update_data: Dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """更新应用插件绑定配置"""
+    from app.services.app_plugin_service import AppPluginService
+    try:
+        result = await AppPluginService.update_binding(
+            app_id=app_id,
+            binding_id=binding_id,
+            is_enabled=update_data.get("is_enabled"),
+            config=update_data.get("config"),
+            sort_order=update_data.get("sort_order")
+        )
+        return BaseResponse(success=result["success"], message=result.get("message"))
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))
+
+
+@router.get("/{app_id}/plugins/available", response_model=BaseResponse)
+async def get_available_plugins_for_app(
+    app_id: int,
+    category: Optional[str] = None,
+    search: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取可绑定到应用的插件列表"""
+    from app.services.app_plugin_service import AppPluginService
+    try:
+        plugins = await AppPluginService.get_available_plugins(
+            app_id=app_id,
+            category=category,
+            search=search
+        )
+        return BaseResponse(success=True, data=plugins)
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))
+
+
+@router.post("/{app_id}/plugins/trigger", response_model=BaseResponse)
+async def trigger_app_plugin_hook(
+    app_id: int,
+    hook_data: Dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """手动触发应用插件钩子（测试用）"""
+    from app.services.app_plugin_service import AppPluginService
+    hook_name = hook_data.get("hook_name")
+    context = hook_data.get("context", {})
+    if not hook_name:
+        raise HTTPException(status_code=400, detail="hook_name 不能为空")
+    try:
+        result = await AppPluginService.trigger_hook(app_id, hook_name, context)
+        return BaseResponse(success=True, data=result)
+    except Exception as e:
+        return BaseResponse(success=False, message=str(e))
 
 
 # ============ 版本管理（升级方案 5.4） ============

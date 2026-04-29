@@ -43,6 +43,11 @@
       <el-tab-pane label="业务插件" name="plugins">
         <PluginEditor :app-id="appId" />
       </el-tab-pane>
+
+      <!-- 系统插件（新版） -->
+      <el-tab-pane label="系统插件" name="system-plugins">
+        <AppPluginManager :app-id="appId" />
+      </el-tab-pane>
       
       <!-- 仪表盘 -->
       <el-tab-pane label="仪表盘" name="dashboard">
@@ -102,6 +107,7 @@ import AIDesigner from './components/AIDesigner.vue'
 import KnowledgeBaseConfig from './components/KnowledgeBaseConfig.vue'
 import KnowledgeSearch from './components/KnowledgeSearch.vue'
 import VersionManager from './components/VersionManager.vue'
+import AppPluginManager from '../../components/AppPluginManager.vue'
 
 const route = useRoute()
 const router = useRouter()

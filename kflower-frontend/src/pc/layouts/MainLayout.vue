@@ -98,6 +98,16 @@
           <template #title>用户管理</template>
         </el-menu-item>
 
+        <el-menu-item v-if="userStore.isAdmin" index="/plugins">
+          <el-icon><Box /></el-icon>
+          <template #title>插件管理</template>
+        </el-menu-item>
+
+        <el-menu-item index="/plugin-market">
+          <el-icon><ShoppingBag /></el-icon>
+          <template #title>插件市场</template>
+        </el-menu-item>
+
         <el-menu-item v-if="userStore.isAdmin" index="/settings">
           <el-icon><Setting /></el-icon>
           <template #title>系统设置</template>
@@ -160,7 +170,7 @@ import { ElMessageBox } from 'element-plus'
 import {
   HomeFilled, Document, Connection, DataAnalysis,
   Files, Setting, MagicStick, Fold, Expand, UserFilled, User, Folder, FolderOpened,
-  Cpu, Tools, SetUp, Collection, DataBoard, Upload
+  Cpu, Tools, SetUp, Collection, DataBoard, Upload, Box, ShoppingBag
 } from '@element-plus/icons-vue'
 
 const route = useRoute()

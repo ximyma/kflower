@@ -1,0 +1,1 @@
+python -c "import subprocess; subprocess.run(['taskkill','/F','/PID','7008'])"
