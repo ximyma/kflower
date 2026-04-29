@@ -308,7 +308,7 @@ async def get_app_plugin_bindings(
     """获取应用的新版插件绑定列表"""
     from app.services.app_plugin_service import AppPluginService
     try:
-        plugins = await AppPluginService.get_app_plugins(app_id)
+        plugins = AppPluginService.get_app_plugins(app_id)
         return BaseResponse(success=True, data=plugins)
     except Exception as e:
         return BaseResponse(success=False, message=str(e))
@@ -327,7 +327,7 @@ async def bind_plugin_to_app(
     if not plugin_id:
         raise HTTPException(status_code=400, detail="plugin_id 不能为空")
     try:
-        result = await AppPluginService.bind_plugin(
+        result = AppPluginService.bind_plugin(
             app_id=app_id,
             plugin_id=plugin_id,
             config=bind_data.get("config", {}),
@@ -348,7 +348,7 @@ async def unbind_app_plugin(
     """解除应用与插件的绑定"""
     from app.services.app_plugin_service import AppPluginService
     try:
-        result = await AppPluginService.unbind_plugin(app_id, binding_id)
+        result = AppPluginService.unbind_plugin(app_id, binding_id)
         return BaseResponse(success=result["success"], message=result.get("message"))
     except Exception as e:
         return BaseResponse(success=False, message=str(e))
@@ -365,12 +365,18 @@ async def update_app_plugin_binding(
     """更新应用插件绑定配置"""
     from app.services.app_plugin_service import AppPluginService
     try:
-        result = await AppPluginService.update_binding(
+        updates = {}
+        if "is_enabled" in update_data:
+            updates["is_enabled"] = update_data["is_enabled"]
+        if "config" in update_data:
+            updates["config"] = update_data["config"]
+        if "sort_order" in update_data:
+            updates["sort_order"] = update_data["sort_order"]
+        
+        result = AppPluginService.update_plugin_binding(
             app_id=app_id,
             binding_id=binding_id,
-            is_enabled=update_data.get("is_enabled"),
-            config=update_data.get("config"),
-            sort_order=update_data.get("sort_order")
+            updates=updates
         )
         return BaseResponse(success=result["success"], message=result.get("message"))
     except Exception as e:
@@ -388,11 +394,18 @@ async def get_available_plugins_for_app(
     """获取可绑定到应用的插件列表"""
     from app.services.app_plugin_service import AppPluginService
     try:
-        plugins = await AppPluginService.get_available_plugins(
-            app_id=app_id,
-            category=category,
-            search=search
-        )
+        plugins = AppPluginService.get_available_plugins(app_id)
+        
+        if search:
+            search_lower = search.lower()
+            plugins = [p for p in plugins if 
+                search_lower in p.get("name", "").lower() or 
+                search_lower in p.get("display_name", "").lower() or 
+                search_lower in p.get("description", "").lower()]
+        
+        if category:
+            plugins = [p for p in plugins if p.get("category") == category]
+        
         return BaseResponse(success=True, data=plugins)
     except Exception as e:
         return BaseResponse(success=False, message=str(e))
@@ -412,7 +425,7 @@ async def trigger_app_plugin_hook(
     if not hook_name:
         raise HTTPException(status_code=400, detail="hook_name 不能为空")
     try:
-        result = await AppPluginService.trigger_hook(app_id, hook_name, context)
+        result = AppPluginService.trigger_app_plugin_hook(app_id, hook_name, context)
         return BaseResponse(success=True, data=result)
     except Exception as e:
         return BaseResponse(success=False, message=str(e))

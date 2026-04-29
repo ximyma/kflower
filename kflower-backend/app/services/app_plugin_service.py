@@ -1,258 +1,279 @@
-"""
-应用插件服务 - 插件与应用绑定管理
-"""
-from typing import Any, Dict, List, Optional
-from sqlalchemy import select, and_, or_
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.database import AsyncSessionLocal
-from app.models.plugin import Plugin
-from app.models.plugin_binding import AppPlugin
-from app.core.plugin_manager import get_plugin_manager
-
+"""应用插件服务"""
+from typing import Dict, List, Any, Optional
+import json
+import sqlite3
+from app.core.config import settings
 
 class AppPluginService:
-    """应用插件服务"""
+    """应用插件服务 - 使用原生SQL操作"""
 
     @staticmethod
-    async def get_app_plugins(app_id: int) -> List[Dict[str, Any]]:
+    def _get_db_path():
+        """获取数据库路径"""
+        return settings.DATABASE_URL.replace("sqlite+aiosqlite:///", "")
+
+    @staticmethod
+    def _dict_factory(cursor, row):
+        """将查询结果转为字典"""
+        d = {}
+        for idx, col in enumerate(cursor.description):
+            d[col[0]] = row[idx]
+        return d
+
+    @staticmethod
+    def get_app_plugins(app_id: int) -> List[Dict[str, Any]]:
         """获取应用绑定的所有插件"""
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(AppPlugin, Plugin)
-                .join(Plugin, AppPlugin.plugin_id == Plugin.id)
-                .where(AppPlugin.app_id == app_id)
-                .order_by(AppPlugin.sort_order)
-            )
-            rows = result.all()
+        db_path = AppPluginService._get_db_path()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = AppPluginService._dict_factory
+        cursor = conn.cursor()
 
-            bindings = []
-            for binding, plugin in rows:
-                bindings.append({
-                    "id": binding.id,
-                    "plugin_id": plugin.id,
-                    "plugin_name": plugin.name,
-                    "display_name": plugin.display_name,
-                    "description": plugin.description,
-                    "version": plugin.version,
-                    "author": plugin.author,
-                    "icon": plugin.icon,
-                    "category": plugin.category,
-                    "is_enabled": binding.is_enabled,
-                    "config": binding.config or {},
-                    "hook_code": plugin.hook_code or {},
-                    "sort_order": binding.sort_order,
-                    "created_at": binding.created_at.isoformat() if binding.created_at else None,
-                })
-            return bindings
+        cursor.execute('''
+            SELECT 
+                ap.id, ap.app_id, ap.plugin_id, ap.config, ap.is_enabled, ap.sort_order, ap.created_at,
+                p.name as plugin_name, p.display_name, p.description, p.version, 
+                p.author, p.icon, p.category, p.hook_code
+            FROM app_plugins ap
+            JOIN plugins p ON ap.plugin_id = p.id
+            WHERE ap.app_id = ?
+            ORDER BY ap.sort_order
+        ''', (app_id,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+
+        for row in rows:
+            if row['config']:
+                try:
+                    row['config'] = json.loads(row['config'])
+                except:
+                    row['config'] = {}
+            else:
+                row['config'] = {}
+            
+            if row['hook_code']:
+                try:
+                    row['hook_code'] = json.loads(row['hook_code'])
+                except:
+                    row['hook_code'] = {}
+            else:
+                row['hook_code'] = {}
+
+        return rows
 
     @staticmethod
-    async def bind_plugin(
+    def bind_plugin(
         app_id: int,
         plugin_id: int,
         config: Optional[Dict[str, Any]] = None,
         sort_order: int = 0
     ) -> Dict[str, Any]:
         """将插件绑定到应用"""
-        async with AsyncSessionLocal() as session:
-            plugin = await session.get(Plugin, plugin_id)
-            if not plugin:
-                return {"success": False, "message": "插件不存在"}
+        db_path = AppPluginService._get_db_path()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = AppPluginService._dict_factory
+        cursor = conn.cursor()
 
-            result = await session.execute(
-                select(AppPlugin).where(
-                    and_(
-                        AppPlugin.app_id == app_id,
-                        AppPlugin.plugin_id == plugin_id
-                    )
-                )
-            )
-            existing = result.scalar_one_or_none()
-            if existing:
-                return {"success": False, "message": "该插件已绑定到此应用"}
+        # 检查插件是否存在
+        cursor.execute('SELECT id, display_name FROM plugins WHERE id = ?', (plugin_id,))
+        plugin = cursor.fetchone()
+        if not plugin:
+            conn.close()
+            return {"success": False, "message": "插件不存在"}
 
-            binding = AppPlugin(
-                app_id=app_id,
-                plugin_id=plugin_id,
-                config=config or {},
-                is_enabled=True,
-                sort_order=sort_order,
-            )
-            session.add(binding)
-            await session.commit()
-            await session.refresh(binding)
+        # 检查是否已绑定
+        cursor.execute(
+            'SELECT id FROM app_plugins WHERE app_id = ? AND plugin_id = ?',
+            (app_id, plugin_id)
+        )
+        existing = cursor.fetchone()
+        if existing:
+            conn.close()
+            return {"success": False, "message": "该插件已绑定到此应用"}
 
-            return {
-                "success": True,
-                "message": f"插件 {plugin.display_name} 已绑定",
-                "data": {
-                    "id": binding.id,
-                    "plugin_id": plugin_id,
-                    "app_id": app_id,
-                }
+        # 创建绑定记录
+        config_json = json.dumps(config or {})
+        cursor.execute('''
+            INSERT INTO app_plugins (app_id, plugin_id, name, trigger_event, target_template_id, script_code, config, is_enabled, sort_order, created_at, updated_at)
+            VALUES (?, ?, '', '', 0, '', ?, ?, ?, datetime('now'), datetime('now'))
+        ''', (app_id, plugin_id, config_json, 1, sort_order))
+        
+        binding_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        return {
+            "success": True,
+            "message": f"插件 {plugin['display_name']} 已绑定",
+            "data": {
+                "id": binding_id,
+                "plugin_id": plugin_id,
+                "app_id": app_id,
             }
+        }
 
     @staticmethod
-    async def unbind_plugin(app_id: int, binding_id: int) -> Dict[str, Any]:
-        """解除插件与应用的绑定"""
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(AppPlugin).where(
-                    and_(
-                        AppPlugin.id == binding_id,
-                        AppPlugin.app_id == app_id
-                    )
-                )
-            )
-            binding = result.scalar_one_or_none()
-            if not binding:
-                return {"success": False, "message": "绑定记录不存在"}
+    def unbind_plugin(app_id: int, binding_id: int) -> Dict[str, Any]:
+        """解除插件绑定"""
+        db_path = AppPluginService._get_db_path()
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
 
-            await session.delete(binding)
-            await session.commit()
+        cursor.execute('SELECT id FROM app_plugins WHERE id = ?', (binding_id,))
+        binding = cursor.fetchone()
+        if not binding:
+            conn.close()
+            return {"success": False, "message": "绑定记录不存在"}
 
-            return {"success": True, "message": "插件已解除绑定"}
+        cursor.execute('DELETE FROM app_plugins WHERE id = ?', (binding_id,))
+        conn.commit()
+        conn.close()
+
+        return {"success": True, "message": "已解除绑定"}
 
     @staticmethod
-    async def update_binding(
+    def update_plugin_binding(
         app_id: int,
         binding_id: int,
-        is_enabled: Optional[bool] = None,
-        config: Optional[Dict[str, Any]] = None,
-        sort_order: Optional[int] = None
+        updates: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """更新应用插件绑定配置"""
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(AppPlugin).where(
-                    and_(
-                        AppPlugin.id == binding_id,
-                        AppPlugin.app_id == app_id
-                    )
-                )
+        """更新插件绑定配置"""
+        db_path = AppPluginService._get_db_path()
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT id FROM app_plugins WHERE id = ?', (binding_id,))
+        binding = cursor.fetchone()
+        if not binding:
+            conn.close()
+            return {"success": False, "message": "绑定记录不存在"}
+
+        set_clause = []
+        params = []
+
+        if "is_enabled" in updates:
+            set_clause.append("is_enabled = ?")
+            params.append(1 if updates["is_enabled"] else 0)
+        
+        if "config" in updates:
+            set_clause.append("config = ?")
+            params.append(json.dumps(updates["config"]))
+        
+        if "sort_order" in updates:
+            set_clause.append("sort_order = ?")
+            params.append(updates["sort_order"])
+
+        if set_clause:
+            set_clause.append("updated_at = datetime('now')")
+            params.append(binding_id)
+            cursor.execute(
+                f'UPDATE app_plugins SET {", ".join(set_clause)} WHERE id = ?',
+                params
             )
-            binding = result.scalar_one_or_none()
-            if not binding:
-                return {"success": False, "message": "绑定记录不存在"}
+            conn.commit()
 
-            if is_enabled is not None:
-                binding.is_enabled = is_enabled
-            if config is not None:
-                binding.config = config
-            if sort_order is not None:
-                binding.sort_order = sort_order
-
-            await session.commit()
-
-            return {"success": True, "message": "绑定配置已更新"}
+        conn.close()
+        return {"success": True, "message": "更新成功"}
 
     @staticmethod
-    async def trigger_hook(
-        app_id: int,
-        hook_name: str,
-        context: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """触发应用绑定的所有插件钩子"""
-        pm = get_plugin_manager()
+    def get_available_plugins(app_id: int) -> List[Dict[str, Any]]:
+        """获取可绑定到应用的插件列表"""
+        db_path = AppPluginService._get_db_path()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = AppPluginService._dict_factory
+        cursor = conn.cursor()
 
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(AppPlugin, Plugin)
-                .join(Plugin, AppPlugin.plugin_id == Plugin.id)
-                .where(
-                    and_(
-                        AppPlugin.app_id == app_id,
-                        AppPlugin.is_enabled == True
-                    )
-                )
-                .order_by(AppPlugin.sort_order)
-            )
-            rows = result.all()
+        # 获取已绑定的插件ID
+        cursor.execute('SELECT plugin_id FROM app_plugins WHERE app_id = ?', (app_id,))
+        bound_ids = [row['plugin_id'] for row in cursor.fetchall()]
 
-            results = []
-            for binding, plugin in rows:
-                hook_code = plugin.hook_code or {}
-                if hook_name not in hook_code or not hook_code[hook_name]:
-                    continue
+        if bound_ids:
+            placeholders = ','.join('?' * len(bound_ids))
+            cursor.execute(f'''
+                SELECT id, name, display_name, description, version, author, icon, category, hook_code
+                FROM plugins
+                WHERE id NOT IN ({placeholders})
+            ''', bound_ids)
+        else:
+            cursor.execute('''
+                SELECT id, name, display_name, description, version, author, icon, category, hook_code
+                FROM plugins
+            ''')
 
-                instance = pm.get_plugin(plugin.name)
-                if not instance:
-                    continue
+        rows = cursor.fetchall()
+        conn.close()
 
-                plugin_cfg = plugin.config or {}
-                binding_cfg = binding.config or {}
-                merged_config = dict(plugin_cfg)
-                merged_config.update(binding_cfg)
-                hook_context = dict(context)
-                hook_context["plugin_config"] = merged_config
-
+        for row in rows:
+            if row['hook_code']:
                 try:
-                    output = await instance.execute_hook(hook_name, hook_context)
-                    results.append({
-                        "plugin_name": plugin.name,
-                        "plugin_display": plugin.display_name,
-                        "success": True,
-                        "output": output
-                    })
-                except Exception as e:
-                    results.append({
-                        "plugin_name": plugin.name,
-                        "plugin_display": plugin.display_name,
-                        "success": False,
-                        "error": str(e)
-                    })
+                    row['hook_code'] = json.loads(row['hook_code'])
+                except:
+                    row['hook_code'] = {}
+            else:
+                row['hook_code'] = {}
 
-            return {"hook_name": hook_name, "app_id": app_id, "results": results}
+        return rows
 
     @staticmethod
-    async def get_available_plugins(
-        app_id: int,
-        category: Optional[str] = None,
-        search: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """获取可绑定到应用的插件列表（排除已绑定的）"""
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(AppPlugin.plugin_id).where(
-                    AppPlugin.app_id == app_id
-                )
-            )
-            bound_plugin_ids = [row[0] for row in result.fetchall()]
+    def trigger_app_plugin_hook(app_id: int, hook_name: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """触发应用插件钩子"""
+        db_path = AppPluginService._get_db_path()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = AppPluginService._dict_factory
+        cursor = conn.cursor()
 
-            query = select(Plugin).where(
-                and_(
-                    Plugin.is_enabled == True,
-                    Plugin.is_installed == True
-                )
-            )
-            if bound_plugin_ids:
-                query = query.where(Plugin.id.not_in(bound_plugin_ids))
-            if category:
-                query = query.where(Plugin.category == category)
-            if search:
-                query = query.where(
-                    or_(
-                        Plugin.name.ilike(f"%{search}%"),
-                        Plugin.display_name.ilike(f"%{search}%"),
-                        Plugin.description.ilike(f"%{search}%")
-                    )
-                )
+        cursor.execute('''
+            SELECT ap.config, p.hook_code
+            FROM app_plugins ap
+            JOIN plugins p ON ap.plugin_id = p.id
+            WHERE ap.app_id = ? AND ap.is_enabled = 1
+        ''', (app_id,))
 
-            result = await session.execute(query.order_by(Plugin.id))
-            plugins = result.scalars().all()
+        rows = cursor.fetchall()
+        conn.close()
 
-            return [p.to_dict() for p in plugins]
+        results = []
+        for row in rows:
+            try:
+                hook_code = json.loads(row['hook_code']) if row['hook_code'] else {}
+                plugin_config = json.loads(row['config']) if row['config'] else {}
+                
+                if hook_name in hook_code:
+                    code = hook_code[hook_name]
+                    try:
+                        ctx = {
+                            **context,
+                            'config': plugin_config,
+                            'app_id': app_id,
+                            'hook_name': hook_name
+                        }
+                        local_vars = {'ctx': ctx}
+                        exec(code, globals(), local_vars)
+                        if 'on_event' in local_vars:
+                            result = local_vars['on_event'](ctx)
+                            results.append({
+                                'success': True,
+                                'result': result
+                            })
+                        else:
+                            results.append({
+                                'success': False,
+                                'error': 'hook function not found'
+                            })
+                    except Exception as e:
+                        results.append({
+                            'success': False,
+                            'error': str(e)
+                        })
+            except Exception as e:
+                results.append({
+                    'success': False,
+                    'error': str(e)
+                })
 
-    @staticmethod
-    async def get_app_bound_plugin_ids(app_id: int) -> List[int]:
-        """获取应用绑定的所有插件ID"""
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(AppPlugin.plugin_id).where(
-                    and_(
-                        AppPlugin.app_id == app_id,
-                        AppPlugin.is_enabled == True
-                    )
-                )
-            )
-            return [row[0] for row in result.fetchall()]
+        return {
+            'hook_name': hook_name,
+            'app_id': app_id,
+            'results': results,
+            'total_triggered': len([r for r in results if r['success']])
+        }

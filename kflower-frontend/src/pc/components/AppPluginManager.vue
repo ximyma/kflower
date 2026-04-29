@@ -102,11 +102,46 @@
         <el-button type="primary" :loading="configuring" @click="saveConfig">保存配置</el-button>
       </template>
     </el-dialog>
+
+    <!-- Test Hook Dialog -->
+    <el-dialog v-model="showTestDialog" title="测试钩子" width="600px">
+      <div v-if="testPlugin" class="test-dialog">
+        <div class="test-plugin-name">{{ testPlugin.display_name }}</div>
+        <el-form label-position="top">
+          <el-form-item label="选择钩子">
+            <el-select v-model="testHookName" placeholder="选择要测试的钩子" style="width: 100%;">
+              <el-option
+                v-for="(code, hook) in testPlugin.hook_code"
+                :key="hook"
+                :label="hook"
+                :value="hook"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="测试数据 (JSON)">
+            <el-input
+              v-model="testDataJson"
+              type="textarea"
+              :rows="4"
+              placeholder='{"data": {}, "user_id": 1}'
+            />
+          </el-form-item>
+        </el-form>
+        <div v-if="testResult" class="test-result">
+          <div class="test-result-title">执行结果:</div>
+          <pre>{{ JSON.stringify(testResult, null, 2) }}</pre>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showTestDialog = false">关闭</el-button>
+        <el-button type="primary" :loading="testing" @click="runTest">执行测试</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, Loading, Box } from '@element-plus/icons-vue'
 import * as appPluginApi from '../../common/api/appPlugin'
@@ -119,6 +154,7 @@ const loading = ref(false)
 const boundPlugins = ref<any[]>([])
 const showBindDialog = ref(false)
 const showConfigDialog = ref(false)
+const showTestDialog = ref(false)
 
 const availablePlugins = ref<any[]>([])
 const availableLoading = ref(false)
@@ -130,6 +166,12 @@ const searchKeyword = ref('')
 const configPlugin = ref<any>(null)
 const pluginConfigJson = ref('')
 const configuring = ref(false)
+
+const testPlugin = ref<any>(null)
+const testHookName = ref('')
+const testDataJson = ref('{}')
+const testResult = ref<any>(null)
+const testing = ref(false)
 
 async function loadBoundPlugins() {
   loading.value = true
@@ -225,6 +267,40 @@ async function saveConfig() {
   }
 }
 
+function openTestDialog(plugin: any) {
+  testPlugin.value = plugin
+  testHookName.value = Object.keys(plugin.hook_code || {})[0] || ''
+  testDataJson.value = JSON.stringify({
+    data: { sample_field: 'test_value' },
+    user_id: 1,
+    app_id: props.appId
+  }, null, 2)
+  testResult.value = null
+  showTestDialog.value = true
+}
+
+async function runTest() {
+  if (!testPlugin.value || !testHookName.value) return
+
+  testing.value = true
+  try {
+    let testData = {}
+    if (testDataJson.value.trim()) {
+      testData = JSON.parse(testDataJson.value)
+    }
+    const res = await appPluginApi.triggerAppPluginHook(props.appId, testHookName.value, testData)
+    testResult.value = res.data
+  } catch (e: any) {
+    testResult.value = { error: e.message || '测试执行失败' }
+  } finally {
+    testing.value = false
+  }
+}
+
+onMounted(() => {
+  loadBoundPlugins()
+})
+
 watch(showBindDialog, (val) => {
   if (val) {
     loadAvailablePlugins()
@@ -235,12 +311,6 @@ watch(showBindDialog, (val) => {
 watch(searchKeyword, () => {
   loadAvailablePlugins()
 })
-
-// 暴露加载方法给父组件
-defineExpose({ loadBoundPlugins })
-
-// 初始化
-loadBoundPlugins()
 </script>
 
 <style scoped>
@@ -394,5 +464,35 @@ loadBoundPlugins()
   font-size: 14px;
   color: #606266;
   margin-bottom: 8px;
+}
+
+.test-dialog {
+  padding: 8px 0;
+}
+
+.test-plugin-name {
+  font-weight: 500;
+  margin-bottom: 16px;
+  font-size: 16px;
+}
+
+.test-result {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.test-result-title {
+  font-size: 14px;
+  color: #606266;
+  margin-bottom: 8px;
+}
+
+.test-result pre {
+  margin: 0;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>
