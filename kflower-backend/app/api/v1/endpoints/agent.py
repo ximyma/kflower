@@ -9,6 +9,8 @@ from app.core.agent_engine.agent_service import agent_service
 from app.core.agent_engine.orchestrator import agent_orchestrator
 from app.core.agent_engine.tools import tool_registry
 from app.models.user import User
+from app.core.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/agent", tags=["智能体"])
 
@@ -22,6 +24,7 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None  # 可选：指定模型
     provider: Optional[str] = None  # 可选：指定提供商
     ai_type: Optional[str] = None  # 可选：AI类型，用于模块AI设置 (chatGeneral, chatTemplate, chatWorkflow等)
+    app_id: Optional[int] = None  # 可选：应用ID，用于应用上下文感知
 
 
 class TemplateGenerateRequest(BaseModel):
@@ -38,7 +41,8 @@ class QueryRequest(BaseModel):
 @router.post("/chat")
 async def chat(
     request: ChatRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     智能体对话
@@ -62,6 +66,16 @@ async def chat(
         effective_model = ai_gateway.get_module_model(request.ai_type)
     
     try:
+        # 如果提供了 app_id，构建应用上下文
+        if request.app_id:
+            from app.core.app_context import build_app_context
+            app_context = await build_app_context(
+                app_id=request.app_id,
+                user_id=current_user.id,
+                db=db
+            )
+            context["app_context"] = app_context
+        
         result = await agent_service.chat(
             message=request.message,
             conversation_id=request.conversation_id,

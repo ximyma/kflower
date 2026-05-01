@@ -31,7 +31,7 @@ class ApplicationUpdate(BaseModel):
     knowledge_config: Optional[Dict] = None
     workflow_ids: Optional[List[int]] = None
     workflow_config: Optional[Dict] = None
-    bound_agents: Optional[List[Dict]] = None
+    bound_agents: Optional[List[int]] = None  # 改为 List[int] 与前端一致
 
 
 class ApplicationResponse(ApplicationBase):

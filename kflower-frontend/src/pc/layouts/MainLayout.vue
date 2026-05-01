@@ -88,6 +88,11 @@
           <template #title>我的应用</template>
         </el-menu-item>
         
+        <el-menu-item index="/app-data-view">
+          <el-icon><DataBoard /></el-icon>
+          <template #title>应用数据视图</template>
+        </el-menu-item>
+        
         <el-menu-item index="/profile">
           <el-icon><User /></el-icon>
           <template #title>个人信息</template>

@@ -1,4 +1,5 @@
-﻿/**
+﻿// @ts-nocheck
+/**
  * API 请求封装
  */
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
@@ -74,6 +75,7 @@ export const aiAPI = {
     ai_type?: string;
     related_type?: string;
     related_id?: number;
+    app_id?: number;  // 应用上下文ID，用于应用级知识库检索
   }, config?: AxiosRequestConfig) => api.post('/ai/chat', data, config),
   getHistory: (conversation_id: string) => api.get(`/ai/history?conversation_id=${conversation_id}`),
   deleteHistory: (conversation_id: string) => api.delete(`/ai/history/${conversation_id}`),

@@ -286,30 +286,38 @@ class AIRecommendationCache(Base):
 class Agent(Base):
     """智能体配置"""
     __tablename__ = "agents"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(200), nullable=False)
     agent_type = Column(String(50), nullable=False, comment="智能体类型: template_agent, workflow_agent, analytics_agent, query_agent, general_agent, custom")
     description = Column(Text, nullable=True)
-    
+
     # 配置
     config = Column(JSON, default=dict, comment="智能体配置（提示词、工具、参数等）")
     tools = Column(JSON, default=list, comment="关联的工具列表")
-    
+
+    # ===== 模块绑定（整合优化 1.2） =====
+    template_ids = Column(JSON, default=list, comment="绑定的模板ID列表")
+    workflow_ids = Column(JSON, default=list, comment="绑定的工作流ID列表")
+    knowledge_base_ids = Column(JSON, default=list, comment="绑定的知识库ID列表")
+    plugin_ids = Column(JSON, default=list, comment="使用的插件列表")
+    system_prompt = Column(Text, nullable=True, comment="专属系统提示词，覆盖默认提示词")
+    scope = Column(String(20), default="global", comment="作用域: global/app/template/workflow")
+
     # 状态
     status = Column(String(20), default="offline", comment="online, offline, disabled")
     task_count = Column(Integer, default=0, comment="已处理任务数")
-    
+
     # 组织/用户
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    
+
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    
+
     # 关系
     organization = relationship("Organization", lazy="selectin")
     creator = relationship("User", foreign_keys=[created_by], lazy="selectin")
-    
+
     def __repr__(self):
         return f"<Agent {self.name}>"

@@ -74,11 +74,22 @@ class AgentService:
         # RAG检索增强
         rag_context = ""
         if use_rag:
-            relevant_docs = await rag_retriever.search(
-                collection_name="knowledge",
-                query=message,
-                top_k=3
-            )
+            # 支持应用上下文感知的RAG检索
+            if context and context.get("app_context"):
+                # 使用应用上下文进行多集合检索
+                relevant_docs = await rag_retriever.search_by_app_context(
+                    app_context=context["app_context"],
+                    query=message,
+                    top_k=3
+                )
+            else:
+                # 向后兼容：无应用上下文时使用默认集合
+                relevant_docs = await rag_retriever.search(
+                    collection_name="knowledge",
+                    query=message,
+                    top_k=3
+                )
+            
             if relevant_docs:
                 rag_context = "\n\n相关上下文：\n" + "\n".join([
                     f"- {doc['text']}" for doc in relevant_docs
@@ -249,17 +260,26 @@ class AgentService:
     async def generate_template(
         self,
         description: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        app_context: Optional[Any] = None
     ) -> Dict[str, Any]:
         """生成模板"""
         context = context or {}
         
-        # 使用RAG检索相似模板
-        similar_templates = await rag_retriever.search(
-            collection_name="templates",
-            query=description,
-            top_k=3
-        )
+        # 使用应用上下文感知的RAG检索
+        if app_context:
+            similar_templates = await rag_retriever.search_by_app_context(
+                app_context=app_context,
+                query=description,
+                top_k=3
+            )
+        else:
+            # 向后兼容
+            similar_templates = await rag_retriever.search(
+                collection_name="templates",
+                query=description,
+                top_k=3
+            )
         
         # 构建提示词
         prompt = f"""根据以下描述生成一个业务模板配置：

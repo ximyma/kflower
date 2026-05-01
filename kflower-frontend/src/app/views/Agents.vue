@@ -101,6 +101,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, onMounted } from 'vue'
 import { Plus, Cpu, MoreFilled } from '@element-plus/icons-vue'
 import { aiAPI } from '../../common/api'

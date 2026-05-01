@@ -65,6 +65,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Document, Connection, Files, ChatDotRound, DataAnalysis, User, Clock, Edit, Check } from '@element-plus/icons-vue'

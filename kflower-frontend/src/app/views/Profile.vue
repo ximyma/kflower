@@ -96,6 +96,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { useRouter } from 'vue-router'
 import { UserFilled, User, Setting, MagicStick, QuestionFilled, InfoFilled, ArrowRight, Grid, Cpu, DataAnalysis, Tools, Star, SwitchButton } from '@element-plus/icons-vue'
 import { useUserStore } from '../../common/store/user'

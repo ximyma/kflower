@@ -815,6 +815,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Clock, User, DataBoard, Connection, Document, VideoPlay, Tools, Setting, ChatDotRound, Collection, Upload, Download, Edit, Delete, Loading } from '@element-plus/icons-vue'

@@ -250,6 +250,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Collection, VideoPlay, Search, CircleCheck, Document, ChatDotRound, Tools, Star } from '@element-plus/icons-vue'

@@ -60,29 +60,29 @@ async def list_agents(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取智能体列表"""
+    """获取智能体列表（整合优化 1.2：返回模块绑定信息）"""
     try:
         # 从数据库查询智能体
         from sqlalchemy import select
         stmt = select(Agent)
         result = await db.execute(stmt)
         agents_db = result.scalars().all()
-        
+
         agent_list = []
         for agent in agents_db:
             # 状态映射：offline -> 离线, online -> 在线, disabled -> 禁用
             status_map = {
                 "offline": "离线",
-                "online": "在线", 
+                "online": "在线",
                 "disabled": "禁用"
             }
             status_display = status_map.get(agent.status, "离线")
-            
+
             # 类型映射：保持原样或转换
             type_display = agent.agent_type
             if agent.agent_type.endswith("_agent"):
                 type_display = agent.agent_type.replace("_agent", "")
-            
+
             agent_list.append({
                 "id": agent.id,
                 "name": agent.name,
@@ -90,21 +90,27 @@ async def list_agents(
                 "status": status_display,
                 "tasks": agent.task_count,
                 "description": agent.description or "",
+                "template_ids": agent.template_ids or [],
+                "workflow_ids": agent.workflow_ids or [],
+                "knowledge_base_ids": agent.knowledge_base_ids or [],
+                "plugin_ids": agent.plugin_ids or [],
+                "system_prompt": agent.system_prompt or "",
+                "scope": agent.scope or "global",
                 "created_at": agent.created_at.strftime("%Y-%m-%d") if agent.created_at else ""
             })
-        
+
         if not agent_list:
             # 如果没有数据，插入一些示例智能体
             return await _create_sample_agents(db, current_user)
-        
+
         return BaseResponse(data=agent_list)
     except Exception as e:
         # 模拟数据回退
         agents = [
-            {"id": 1, "name": "客服助手", "type": "客服", "status": "在线", "tasks": 12, "description": "处理客户咨询", "created_at": "2026-04-01"},
-            {"id": 2, "name": "数据分析师", "type": "分析", "status": "在线", "tasks": 8, "description": "生成数据报表", "created_at": "2026-04-05"},
-            {"id": 3, "name": "文档助手", "type": "文档", "status": "离线", "tasks": 0, "description": "自动生成文档", "created_at": "2026-04-10"},
-            {"id": 4, "name": "代码生成器", "type": "开发", "status": "在线", "tasks": 5, "description": "生成代码片段", "created_at": "2026-04-12"},
+            {"id": 1, "name": "客服助手", "type": "客服", "status": "在线", "tasks": 12, "description": "处理客户咨询", "created_at": "2026-04-01", "template_ids": [], "workflow_ids": [], "knowledge_base_ids": [], "plugin_ids": [], "scope": "global"},
+            {"id": 2, "name": "数据分析师", "type": "分析", "status": "在线", "tasks": 8, "description": "生成数据报表", "created_at": "2026-04-05", "template_ids": [], "workflow_ids": [], "knowledge_base_ids": [], "plugin_ids": [], "scope": "global"},
+            {"id": 3, "name": "文档助手", "type": "文档", "status": "离线", "tasks": 0, "description": "自动生成文档", "created_at": "2026-04-10", "template_ids": [], "workflow_ids": [], "knowledge_base_ids": [], "plugin_ids": [], "scope": "global"},
+            {"id": 4, "name": "代码生成器", "type": "开发", "status": "在线", "tasks": 5, "description": "生成代码片段", "created_at": "2026-04-12", "template_ids": [], "workflow_ids": [], "knowledge_base_ids": [], "plugin_ids": [], "scope": "global"},
         ]
         return BaseResponse(data=agents)
 
@@ -115,31 +121,30 @@ async def create_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """创建智能体"""
+    """创建智能体（整合优化 1.2：支持模块绑定字段）"""
     from datetime import datetime
-    
+
     # 验证必要字段
     if not agent_data.get("name"):
         return BaseResponse(success=False, message="智能体名称不能为空")
-    
+
     # 状态映射：中文 -> 数据库值
     status_map = {
         "在线": "online",
         "离线": "offline",
         "禁用": "disabled"
     }
-    
+
     # 获取前端数据
     name = agent_data.get("name")
     agent_type = agent_data.get("type", "general")
-    # 如果类型不包含 _agent，可以添加后缀（可选）
     if not agent_type.endswith("_agent"):
         agent_type = f"{agent_type}_agent"
-    
+
     description = agent_data.get("description", "")
     status_cn = agent_data.get("status", "离线")
     status = status_map.get(status_cn, "offline")
-    
+
     # 创建智能体记录
     agent = Agent(
         name=name,
@@ -149,16 +154,23 @@ async def create_agent(
         task_count=0,
         config=agent_data.get("config", {}),
         tools=agent_data.get("tools", []),
+        # ===== 模块绑定字段（整合优化 1.2） =====
+        template_ids=agent_data.get("template_ids", []),
+        workflow_ids=agent_data.get("workflow_ids", []),
+        knowledge_base_ids=agent_data.get("knowledge_base_ids", []),
+        plugin_ids=agent_data.get("plugin_ids", []),
+        system_prompt=agent_data.get("system_prompt"),
+        scope=agent_data.get("scope", "global"),
         organization_id=current_user.organization_id,
         created_by=current_user.id,
         created_at=datetime.now(),
         updated_at=datetime.now()
     )
-    
+
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
-    
+
     # 返回创建的数据
     return BaseResponse(
         data={
@@ -168,6 +180,12 @@ async def create_agent(
             "status": "在线" if agent.status == "online" else "离线",
             "tasks": agent.task_count,
             "description": agent.description or "",
+            "template_ids": agent.template_ids or [],
+            "workflow_ids": agent.workflow_ids or [],
+            "knowledge_base_ids": agent.knowledge_base_ids or [],
+            "plugin_ids": agent.plugin_ids or [],
+            "system_prompt": agent.system_prompt or "",
+            "scope": agent.scope or "global",
             "created_at": agent.created_at.strftime("%Y-%m-%d") if agent.created_at else ""
         },
         message="智能体创建成功"
@@ -181,72 +199,90 @@ async def update_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """更新智能体"""
+    """更新智能体（整合优化 1.2：支持模块绑定字段）"""
     from sqlalchemy import select
     from datetime import datetime
-    
+
     # 查询现有智能体
     stmt = select(Agent).where(Agent.id == agent_id)
     result = await db.execute(stmt)
     agent = result.scalar_one_or_none()
-    
+
     if not agent:
         return BaseResponse(success=False, message="智能体不存在")
-    
+
     # 检查权限（可选：仅创建者或管理员可更新）
-    # 这里简单检查组织权限
     if agent.organization_id != current_user.organization_id:
         return BaseResponse(success=False, message="无权限更新此智能体")
-    
+
     # 状态映射
     status_map = {
         "在线": "online",
         "离线": "offline",
         "禁用": "disabled"
     }
-    
+
     # 更新字段
     if "name" in agent_data:
         agent.name = agent_data["name"]
-    
+
     if "type" in agent_data:
         agent_type = agent_data["type"]
         if not agent_type.endswith("_agent"):
             agent_type = f"{agent_type}_agent"
         agent.agent_type = agent_type
-    
+
     if "description" in agent_data:
         agent.description = agent_data["description"]
-    
+
     if "status" in agent_data:
         status_cn = agent_data["status"]
         agent.status = status_map.get(status_cn, "offline")
-    
+
     if "tasks" in agent_data:
         agent.task_count = agent_data["tasks"]
-    
+
     if "config" in agent_data:
         agent.config = agent_data["config"]
-    
+
     if "tools" in agent_data:
         agent.tools = agent_data["tools"]
-    
+
+    # ===== 模块绑定字段更新（整合优化 1.2） =====
+    if "template_ids" in agent_data:
+        agent.template_ids = agent_data["template_ids"]
+
+    if "workflow_ids" in agent_data:
+        agent.workflow_ids = agent_data["workflow_ids"]
+
+    if "knowledge_base_ids" in agent_data:
+        agent.knowledge_base_ids = agent_data["knowledge_base_ids"]
+
+    if "plugin_ids" in agent_data:
+        agent.plugin_ids = agent_data["plugin_ids"]
+
+    if "system_prompt" in agent_data:
+        agent.system_prompt = agent_data["system_prompt"]
+
+    if "scope" in agent_data:
+        agent.scope = agent_data["scope"]
+
     agent.updated_at = datetime.now()
-    
+
     await db.commit()
     await db.refresh(agent)
-    
+
     # 返回更新后的数据
     type_display = agent.agent_type
     if agent.agent_type.endswith("_agent"):
         type_display = agent.agent_type.replace("_agent", "")
-    
+
     status_display = "离线"
     if agent.status == "online":
         status_display = "在线"
     elif agent.status == "disabled":
         status_display = "禁用"
-    
+
     return BaseResponse(
         data={
             "id": agent.id,
@@ -255,6 +291,12 @@ async def update_agent(
             "status": status_display,
             "tasks": agent.task_count,
             "description": agent.description or "",
+            "template_ids": agent.template_ids or [],
+            "workflow_ids": agent.workflow_ids or [],
+            "knowledge_base_ids": agent.knowledge_base_ids or [],
+            "plugin_ids": agent.plugin_ids or [],
+            "system_prompt": agent.system_prompt or "",
+            "scope": agent.scope or "global",
             "updated_at": agent.updated_at.strftime("%Y-%m-%d") if agent.updated_at else ""
         },
         message="智能体更新成功"
@@ -475,4 +517,141 @@ async def _create_sample_agents(db: AsyncSession, current_user: User):
         pass
     
     return BaseResponse(data=agent_list)
+
+
+@router.post("/chat")
+async def chat_with_agent(
+    request: Dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    与智能体对话（调用 AI 大模型）
+    """
+    # 解析请求参数
+    agent_id = request.get("agent_id")
+    message = request.get("message", "")
+    model = request.get("model")  # 模型ID
+    history = request.get("history", [])  # 对话历史
+    
+    if not message:
+        return BaseResponse(success=False, message="消息内容不能为空")
+    
+    try:
+        # 获取 AI 数字底座的模型管理器
+        from app.api.v1.endpoints.ai_digital_base import model_manager
+        
+        # 如果没有指定模型，使用默认模型
+        if not model:
+            # 从配置获取默认模型
+            available_models = model_manager.get_all_available_models()
+            for provider_models in available_models.values():
+                if provider_models:
+                    model = provider_models[0].get("id") or provider_models[0].get("model")
+                    break
+        
+        if not model:
+            return BaseResponse(
+                success=False, 
+                message="AI 模型未配置，请在 AI 数字底座 配置大模型 API"
+            )
+        
+        # 构建消息列表
+        messages = []
+        
+        # 如果有智能体ID，获取系统提示词
+        system_prompt = "你是一个智能助手，请根据用户的问题给出准确、专业的回答。"
+        if agent_id:
+            from sqlalchemy import select
+            stmt = select(Agent).where(Agent.id == agent_id)
+            result = await db.execute(stmt)
+            agent = result.scalar_one_or_none()
+            if agent and agent.system_prompt:
+                system_prompt = agent.system_prompt
+        
+        messages.append({
+            "role": "system",
+            "content": system_prompt
+        })
+        
+        # 添加历史消息
+        for hist in history:
+            messages.append({
+                "role": hist.get("role", "user"),
+                "content": hist.get("content", "")
+            })
+        
+        # 添加当前用户消息
+        messages.append({
+            "role": "user",
+            "content": message
+        })
+        
+        # 调用模型
+        # 使用 model_manager 调用配置好的模型
+        try:
+            # 使用 AI 网关或直接调用模型 API
+            from app.core.config import settings
+            import httpx
+            
+            # 尝试调用 AI 数字底座的模型调用端点
+            gateway_url = getattr(settings, 'AI_GATEWAY_URL', 'http://localhost:8000')
+            
+            # 准备请求数据
+            chat_request = {
+                "model": model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 2000
+            }
+            
+            # 调用 AI 网关
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                try:
+                    # 尝试调用本地网关
+                    response = await client.post(
+                        f"{gateway_url}/v1/chat/comletions",
+                        json=chat_request,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        if result.get("choices") and len(result["choices"]) > 0:
+                            response_text = result["choices"][0]["message"]["content"]
+                        else:
+                            response_text = "AI 模型返回空响应"
+                    else:
+                        raise Exception(f"AI 网关返回错误：{response.status_code}")
+                        
+                except Exception as e:
+                    # 如果网关不可用，返回友好提示
+                    response_text = f"AI 网关暂时不可用。请检查 AI 数字底座配置。\n\n您的问题：「{message}」\n\n提示：请先在 AI 数字底座 配置大模型 API 密钥（如 OpenAI、Anthropic、通义千问等）。"
+                    
+        except Exception as e:
+            response_text = f"调用 AI 模型失败：{str(e)}"
+        
+        if response_text:
+            return BaseResponse(
+                success=True,
+                response=response_text,
+                data={
+                    "model": model,
+                    "agent_id": agent_id,
+                    "message": message
+                }
+            )
+        else:
+            return BaseResponse(
+                success=False,
+                message="AI 模型响应为空，请检查模型配置"
+            )
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return BaseResponse(
+            success=False,
+            message=f"AI 对话失败：{str(e)}"
+        )
 

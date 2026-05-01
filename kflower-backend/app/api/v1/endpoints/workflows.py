@@ -434,16 +434,18 @@ async def execute_workflow(
     workflow_id: int,
     title: str,
     data: dict,
+    form_template_id: int = None,
+    form_data_id: int = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """执行工作流"""
+    """执行工作流（整合优化 1.4：支持携带表单数据）"""
     result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
     workflow = result.scalar_one_or_none()
-    
+
     if not workflow:
         raise HTTPException(status_code=404, detail="工作流不存在")
-    
+
     # 创建工作流实例
     instance = WorkflowInstance(
         workflow_id=workflow_id,
@@ -451,14 +453,16 @@ async def execute_workflow(
         data=data,
         status="running",
         current_node_id=workflow.nodes[0]["id"] if workflow.nodes else None,
+        form_template_id=form_template_id,
+        form_data_id=form_data_id,
         organization_id=current_user.organization_id,
         created_by=current_user.id
     )
-    
+
     db.add(instance)
     await db.commit()
     await db.refresh(instance)
-    
+
     # 记录日志
     log = WorkflowLog(
         instance_id=instance.id,
@@ -468,7 +472,7 @@ async def execute_workflow(
     )
     db.add(log)
     await db.commit()
-    
+
     return BaseResponse(message="工作流已启动", data={"instance_id": instance.id})
 
 

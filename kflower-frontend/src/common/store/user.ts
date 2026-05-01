@@ -12,6 +12,11 @@ interface User {
   email: string
   full_name: string
   is_superuser: boolean
+  avatar?: string
+  phone?: string
+  department?: string
+  position?: string
+  email_verified_at?: string
 }
 
 export const useUserStore = defineStore('user', () => {

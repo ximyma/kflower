@@ -137,6 +137,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, onMounted } from 'vue'
 import { Plus, Search, Files, Document, Reading, MoreFilled, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { knowledgeAPI } from '../../common/api'

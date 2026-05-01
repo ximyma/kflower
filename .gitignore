@@ -10,6 +10,8 @@ env/
 dist/
 build/
 *.local
+.packaging
+packaging
 
 # Environment
 .env

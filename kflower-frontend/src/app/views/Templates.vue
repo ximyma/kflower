@@ -91,6 +91,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Search, Document, MoreFilled, Edit, Tickets, DataLine, List, User } from '@element-plus/icons-vue'

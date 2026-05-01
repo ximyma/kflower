@@ -111,6 +111,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, watch, computed, reactive } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 

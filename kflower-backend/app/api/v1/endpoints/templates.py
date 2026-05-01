@@ -515,6 +515,26 @@ async def submit_template_data(
         await TemplatePluginService.trigger_hook(template_id, "after_form_submit", hook_context)
     except Exception:
         pass  # 模板插件执行失败不影响主流程
+    
+    # ===== 应用级插件触发：使用 PluginDispatcher 统一调度 =====
+    if app_id:
+        try:
+            # 导入插件调度器（整合优化 2.4）
+            from app.core.plugin_dispatcher import dispatch_form_submit
+            
+            # 触发表单提交事件
+            await dispatch_form_submit(
+                app_id=app_id,
+                template_id=template_id,
+                form_data=data,
+                user_id=current_user.id,
+                db=db,
+                is_update=False
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"应用级插件调度失败: {e}")
 
     # ===== RAG 自动索引（升级方案 7.1） =====
     if app_id:
@@ -588,6 +608,21 @@ async def submit_template_data(
                 
                 if workflow and workflow.is_published:
                     from app.core.workflow.engine import WorkflowEngine
+                    
+                    # ===== 应用级插件触发：workflow.start =====
+                    if app_id:
+                        try:
+                            from app.core.plugin_dispatcher import dispatch_workflow_start
+                            await dispatch_workflow_start(
+                                app_id=app_id,
+                                workflow_id=menu.workflow_id,
+                                form_data_id=row_id,
+                                variables=dict(variables),
+                                user_id=current_user.id,
+                                db=db
+                            )
+                        except Exception as e:
+                            logger.warning(f"工作流启动前插件调度失败: {e}")
                     
                     # 构建流程变量
                     variables = dict(data)

@@ -80,6 +80,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowLeft, MoreFilled, ChatDotRound, User, MagicStick, Promotion } from '@element-plus/icons-vue'

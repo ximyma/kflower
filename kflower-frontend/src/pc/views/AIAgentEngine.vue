@@ -50,10 +50,10 @@
           <template #header>
             <div class="card-header">
               <span>🤖 智能体列表</span>
-              <el-button type="primary" size="small" @click="createAgent">创建智能体</el-button>
+              <el-button type="primary" size="small" @click="goToOrchestrator">编排器</el-button>
             </div>
           </template>
-          
+
           <el-table :data="agents" style="width:100%">
             <el-table-column prop="name" label="名称" width="150">
               <template #default="{ row }">
@@ -88,20 +88,43 @@
         <el-card class="module-card">
           <template #header>
             <div class="card-header">
-              <span>🛠️ 工具库</span>
-              <el-button type="primary" size="small" @click="addTool">添加工具</el-button>
+              <span>🧠 AI模型配置</span>
+              <el-button type="primary" size="small" @click="goToDigitalBase">配置</el-button>
             </div>
           </template>
-          
-          <el-table :data="tools" style="width:100%">
-            <el-table-column prop="name" label="工具名称" width="180" />
-            <el-table-column prop="description" label="描述" />
-            <el-table-column prop="enabled" label="启用" width="80">
-              <template #default="{ row }">
-                <el-switch v-model="row.enabled" size="small" @change="toggleTool(row)" />
-              </template>
-            </el-table-column>
-          </el-table>
+
+          <div class="model-config-section">
+            <div class="config-item">
+              <div class="config-label">
+                <el-icon><MagicStick /></el-icon>
+                <span>当前使用模型</span>
+              </div>
+              <div class="config-value">
+                <el-tag type="success">{{ currentModel || '未配置' }}</el-tag>
+              </div>
+            </div>
+
+            <div class="config-item">
+              <div class="config-label">
+                <el-icon><Connection /></el-icon>
+                <span>模型网关</span>
+              </div>
+              <div class="config-value">
+                <el-tag :type="gatewayStatus ? 'success' : 'danger'">
+                  {{ gatewayStatus ? '已连接' : '未连接' }}
+                </el-tag>
+              </div>
+            </div>
+
+            <div class="config-tip">
+              <el-icon><InfoFilled /></el-icon>
+              <span>请先在 AI数字底座 配置大模型 API，才能正常与智能体对话</span>
+            </div>
+
+            <el-button type="primary" plain style="width: 100%; margin-top: 12px" @click="goToDigitalBase">
+              前往 AI数字底座 配置
+            </el-button>
+          </div>
         </el-card>
 
         <el-card class="module-card" style="margin-top:16px">
@@ -161,10 +184,14 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, List, Tools, Collection, Avatar } from '@element-plus/icons-vue'
+import { User, List, Tools, Collection, Avatar, MagicStick, Connection, InfoFilled } from '@element-plus/icons-vue'
 import { aiAPI } from '@/common/api'
+
+const router = useRouter()
 
 const agents = ref([
   { id: 1, name: '模板设计智能体', type: '专业', status: '在线', tasks: 42 },
@@ -199,6 +226,10 @@ const stats = ref({
   memory_items: 2400
 })
 
+// AI 模型配置状态
+const currentModel = ref<string | null>(null)
+const gatewayStatus = ref(false)
+
 // 加载智能体引擎状态
 async function loadAgentEngineStatus() {
   try {
@@ -208,14 +239,36 @@ async function loadAgentEngineStatus() {
       stats.value.tasks_total = res.data.tasks_total || 156
       stats.value.tools_count = res.data.tools_count || 8
       stats.value.memory_items = res.data.memory_items || 2400
+      currentModel.value = res.data.current_model || null
+      gatewayStatus.value = res.data.gateway_connected || false
     }
   } catch (error) {
     console.error('加载智能体引擎状态失败:', error)
   }
 }
 
+// 加载 AI 数字底座状态
+async function loadDigitalBaseStatus() {
+  try {
+    const res = await fetch('/api/v1/ai/digital-base/status', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+    })
+    const data = await res.json()
+    if (data.success && data.data) {
+      currentModel.value = data.data.current_model || data.data.model_name || null
+      gatewayStatus.value = data.data.gateway_status === 'connected' || data.data.gateway_online === true
+    }
+  } catch (error) {
+    console.error('加载AI数字底座状态失败:', error)
+    // 使用默认值
+    currentModel.value = null
+    gatewayStatus.value = false
+  }
+}
+
 onMounted(() => {
   loadAgentEngineStatus()
+  loadDigitalBaseStatus()
 })
 
 function createAgent() {
@@ -244,6 +297,16 @@ function formatMemory(count: number): string {
 
 function toggleTool(row: any) {
   ElMessage.success(`${row.name} ${row.enabled ? '已启用' : '已禁用'}`)
+}
+
+// 导航到智能体编排器
+function goToOrchestrator() {
+  router.push('/agent-orchestrator')
+}
+
+// 导航到 AI 数字底座
+function goToDigitalBase() {
+  router.push('/ai-digital-base')
 }
 </script>
 
@@ -362,3 +425,54 @@ function toggleTool(row: any) {
   color: var(--el-text-color-regular);
 }
 </style>
+
+/* AI 模型配置样式 */
+.model-config-section {
+  padding: 8px 0;
+}
+
+.config-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.config-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--el-text-color-regular);
+}
+
+.config-label .el-icon {
+  font-size: 18px;
+  color: var(--el-color-primary);
+}
+
+.config-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.config-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+}
+
+.config-tip .el-icon {
+  color: var(--el-color-warning);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+

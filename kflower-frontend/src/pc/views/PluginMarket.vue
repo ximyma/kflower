@@ -252,9 +252,9 @@ async function loadPlugins() {
     if (activeCategory.value !== 'all') {
       params.category = activeCategory.value
     }
-    const res = await api.get('/plugins/', { params })
-    if (res.success) {
-      plugins.value = res.data || []
+    const res: any = await api.get('/plugins/', { params })
+    if (res.success || res.status === 200) {
+      plugins.value = res.data?.plugins || res.data || []
       calcStats()
     }
   } catch (e: any) {

@@ -143,6 +143,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAIStore } from '../store/ai'

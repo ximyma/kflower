@@ -49,10 +49,10 @@
         <el-card class="workflow-canvas-card">
           <template #header>
             <div class="card-header">
-              <span>🎨 工作流设计器</span>
+              <span>🎨 工作流设计器 <span v-if="currentEditingWorkflow" style="color: #67C23A; font-size: 14px;">- {{ currentEditingWorkflow.name }}</span></span>
               <div class="canvas-actions">
                 <el-button type="primary" size="small" @click="createWorkflow">新建工作流</el-button>
-                <el-button size="small" @click="saveWorkflow">保存</el-button>
+                <el-button size="small" type="success" @click="saveWorkflow">保存</el-button>
                 <el-button size="small" @click="exportWorkflow">导出</el-button>
               </div>
             </div>
@@ -179,6 +179,7 @@
                     <div class="component-desc">{{ agent.description }}</div>
                   </div>
                   <div class="component-actions">
+                    <el-button type="text" size="small" @click.stop="openChatWithAgent(agent)">聊天</el-button>
                     <el-button type="text" size="small" @click.stop="openEditAgent(agent)">编辑</el-button>
                     <el-button type="text" size="small" @click.stop="deleteAgent(agent)" style="color: #f56c6c;">删除</el-button>
                   </div>
@@ -258,11 +259,11 @@
             </el-table-column>
             <el-table-column prop="version" label="版本" width="80" />
             <el-table-column prop="lastRun" label="最后运行" width="150" />
-            <el-table-column label="操作" width="180">
+            <el-table-column label="操作" width="220">
               <template #default="{ row }">
-                <el-button type="primary" size="small" link @click="editWorkflow(row)">编辑</el-button>
+                <el-button type="primary" size="small" link @click="designWorkflow(row)">设计</el-button>
+                <el-button type="warning" size="small" link @click="editWorkflow(row)">编辑</el-button>
                 <el-button type="success" size="small" link @click="runWorkflow(row)">运行</el-button>
-                <el-button type="info" size="small" link @click="viewLogs(row)">日志</el-button>
                 <el-button type="danger" size="small" link @click="deleteWorkflow(row)">删除</el-button>
               </template>
             </el-table-column>
@@ -331,56 +332,336 @@
     </el-card>
   </div>
 
-  <!-- 智能体编辑对话框 -->
+  <!-- 工作流创建/编辑对话框 -->
   <el-dialog
-    v-model="agentDialogVisible"
-    :title="editingAgent ? '编辑智能体' : '创建智能体'"
+    v-model="workflowDialogVisible"
+    :title="editingWorkflowId ? '编辑工作流' : '创建工作流'"
     width="500px"
     :close-on-click-modal="false"
   >
-    <el-form :model="agentForm" label-width="80px">
-      <el-form-item label="名称" required>
-        <el-input v-model="agentForm.name" placeholder="请输入智能体名称" />
-      </el-form-item>
-      <el-form-item label="类型">
-        <el-select v-model="agentForm.type" placeholder="选择智能体类型">
-          <el-option label="通用" value="general" />
-          <el-option label="客服" value="customer_service" />
-          <el-option label="分析" value="analytics" />
-          <el-option label="文档" value="document" />
-          <el-option label="开发" value="development" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select v-model="agentForm.status" placeholder="选择状态">
-          <el-option label="在线" value="在线" />
-          <el-option label="离线" value="离线" />
-          <el-option label="禁用" value="禁用" />
-        </el-select>
+    <el-form :model="{}" label-width="90px">
+      <el-form-item label="工作流名称" required>
+        <el-input 
+          v-model="currentWorkflowName" 
+          placeholder="请输入工作流名称，如：月度报告生成"
+          @keyup.enter="confirmCreateWorkflow"
+        />
       </el-form-item>
       <el-form-item label="描述">
         <el-input
-          v-model="agentForm.description"
+          v-model="currentWorkflowDescription"
           type="textarea"
           :rows="3"
-          placeholder="请输入智能体描述"
+          placeholder="请输入工作流描述（可选）"
         />
       </el-form-item>
     </el-form>
     <template #footer>
+      <el-button @click="workflowDialogVisible = false">取消</el-button>
+      <el-button type="primary" @click="confirmCreateWorkflow">
+        {{ editingWorkflowId ? '保存' : '创建' }}
+      </el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 智能体聊天对话框 -->
+  <el-dialog
+    v-model="chatDialogVisible"
+    :title="currentChatAgent ? '与 ' + currentChatAgent.name + ' 对话' : '智能体聊天'"
+    width="700px"
+    :close-on-click-modal="false"
+  >
+    <div class="chat-container">
+      <div class="chat-model-selector">
+        <el-select v-model="selectedModel" placeholder="选择AI模型" size="small" style="width: 200px;">
+          <el-option
+            v-for="model in availableModels"
+            :key="model.id"
+            :label="model.name"
+            :value="model.id"
+          />
+        </el-select>
+        <span class="model-tip" v-if="!selectedModel">请选择AI模型进行对话</span>
+      </div>
+      <div class="chat-messages" ref="chatMessagesRef">
+        <div v-if="chatMessages.length === 0" class="chat-empty">
+          <el-icon size="48" color="#909399"><ChatDotRound /></el-icon>
+          <p>开始和 {{ currentChatAgent?.name }} 对话吧</p>
+          <p class="chat-tip">可以询问关于 {{ currentChatAgent?.description || '相关业务' }} 的问题</p>
+        </div>
+        <div
+          v-for="(msg, index) in chatMessages"
+          :key="index"
+          class="chat-message"
+          :class="msg.role"
+        >
+          <div class="message-avatar">
+            <el-icon v-if="msg.role === 'user'" size="20"><User /></el-icon>
+            <el-icon v-else size="20"><MagicStick /></el-icon>
+          </div>
+          <div class="message-content">
+            <div class="message-text">{{ msg.content }}</div>
+            <div class="message-time">{{ msg.time }}</div>
+          </div>
+        </div>
+        <div v-if="chatLoading" class="chat-message assistant">
+          <div class="message-avatar">
+            <el-icon size="20"><MagicStick /></el-icon>
+          </div>
+          <div class="message-content">
+            <div class="message-text loading">
+              <span class="dot"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="chat-input-area">
+        <el-input
+          v-model="chatInput"
+          placeholder="输入消息..."
+          @keyup.enter="sendChatMessage"
+          :disabled="chatLoading || !selectedModel"
+        >
+          <template #append>
+            <el-button @click="sendChatMessage" :disabled="chatLoading || !chatInput.trim() || !selectedModel">
+              <el-icon><Promotion /></el-icon>
+            </el-button>
+          </template>
+        </el-input>
+      </div>
+    </div>
+  </el-dialog>
+
+  <!-- 智能体编辑对话框 -->
+  <el-dialog
+    v-model="agentDialogVisible"
+    :title="editingAgent ? '编辑智能体' : '创建智能体'"
+    width="700px"
+    :close-on-click-modal="false"
+  >
+    <el-tabs v-model="agentTabActive" class="agent-config-tabs">
+      <el-tab-pane label="基本信息" name="basic">
+        <el-form :model="agentForm" label-width="90px" style="margin-top: 16px">
+          <el-form-item label="名称" required>
+            <el-input v-model="agentForm.name" placeholder="请输入智能体名称" />
+          </el-form-item>
+          <el-form-item label="类型">
+            <el-select v-model="agentForm.type" placeholder="选择智能体类型" style="width: 100%">
+              <el-option label="通用" value="general" />
+              <el-option label="客服" value="customer_service" />
+              <el-option label="分析" value="analytics" />
+              <el-option label="文档" value="document" />
+              <el-option label="开发" value="development" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="agentForm.status" placeholder="选择状态" style="width: 100%">
+              <el-option label="在线" value="在线" />
+              <el-option label="离线" value="离线" />
+              <el-option label="禁用" value="禁用" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="作用域">
+            <el-select v-model="agentForm.scope" placeholder="选择作用域" style="width: 100%">
+              <el-option label="全局（所有应用可用）" value="global" />
+              <el-option label="应用专用" value="app" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="描述">
+            <el-input
+              v-model="agentForm.description"
+              type="textarea"
+              :rows="3"
+              placeholder="请输入智能体描述"
+            />
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+      
+      <el-tab-pane label="模块绑定" name="bindings">
+        <div class="binding-section" style="margin-top: 16px">
+          <!-- 模板绑定 -->
+          <div class="binding-item">
+            <div class="binding-header">
+              <el-icon><Document /></el-icon>
+              <span>绑定模板</span>
+              <el-tag size="small" type="info">可选</el-tag>
+            </div>
+            <div class="binding-desc">绑定后可处理指定模板的表单数据</div>
+            <el-select
+              v-model="agentForm.template_ids"
+              multiple
+              placeholder="选择绑定的模板"
+              style="width: 100%"
+              clearable
+            >
+              <el-option
+                v-for="tpl in availableTemplates"
+                :key="tpl.id"
+                :label="tpl.name"
+                :value="tpl.id"
+              />
+            </el-select>
+          </div>
+          
+          <!-- 知识库绑定 -->
+          <div class="binding-item">
+            <div class="binding-header">
+              <el-icon><Reading /></el-icon>
+              <span>绑定知识库</span>
+              <el-tag size="small" type="info">可选</el-tag>
+            </div>
+            <div class="binding-desc">绑定后智能体可检索知识库内容回答问题</div>
+            <el-select
+              v-model="agentForm.knowledge_base_ids"
+              multiple
+              placeholder="选择绑定的知识库"
+              style="width: 100%"
+              clearable
+            >
+              <el-option
+                v-for="kb in availableKnowledgeBases"
+                :key="kb.id"
+                :label="kb.name"
+                :value="kb.id"
+              />
+            </el-select>
+          </div>
+          
+          <!-- 工作流绑定 -->
+          <div class="binding-item">
+            <div class="binding-header">
+              <el-icon><Connection /></el-icon>
+              <span>绑定工作流</span>
+              <el-tag size="small" type="info">可选</el-tag>
+            </div>
+            <div class="binding-desc">绑定后智能体可触发和管理指定工作流</div>
+            <el-select
+              v-model="agentForm.workflow_ids"
+              multiple
+              placeholder="选择绑定的工作流"
+              style="width: 100%"
+              clearable
+            >
+              <el-option
+                v-for="wf in availableWorkflows"
+                :key="wf.id"
+                :label="wf.name"
+                :value="wf.id"
+              />
+            </el-select>
+          </div>
+          
+          <!-- 插件绑定 -->
+          <div class="binding-item">
+            <div class="binding-header">
+              <el-icon><Grid /></el-icon>
+              <span>绑定插件</span>
+              <el-tag size="small" type="info">可选</el-tag>
+            </div>
+            <div class="binding-desc">绑定后智能体可调用指定插件扩展功能</div>
+            <el-select
+              v-model="agentForm.plugin_ids"
+              multiple
+              placeholder="选择绑定的插件"
+              style="width: 100%"
+              clearable
+            >
+              <el-option
+                v-for="plugin in availablePlugins"
+                :key="plugin.id"
+                :label="plugin.name"
+                :value="plugin.id"
+              />
+            </el-select>
+          </div>
+        </div>
+      </el-tab-pane>
+      
+      <el-tab-pane label="系统配置" name="config">
+        <div style="margin-top: 16px">
+          <el-form-item label="系统提示词">
+            <div class="system-prompt-tip">定义智能体的角色、能力范围和行为规则</div>
+            <div class="prompt-actions">
+              <el-button-group>
+                <el-button size="small" @click="insertExamplePrompt" :disabled="generatingPrompt">
+                  <el-icon><Document /></el-icon> 插入示例
+                </el-button>
+                <el-button size="small" type="primary" @click="generatePromptWithAI" :loading="generatingPrompt">
+                  <el-icon><MagicStick /></el-icon> AI 生成提示词
+                </el-button>
+              </el-button-group>
+              <el-dropdown @command="handleExampleSelect" trigger="click" style="margin-left: 8px;">
+                <el-button size="small">
+                  快捷模板 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="customer">客服助手</el-dropdown-item>
+                    <el-dropdown-item command="doc">文档助手</el-dropdown-item>
+                    <el-dropdown-item command="data">数据分析助手</el-dropdown-item>
+                    <el-dropdown-item command="code">代码助手</el-dropdown-item>
+                    <el-dropdown-item command="hr">HR助手</el-dropdown-item>
+                    <el-dropdown-item command="finance">财务助手</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+            <el-input
+              v-model="agentForm.system_prompt"
+              type="textarea"
+              :rows="10"
+              placeholder="你是一个专业的XXX助手，可以帮助用户完成XXX任务。请注意：
+1. 保持专业和礼貌
+2. 如果不确定，请如实说明
+3. 优先使用绑定的知识库内容回答问题"
+              :disabled="generatingPrompt"
+            />
+            <div class="prompt-hint" v-if="generatingPrompt">
+              <el-icon class="is-loading"><Loading /></el-icon> 正在使用 AI 生成提示词，请稍候...
+            </div>
+          </el-form-item>
+          
+          <el-form-item label="可见应用">
+            <div class="system-prompt-tip">设置智能体在哪些应用中可见（留空表示所有应用）</div>
+            <el-select
+              v-model="agentForm.visible_apps"
+              multiple
+              placeholder="选择可见的应用"
+              style="width: 100%"
+              clearable
+              filterable
+            >
+              <el-option
+                v-for="app in availableApps"
+                :key="app.id"
+                :label="app.name"
+                :value="app.id"
+              />
+            </el-select>
+          </el-form-item>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
+    
+    <template #footer>
       <span class="dialog-footer">
         <el-button @click="agentDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveAgent">保存</el-button>
+        <el-button type="primary" @click="saveAgent" :loading="savingAgent">保存</el-button>
       </span>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { SetUp, VideoPlay, CircleCheck, Clock, User, Tools, Share, Sort, Refresh, Collection } from '@element-plus/icons-vue'
-import { aiAPI, workflowAPI } from '@/common/api/index'
+import { SetUp, VideoPlay, CircleCheck, Clock, User, Tools, Share, Sort, Refresh, Collection, Document, Reading, Connection, Grid, ChatDotRound, MagicStick, Promotion, ArrowDown, Loading } from '@element-plus/icons-vue'
+import { aiAPI, workflowAPI, templateAPI } from '@/common/api/index'
+import appAPI from '@/common/api/myApps'
 
 const stats = ref({
   workflowCount: 0,
@@ -397,11 +678,174 @@ const workflows = ref([])
 const executionLogs = ref([])
 const agentDialogVisible = ref(false)
 const editingAgent = ref(null)
+const savingAgent = ref(false)
+const agentTabActive = ref('basic')
+
+// 新增：模块绑定选项列表
+const availableTemplates = ref<any[]>([])
+const availableKnowledgeBases = ref<any[]>([])
+const availableWorkflows = ref<any[]>([])
+const availablePlugins = ref<any[]>([])
+const availableApps = ref<any[]>([])
+
+// 智能体聊天对话框
+const chatDialogVisible = ref(false)
+const currentChatAgent = ref<any>(null)
+const chatMessages = ref<Array<{role: string, content: string, time: string}>>([])
+const chatInput = ref('')
+const chatLoading = ref(false)
+
+// 模型选择
+const availableModels = ref<any[]>([])
+const selectedModel = ref<string | null>(null)
+
+// 提示词生成
+const generatingPrompt = ref(false)
+
+// 示例提示词模板
+const promptTemplates = {
+  customer: `你是一个专业的客户服务助手，名为"XX助手"。
+
+## 你的职责
+- 热情、耐心地解答客户的咨询问题
+- 快速准确地提供产品/服务相关信息
+- 积极倾听客户需求，提供个性化建议
+- 妥善处理客户投诉和售后问题
+
+## 行为准则
+1. 保持专业、友好、礼貌的服务态度
+2. 回答要准确、简洁、有条理
+3. 遇到无法解决的问题时，及时转接相关人员
+4. 保护客户隐私，不泄露敏感信息
+5. 定期学习产品知识，提升专业能力
+
+## 常用回复模板
+- 问候：您好！我是您的专属客服助手，很高兴为您服务。
+- 感谢：感谢您的信任，我会尽快为您处理。
+- 结束：请问还有其他可以帮到您的吗？`,
+
+  doc: `你是一个专业的文档助手，名为"XX助手"。
+
+## 你的职责
+- 帮助用户撰写各类文档（报告、方案、总结等）
+- 检查文档格式和内容的规范性
+- 提供文档模板和写作建议
+- 优化文档结构和表达
+
+## 行为准则
+1. 语言表达要准确、流畅、专业
+2. 注重文档的逻辑性和条理性
+3. 根据不同场景调整写作风格
+4. 主动提出改进建议
+5. 严格保密文档内容
+
+## 文档类型
+- 工作报告、周报、月报
+- 项目方案、实施计划
+- 会议纪要、商务函件
+- 产品手册、操作指南`,
+
+  data: `你是一个专业的数据分析助手，名为"XX助手"。
+
+## 你的职责
+- 解读数据，发现规律和趋势
+- 生成数据分析报告和可视化建议
+- 回答数据相关问题
+- 提供业务洞察和建议
+
+## 分析维度
+1. 描述性分析：发生了什么
+2. 诊断性分析：为什么发生
+3. 预测性分析：将要发生什么
+4. 规范性分析：应该怎么做
+
+## 注意事项
+- 数据说话，用事实支撑结论
+- 图表配合，增强可读性
+- 深入浅出，复杂问题简单化
+- 注意数据的时效性和局限性`,
+
+  code: `你是一个专业的代码助手，名为"XX助手"。
+
+## 你的职责
+- 帮助编写、调试和优化代码
+- 解释代码逻辑和实现原理
+- 提供技术方案和最佳实践
+- Code Review 和质量把控
+
+## 技术栈
+- 前端：Vue.js, React, TypeScript
+- 后端：Python(FastAPI), Node.js, Java
+- 数据库：MySQL, PostgreSQL, Redis
+- DevOps：Docker, Git, CI/CD
+
+## 行为准则
+1. 代码要规范、可读、可维护
+2. 遵循 SOLID 原则和设计模式
+3. 注意安全性和性能优化
+4. 写好注释和文档
+5. 注重测试覆盖
+
+## 输出格式
+- 代码片段：标注语言和用途
+- 问题分析：原因 + 解决方案
+- 技术方案：优缺点对比`,
+
+  hr: `你是一个专业的HR助手，名为"XX助手"。
+
+## 你的职责
+- 解答员工关于人事政策的咨询
+- 协助招聘流程和面试安排
+- 办理入职、离职、转正等手续
+- 提供绩效考核和培训发展建议
+
+## 业务范围
+1. 招聘管理：职位发布、简历筛选、面试安排
+2. 员工关系：入职转正、晋升调动、离职结算
+3. 薪酬福利：工资核算、社保公积金、绩效考核
+4. 培训发展：培训计划、技能提升、职业规划
+
+## 行为准则
+- 政策解读要准确、清晰
+- 流程说明要详细、可操作
+- 保护员工隐私和信息安全
+- 提供人性化、专业化的服务`,
+
+  finance: `你是一个专业的财务助手，名为"XX助手"。
+
+## 你的职责
+- 解答财务相关的专业问题
+- 提供财务分析和报表解读
+- 协助预算编制和成本控制
+- 解读财税政策和法规
+
+## 业务领域
+1. 会计核算：凭证编制、账务处理、报表生成
+2. 财务管理：预算编制、资金管理、成本分析
+3. 税务筹划：纳税申报、税务筹划、优惠政策
+4. 审计合规：内控建设、合规检查、风险防范
+
+## 注意事项
+- 遵循会计准则和税法规定
+- 数据准确，计算严谨
+- 提供专业的分析和合理的建议
+- 注重合规性和风险控制`
+}
+
 const agentForm = ref({
   name: '',
   type: 'general',
   description: '',
-  status: '离线'
+  status: '离线',
+  scope: 'global',
+  // 模块绑定
+  template_ids: [] as number[],
+  knowledge_base_ids: [] as number[],
+  workflow_ids: [] as number[],
+  plugin_ids: [] as number[],
+  // 系统配置
+  system_prompt: '',
+  visible_apps: [] as number[],
 })
 
 // 可视化工作流设计器状态
@@ -451,6 +895,13 @@ const creatingConnection = ref(false)
 const connectionSourceId = ref<string | null>(null)
 const connectionIsSource = ref(true)
 
+// 工作流创建对话框
+const workflowDialogVisible = ref(false)
+const currentWorkflowName = ref('')
+const currentWorkflowDescription = ref('')  // 新增：保存描述
+const editingWorkflowId = ref<number | null>(null)
+const currentEditingWorkflow = ref<any>(null)  // 当前正在设计的工作流
+
 // 加载编排器统计数据
 async function loadOrchestratorStats() {
   try {
@@ -474,10 +925,18 @@ async function loadAgents() {
   try {
     const response = await aiAPI.getAgentEngineAgents()
     if (response.success && response.data) {
-      availableAgents.value = response.data.map((agent: any, index: number) => ({
-        id: agent.id || index + 1,
+      availableAgents.value = response.data.map((agent: any) => ({
+        id: agent.id,
         name: agent.name,
         description: agent.description || '暂无描述',
+        type: agent.type || 'general',
+        status: agent.status || '离线',
+        scope: agent.scope || 'global',
+        template_ids: agent.template_ids || [],
+        knowledge_base_ids: agent.knowledge_base_ids || [],
+        workflow_ids: agent.workflow_ids || [],
+        plugin_ids: agent.plugin_ids || [],
+        system_prompt: agent.system_prompt || '',
       }))
     } else {
       // 模拟数据
@@ -609,15 +1068,60 @@ onMounted(() => {
   loadTools()
   loadWorkflows()
   loadExecutionLogs()
+  // 加载模块绑定选项
+  loadModuleOptions()
 })
+
+// 加载模块绑定选项（模板、知识库、工作流、插件、应用）
+async function loadModuleOptions() {
+  // 加载模板列表
+  try {
+    const tplRes = await templateAPI.list({ limit: 100 })
+    availableTemplates.value = Array.isArray(tplRes) ? tplRes : (tplRes.data || [])
+  } catch (e) {
+    console.error('加载模板列表失败', e)
+  }
+  
+  // 加载知识库列表 - 修正 API 路径
+  try {
+    const kbRes = await fetch('/api/v1/knowledge/bases', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+    }).then(r => r.json())
+    availableKnowledgeBases.value = Array.isArray(kbRes) ? kbRes : (kbRes.data || [])
+  } catch (e) {
+    console.error('加载知识库列表失败', e)
+  }
+  
+  // 加载工作流列表
+  try {
+    const wfRes = await workflowAPI.list()
+    availableWorkflows.value = Array.isArray(wfRes) ? wfRes : (wfRes.data || [])
+  } catch (e) {
+    console.error('加载工作流列表失败', e)
+  }
+  
+  // 加载应用列表
+  try {
+    const appRes = await appAPI.list()
+    availableApps.value = Array.isArray(appRes) ? appRes : (appRes.data || [])
+  } catch (e) {
+    console.error('加载应用列表失败', e)
+  }
+  
+  // 加载插件列表（系统插件）- 修正 API 路径
+  try {
+    const pluginRes = await fetch('/api/v1/plugins/', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+    }).then(r => r.json())
+    availablePlugins.value = pluginRes.success ? pluginRes.data : (Array.isArray(pluginRes) ? pluginRes : (pluginRes.data || []))
+  } catch (e) {
+    console.error('加载插件列表失败', e)
+  }
+}
 
 function onDragStart(event: DragEvent, type: string, data: any) {
   event.dataTransfer?.setData('application/json', JSON.stringify({ type, data }))
   ElMessage.info(`开始拖拽 ${type}: ${data.name || data.type}`)
-}
-
-function editWorkflow(row: any) {
-  ElMessage.info(`编辑工作流: ${row.name}`)
 }
 
 function runWorkflow(row: any) {
@@ -629,7 +1133,150 @@ function viewLogs(row: any) {
 }
 
 function deleteWorkflow(row: any) {
-  ElMessage.info(`删除工作流: ${row.name}`)
+  const idx = workflows.value.findIndex(w => w.id === row.id)
+  if (idx !== -1) {
+    workflows.value.splice(idx, 1)
+    ElMessage.success(`已删除工作流「${row.name}」`)
+  }
+}
+
+// 打开智能体聊天对话框
+async function openChatWithAgent(agent: any) {
+  currentChatAgent.value = agent
+  chatMessages.value = []
+  chatInput.value = ''
+  chatDialogVisible.value = true
+  // 加载模型列表
+  await loadAvailableModels()
+}
+
+// 发送聊天消息
+async function sendChatMessage() {
+  if (!chatInput.value.trim() || chatLoading.value || !selectedModel.value) return
+  
+  const userMessage = chatInput.value.trim()
+  chatInput.value = ''
+  
+  // 添加用户消息
+  chatMessages.value.push({
+    role: 'user',
+    content: userMessage,
+    time: new Date().toLocaleTimeString()
+  })
+  
+  chatLoading.value = true
+  
+  try {
+    // 调用真实的 AI 模型 API
+    const response = await fetch('/api/v1/ai/agent-engine/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+      },
+      body: JSON.stringify({
+        agent_id: currentChatAgent.value?.id,
+        message: userMessage,
+        model: selectedModel.value,
+        history: chatMessages.value.slice(0, -1).map(m => ({
+          role: m.role,
+          content: m.content
+        }))
+      })
+    })
+    
+    const data = await response.json()
+    
+    if (data.success && data.response) {
+      chatMessages.value.push({
+        role: 'assistant',
+        content: data.response,
+        time: new Date().toLocaleTimeString()
+      })
+    } else if (data.detail) {
+      // API 返回错误信息
+      chatMessages.value.push({
+        role: 'assistant',
+        content: '抱歉，' + (data.detail || 'AI 服务暂时不可用，请检查 AI 数字底座配置'),
+        time: new Date().toLocaleTimeString()
+      })
+    } else {
+      chatMessages.value.push({
+        role: 'assistant',
+        content: '抱歉，AI 服务暂时不可用，请检查 AI 数字底座配置',
+        time: new Date().toLocaleTimeString()
+      })
+    }
+  } catch (error: any) {
+    console.error('发送消息失败:', error)
+    chatMessages.value.push({
+      role: 'assistant',
+      content: '抱歉，AI 服务暂时不可用，请检查 AI 数字底座配置。错误信息: ' + (error.message || '网络错误'),
+      time: new Date().toLocaleTimeString()
+    })
+  } finally {
+    chatLoading.value = false
+  }
+}
+
+// 加载可用模型列表
+async function loadAvailableModels() {
+  try {
+    // 从 AI 数字底座获取模型列表 - 修正 API 路径
+    const res = await fetch('/api/v1/ai/digital-base/models/available', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+    })
+    const data = await res.json()
+    if (data.success && data.data) {
+      // 兼容不同格式的模型数据
+      const models = data.data
+      if (Array.isArray(models)) {
+        availableModels.value = models.map((m: any) => ({
+          id: m.id || m.model || m.name,
+          name: m.name || m.model || m.id,
+          provider: m.provider || ''
+        }))
+      } else if (typeof models === 'object') {
+        // 如果是按 provider 分组的格式
+        const allModels: any[] = []
+        for (const [provider, modelList] of Object.entries(models)) {
+          if (Array.isArray(modelList)) {
+            for (const m of modelList) {
+              allModels.push({
+                id: m.id || m.model || m.name,
+                name: `${provider}: ${m.name || m.model || m.id}`,
+                provider: provider
+              })
+            }
+          }
+        }
+        availableModels.value = allModels
+      }
+      // 默认选择第一个模型
+      if (availableModels.value.length > 0 && !selectedModel.value) {
+        selectedModel.value = availableModels.value[0].id
+      }
+    } else if (data.data) {
+      // 尝试直接使用 data.data
+      const models = data.data
+      if (Array.isArray(models)) {
+        availableModels.value = models.map((m: any) => ({
+          id: m.id || m.model || m.name,
+          name: m.name || m.model || m.id,
+          provider: m.provider || ''
+        }))
+      }
+    }
+  } catch (error) {
+    console.error('加载模型列表失败:', error)
+    // 使用默认模型列表
+    availableModels.value = [
+      { id: 'qwen-turbo', name: '通义千问 Turbo', provider: 'aliyun' },
+      { id: 'qwen-plus', name: '通义千问 Plus', provider: 'aliyun' },
+      { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai' },
+      { id: 'gpt-4', name: 'GPT-4', provider: 'openai' },
+    ]
+  }
 }
 
 function refreshLogs() {
@@ -640,11 +1287,19 @@ function refreshLogs() {
 // 打开创建智能体对话框
 function openCreateAgent() {
   editingAgent.value = null
+  agentTabActive.value = 'basic'
   agentForm.value = {
     name: '',
     type: 'general',
     description: '',
-    status: '离线'
+    status: '离线',
+    scope: 'global',
+    template_ids: [],
+    knowledge_base_ids: [],
+    workflow_ids: [],
+    plugin_ids: [],
+    system_prompt: '',
+    visible_apps: [],
   }
   agentDialogVisible.value = true
 }
@@ -652,13 +1307,35 @@ function openCreateAgent() {
 // 打开编辑智能体对话框
 function openEditAgent(agent) {
   editingAgent.value = agent
+  agentTabActive.value = 'basic'
+  // 解析绑定的 IDs（从 agent 对象中获取）
+  const agentData = agent as any
   agentForm.value = {
-    name: agent.name,
-    type: agent.type || 'general',
-    description: agent.description || '',
-    status: agent.status || '离线'
+    name: agentData.name,
+    type: agentData.type || 'general',
+    description: agentData.description || '',
+    status: agentData.status || '离线',
+    scope: agentData.scope || 'global',
+    template_ids: parseJsonArray(agentData.template_ids),
+    knowledge_base_ids: parseJsonArray(agentData.knowledge_base_ids),
+    workflow_ids: parseJsonArray(agentData.workflow_ids),
+    plugin_ids: parseJsonArray(agentData.plugin_ids),
+    system_prompt: agentData.system_prompt || '',
+    visible_apps: parseJsonArray(agentData.visible_apps),
   }
   agentDialogVisible.value = true
+}
+
+// 解析 JSON 数组（兼容字符串和数组格式）
+function parseJsonArray(value: any): number[] {
+  if (!value) return []
+  if (Array.isArray(value)) return value
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 }
 
 // 保存智能体
@@ -668,21 +1345,197 @@ async function saveAgent() {
     return
   }
   
+  savingAgent.value = true
+  
   try {
+    // 构建提交数据
+    const submitData = {
+      name: agentForm.value.name,
+      type: agentForm.value.type,
+      description: agentForm.value.description,
+      status: agentForm.value.status,
+      scope: agentForm.value.scope,
+      template_ids: agentForm.value.template_ids,
+      knowledge_base_ids: agentForm.value.knowledge_base_ids,
+      workflow_ids: agentForm.value.workflow_ids,
+      plugin_ids: agentForm.value.plugin_ids,
+      system_prompt: agentForm.value.system_prompt,
+      visible_apps: agentForm.value.visible_apps,
+    }
+    
     if (editingAgent.value) {
       // 更新
-      await aiAPI.updateAgent(editingAgent.value.id, agentForm.value)
+      await aiAPI.updateAgent(editingAgent.value.id, submitData)
       ElMessage.success('智能体更新成功')
     } else {
       // 创建
-      await aiAPI.createAgent(agentForm.value)
+      await aiAPI.createAgent(submitData)
       ElMessage.success('智能体创建成功')
     }
     agentDialogVisible.value = false
     loadAgents() // 重新加载列表
-  } catch (error) {
+  } catch (error: any) {
     console.error('保存智能体失败:', error)
-    ElMessage.error('保存失败: ' + (error.message || '未知错误'))
+    const errorMsg = error?.response?.data?.detail || error?.message || '未知错误'
+    ElMessage.error('保存失败: ' + errorMsg)
+  } finally {
+    savingAgent.value = false
+  }
+}
+
+// ==================== 提示词辅助函数 ====================
+
+// 插入示例提示词
+function insertExamplePrompt() {
+  // 根据智能体类型选择合适的模板
+  const typeMap: Record<string, string> = {
+    'general': 'customer',
+    '客服': 'customer',
+    'customer_service': 'customer',
+    '文档': 'doc',
+    'document': 'doc',
+    '分析': 'data',
+    'analytics': 'data',
+    '开发': 'code',
+    'development': 'code',
+    'hr': 'hr',
+    '财务': 'finance',
+    'finance': 'finance'
+  }
+  
+  const templateKey = typeMap[agentForm.value.type] || 'customer'
+  const template = promptTemplates[templateKey]
+  
+  // 如果当前有内容，先确认是否替换
+  if (agentForm.value.system_prompt && agentForm.value.system_prompt.trim()) {
+    ElMessageBox.confirm('当前提示词将被替换，是否继续？', '确认', {
+      confirmButtonText: '替换',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }).then(() => {
+      agentForm.value.system_prompt = template
+      ElMessage.success('已插入示例提示词')
+    }).catch(() => {})
+  } else {
+    agentForm.value.system_prompt = template
+    ElMessage.success('已插入示例提示词')
+  }
+}
+
+// 处理快捷模板选择
+function handleExampleSelect(command: string) {
+  const template = promptTemplates[command]
+  if (template) {
+    // 如果当前有内容，先确认是否替换
+    if (agentForm.value.system_prompt && agentForm.value.system_prompt.trim()) {
+      ElMessageBox.confirm('当前提示词将被替换，是否继续？', '确认', {
+        confirmButtonText: '替换',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(() => {
+        agentForm.value.system_prompt = template
+        const names: Record<string, string> = {
+          customer: '客服助手',
+          doc: '文档助手',
+          data: '数据分析助手',
+          code: '代码助手',
+          hr: 'HR助手',
+          finance: '财务助手'
+        }
+        // 替换模板中的 XX 为智能体名称
+        agentForm.value.system_prompt = template.replace(/XX/g, agentForm.value.name || names[command] || '助手')
+        ElMessage.success('已应用快捷模板')
+      }).catch(() => {})
+    } else {
+      const names: Record<string, string> = {
+        customer: '客服助手',
+        doc: '文档助手',
+        data: '数据分析助手',
+        code: '代码助手',
+        hr: 'HR助手',
+        finance: '财务助手'
+      }
+      agentForm.value.system_prompt = template.replace(/XX/g, agentForm.value.name || names[command] || '助手')
+      ElMessage.success('已应用快捷模板')
+    }
+  }
+}
+
+// 使用 AI 生成提示词
+async function generatePromptWithAI() {
+  if (!agentForm.value.name.trim()) {
+    ElMessage.error('请先输入智能体名称')
+    return
+  }
+  
+  generatingPrompt.value = true
+  
+  try {
+    // 构建生成提示词的请求
+    const agentName = agentForm.value.name
+    const agentType = agentForm.value.type
+    const description = agentForm.value.description || '通用助手'
+    const boundTemplates = availableTemplates.value.filter((t: any) => 
+      agentForm.value.template_ids.includes(t.id)
+    ).map((t: any) => t.name).join('、')
+    const boundKnowledge = availableKnowledgeBases.value.filter((kb: any) => 
+      agentForm.value.knowledge_base_ids.includes(kb.id)
+    ).map((kb: any) => kb.name).join('、')
+    
+    const contextInfo = `
+## 智能体信息
+- 名称：${agentName}
+- 类型：${agentType}
+- 描述：${description}
+${boundTemplates ? `- 处理的表单：${boundTemplates}` : ''}
+${boundKnowledge ? `- 关联知识库：${boundKnowledge}` : ''}
+`.trim()
+    
+    const prompt = `请为以下智能体生成一个专业的系统提示词。
+
+${contextInfo}
+
+要求：
+1. 详细定义智能体的角色定位和能力范围
+2. 明确智能体的行为准则和服务标准
+3. 提供常用回复模板或工作流程
+4. 包含处理边界情况和注意事项
+5. 格式规范，使用 Markdown 结构化输出
+
+请直接输出提示词内容，不要额外的解释。`
+
+    // 调用 AI 生成
+    const response = await fetch('/api/v1/ai/agent-engine/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+      },
+      body: JSON.stringify({
+        agent_id: null,
+        message: prompt,
+        model: selectedModel.value || 'qwen-turbo',
+        history: []
+      })
+    })
+    
+    const data = await response.json()
+    
+    if (data.success && data.response) {
+      agentForm.value.system_prompt = data.response
+      ElMessage.success('提示词生成成功！请根据实际情况进行调整')
+    } else {
+      throw new Error(data.detail || '生成失败')
+    }
+  } catch (error: any) {
+    console.error('生成提示词失败:', error)
+    ElMessage.error('生成失败：' + (error.message || '请检查 AI 配置'))
+    
+    // 回退到示例模板
+    ElMessage.info('将为您插入示例提示词作为参考')
+    insertExamplePrompt()
+  } finally {
+    generatingPrompt.value = false
   }
 }
 
@@ -898,50 +1751,16 @@ function getNodeConnectionPoint(nodeId: string, isSource: boolean) {
   }
 }
 
-// 保存工作流
-function saveWorkflow() {
-  const workflowData = {
-    nodes: workflowNodes.value,
-    connections: workflowConnections.value,
-    savedAt: new Date().toISOString()
-  }
-  
-  // 这里可以调用API保存到后端
-  console.log('保存工作流数据:', workflowData)
-  ElMessage.success('工作流已保存')
-}
-
-// 导出工作流
-function exportWorkflow() {
-  const workflowData = {
-    nodes: workflowNodes.value,
-    connections: workflowConnections.value,
-    exportedAt: new Date().toISOString()
-  }
-  
-  const dataStr = JSON.stringify(workflowData, null, 2)
-  const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr)
-  
-  const exportFileDefaultName = `workflow_${new Date().getTime()}.json`
-  
-  const linkElement = document.createElement('a')
-  linkElement.setAttribute('href', dataUri)
-  linkElement.setAttribute('download', exportFileDefaultName)
-  linkElement.click()
-  
-  ElMessage.success('工作流已导出')
-}
-
 // 开始创建连接
 function startCreatingConnection(nodeId: string, isSource: boolean) {
+  // 阻止默认行为和事件冒泡
+  event?.stopPropagation()
+  event?.preventDefault()
+
   creatingConnection.value = true
   connectionSourceId.value = nodeId
   connectionIsSource.value = isSource
-  
-  // 监听鼠标移动和点击
-  document.addEventListener('mousemove', handleCreatingConnectionMouseMove)
-  document.addEventListener('click', handleCreatingConnectionClick, { once: true })
-  
+
   ElMessage.info('请点击目标节点完成连接')
 }
 
@@ -996,15 +1815,127 @@ function editNode(nodeId: string) {
 
 // 更新现有的createWorkflow函数
 function createWorkflow() {
-  // 清空当前画布
-  workflowNodes.value = [
-    { id: 'node-1', type: 'start', label: '开始', x: 100, y: 200, width: 80, height: 40 },
-    { id: 'node-5', type: 'end', label: '结束', x: 750, y: 200, width: 80, height: 40 }
-  ]
-  workflowConnections.value = []
+  editingWorkflowId.value = null
+  currentWorkflowName.value = ''
+  currentWorkflowDescription.value = ''
+  currentEditingWorkflow.value = null
+  workflowDialogVisible.value = true
+}
+
+// 确认创建工作流
+function confirmCreateWorkflow() {
+  if (!currentWorkflowName.value.trim()) {
+    ElMessage.error('请输入工作流名称')
+    return
+  }
+
+  // 创建新工作流数据
+  const newWorkflow: any = {
+    id: Date.now(),
+    name: currentWorkflowName.value.trim(),
+    description: currentWorkflowDescription.value.trim(),
+    status: '草稿',
+    version: 'v1.0',
+    lastRun: '从未运行',
+    nodes: [
+      { id: 'node-1', type: 'start', label: '开始', x: 100, y: 200, width: 80, height: 40 },
+      { id: 'node-5', type: 'end', label: '结束', x: 750, y: 200, width: 80, height: 40 }
+    ],
+    connections: []
+  }
+
+  // 添加到工作流列表
+  workflows.value.unshift(newWorkflow)
+
+  // 自动进入设计模式
+  designWorkflow(newWorkflow)
+
+  workflowDialogVisible.value = false
+  ElMessage.success(`已创建工作流「${currentWorkflowName.value}」`)
+}
+
+// 设计工作流 - 加载工作流到画布
+function designWorkflow(row: any) {
+  currentEditingWorkflow.value = row
+
+  // 查找完整的工作流数据
+  const workflowData = workflows.value.find((w: any) => w.id === row.id)
+
+  if (workflowData && workflowData.nodes && workflowData.nodes.length > 0) {
+    // 加载已有节点和连接
+    workflowNodes.value = [...workflowData.nodes]
+    workflowConnections.value = [...(workflowData.connections || [])]
+  } else {
+    // 空工作流，只保留开始和结束节点
+    workflowNodes.value = [
+      { id: 'node-1', type: 'start', label: '开始', x: 100, y: 200, width: 80, height: 40 },
+      { id: 'node-5', type: 'end', label: '结束', x: 750, y: 200, width: 80, height: 40 }
+    ]
+    workflowConnections.value = []
+  }
+
   selectedNodeId.value = null
-  
-  ElMessage.success('已创建新的工作流画布')
+  ElMessage.success(`正在编辑工作流「${row.name}」`)
+}
+
+// 编辑工作流
+function editWorkflow(row: any) {
+  editingWorkflowId.value = row.id
+  currentWorkflowName.value = row.name
+  currentWorkflowDescription.value = row.description || ''
+  workflowDialogVisible.value = true
+}
+
+// 保存工作流
+function saveWorkflow() {
+  if (!currentEditingWorkflow.value) {
+    ElMessage.warning('请先选择要保存的工作流，或创建新工作流')
+    return
+  }
+
+  const workflowData = {
+    id: currentEditingWorkflow.value.id,
+    name: currentEditingWorkflow.value.name,
+    description: currentEditingWorkflow.value.description || '',
+    nodes: workflowNodes.value,
+    connections: workflowConnections.value,
+    savedAt: new Date().toISOString()
+  }
+
+  // 更新列表中的工作流
+  const idx = workflows.value.findIndex((w: any) => w.id === currentEditingWorkflow.value.id)
+  if (idx !== -1) {
+    workflows.value[idx] = { ...workflows.value[idx], ...workflowData }
+  }
+
+  ElMessage.success(`工作流「${currentEditingWorkflow.value.name}」已保存`)
+}
+
+// 导出工作流
+function exportWorkflow() {
+  if (!currentEditingWorkflow.value) {
+    ElMessage.warning('请先选择要导出的工作流')
+    return
+  }
+
+  const workflowData = {
+    name: currentEditingWorkflow.value.name,
+    description: currentEditingWorkflow.value.description || '',
+    nodes: workflowNodes.value,
+    connections: workflowConnections.value,
+    exportedAt: new Date().toISOString(),
+    version: '1.0'
+  }
+
+  const dataStr = JSON.stringify(workflowData, null, 2)
+  const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr)
+
+  const linkElement = document.createElement('a')
+  linkElement.setAttribute('href', dataUri)
+  linkElement.setAttribute('download', `workflow_${currentEditingWorkflow.value.name}_${Date.now()}.json`)
+  linkElement.click()
+
+  ElMessage.success('工作流已导出')
 }
 </script>
 
@@ -1137,11 +2068,11 @@ function createWorkflow() {
 }
 
 .component-tabs {
-  height: 300px;
+  height: 400px;
 }
 
 .components-list {
-  max-height: 250px;
+  max-height: 350px;
   overflow-y: auto;
 }
 
@@ -1403,6 +2334,215 @@ function createWorkflow() {
 }
 
 .node-context-menu .el-button {
+  flex: 1;
+}
+
+/* 智能体配置对话框样式 */
+.agent-config-tabs {
+  min-height: 400px;
+}
+
+.binding-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.binding-item {
+  padding: 16px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  border: 1px solid var(--el-border-color-lighter);
+}
+
+.binding-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+}
+
+.binding-header .el-icon {
+  font-size: 18px;
+  color: var(--el-color-primary);
+}
+
+.binding-desc {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 12px;
+}
+
+.system-prompt-tip {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 8px;
+}
+
+.prompt-actions {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.prompt-hint {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 聊天对话框样式 */
+.chat-container {
+  height: 450px;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-model-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.model-tip {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--el-text-color-secondary);
+}
+
+.chat-empty p {
+  margin: 8px 0 0;
+}
+
+.chat-empty .chat-tip {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
+.chat-message {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.chat-message.user {
+  flex-direction: row-reverse;
+}
+
+.message-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.chat-message.user .message-avatar {
+  background: #409EFF;
+  color: white;
+}
+
+.chat-message.assistant .message-avatar {
+  background: #67C23A;
+  color: white;
+}
+
+.message-content {
+  max-width: 75%;
+}
+
+.chat-message.user .message-content {
+  text-align: right;
+}
+
+.message-text {
+  padding: 10px 14px;
+  border-radius: 8px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-message.user .message-text {
+  background: #409EFF;
+  color: white;
+  border-bottom-right-radius: 2px;
+}
+
+.chat-message.assistant .message-text {
+  background: var(--el-bg-color);
+  color: var(--el-text-color-primary);
+  border-bottom-left-radius: 2px;
+}
+
+.message-time {
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+  margin-top: 4px;
+}
+
+.chat-message.user .message-time {
+  text-align: right;
+}
+
+.message-text.loading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+}
+
+.message-text.loading .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--el-text-color-secondary);
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.message-text.loading .dot:nth-child(1) { animation-delay: -0.32s; }
+.message-text.loading .dot:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+.chat-input-area {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-input-area .el-input {
   flex: 1;
 }
 </style>

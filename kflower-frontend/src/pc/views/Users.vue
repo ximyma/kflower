@@ -355,24 +355,37 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    const data = {
+    interface CreateUserData {
+      username: string
+      email: string
+      password: string
+      full_name: string
+      phone?: string
+      organization_id?: number
+    }
+    const createData: CreateUserData = {
       username: form.username,
       full_name: form.full_name,
       email: form.email,
-      phone: form.phone || undefined,
-      organization_id: form.organization_id
+      password: form.password,
     }
+    if (form.phone) createData.phone = form.phone
+    if (form.organization_id !== null) createData.organization_id = form.organization_id
 
     let res: any
     if (isEdit.value && editingId.value) {
       // 编辑
-      res = await userAPI.update(editingId.value, data)
+      const updateData = {
+        username: form.username,
+        full_name: form.full_name,
+        email: form.email,
+      }
+      if (form.phone) (updateData as any).phone = form.phone
+      if (form.organization_id !== null) (updateData as any).organization_id = form.organization_id
+      res = await userAPI.update(editingId.value, updateData)
     } else {
       // 创建
-      res = await userAPI.create({
-        ...data,
-        password: form.password
-      })
+      res = await userAPI.create(createData)
     }
 
     if (res.success) {

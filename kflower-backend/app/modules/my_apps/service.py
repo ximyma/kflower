@@ -328,6 +328,12 @@ class MyAppsService:
             "is_visible": menu.is_visible,
             "list_page_config": menu.list_page_config,
             "form_page_config": menu.form_page_config,
+            # ===== 流程审批集成（升级方案 4.1） =====
+            "workflow_id": menu.workflow_id,
+            "workflow_trigger": menu.workflow_trigger,
+            "workflow_auto_approve": menu.workflow_auto_approve,
+            "workflow_field_permissions": menu.workflow_field_permissions,
+            "workflow_node_mapping": menu.workflow_node_mapping,
             "created_at": menu.created_at or now,
             "updated_at": menu.updated_at or now,
         }

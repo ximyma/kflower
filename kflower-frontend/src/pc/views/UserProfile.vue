@@ -359,10 +359,10 @@ async function loadUserProfile() {
   loading.value = true
   try {
     // 从store获取当前用户信息
-    const userInfo = userStore.userInfo.value
+    const userInfo = userStore.userInfo
     if (userInfo) {
       profileForm.avatar = userInfo.avatar || ''
-      profileForm.name = userInfo.full_name || userInfo.name || ''
+      profileForm.name = userInfo.full_name || ''
       profileForm.username = userInfo.username || ''
       profileForm.email = userInfo.email || ''
       profileForm.phone = userInfo.phone || ''
@@ -437,7 +437,7 @@ async function updateProfile() {
   updating.value = true
   try {
     // 获取当前用户ID
-    const userId = userStore.userInfo.value?.id
+    const userId = userStore.userInfo?.id
     if (!userId) {
       ElMessage.error('用户信息获取失败')
       return
@@ -460,7 +460,7 @@ async function updateProfile() {
       const meRes: any = await userAPI.getMe()
       if (meRes.success) {
         // 更新store（假设store会自动处理）
-        userStore.userInfo.value = meRes.data
+        userStore.userInfo = meRes.data
       }
       ElMessage.success('个人信息已更新')
     } else {
@@ -482,7 +482,7 @@ async function changePassword() {
   try {
     // TODO: 需要后端提供密码修改API接口
     // 暂时使用通用更新接口，但需要后端支持
-    const userId = userStore.userInfo.value?.id
+    const userId = userStore.userInfo?.id
     if (!userId) {
       ElMessage.error('用户信息获取失败')
       return

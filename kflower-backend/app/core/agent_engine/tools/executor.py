@@ -34,42 +34,49 @@ class ToolExecutor:
         }
     
     async def execute(
-        self, 
-        tool_name: str, 
+        self,
+        tool_name: str,
         arguments: Dict[str, Any],
         context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        执行工具调用
-        
+        执行工具调用（整合优化 1.3：确保错误正确上抛）
+
         Args:
             tool_name: 工具名称
             arguments: 工具参数
             context: 执行上下文（用户ID、租户ID等）
-            
+
         Returns:
             执行结果
         """
         # 检查工具是否存在
         tool = tool_registry.get_tool(tool_name)
         if not tool:
-            return {"error": f"Tool '{tool_name}' not found"}
-        
+            return {"success": False, "error": f"工具 '{tool_name}' 不存在"}
+
+        # 检查工具是否启用
+        if not tool.is_enabled:
+            return {"success": False, "error": f"工具 '{tool_name}' 已被禁用"}
+
         # 获取执行器
         handler = self.handlers.get(tool_name)
         if not handler:
-            return {"error": f"No handler for tool '{tool_name}'"}
-        
+            return {"success": False, "error": f"工具 '{tool_name}' 暂无执行器"}
+
         # 执行工具
         try:
             result = await handler(arguments, context or {})
+            # 统一返回格式：确保 result 包含 success 字段
+            if isinstance(result, dict) and "error" in result:
+                return {"success": False, "tool": tool_name, "error": result["error"]}
             return {
                 "success": True,
                 "tool": tool_name,
                 "result": result
             }
         except Exception as e:
-            logger.error(f"Tool execution error: {tool_name} - {e}")
+            logger.error(f"工具执行错误: {tool_name} - {e}", exc_info=True)
             return {
                 "success": False,
                 "tool": tool_name,

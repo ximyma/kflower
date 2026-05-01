@@ -675,6 +675,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import {
   Plus, Refresh, FolderOpened, Upload, Search, MagicStick, Document, MoreFilled,

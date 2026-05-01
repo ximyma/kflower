@@ -467,7 +467,7 @@
                         <el-option value="date" label="日期" />
                         <el-option value="select" label="下拉" />
                       </el-select>
-                      <el-button type="danger" text size="small" @click="removeSubFormField(selectedField, sfIdx)">
+                      <el-button type="danger" text size="small" @click="removeSubFormField(selectedField, Number(sfIdx))">
                         <el-icon><Delete /></el-icon>
                       </el-button>
                     </div>
@@ -745,7 +745,7 @@
                         type="danger"
                         text
                         size="small"
-                        @click="removeValidationRule(selectedField, ruleIdx)"
+                        @click="removeValidationRule(selectedField, Number(ruleIdx))"
                       >
                         <el-icon><Delete /></el-icon>
                       </el-button>
@@ -1178,15 +1178,15 @@
           </el-descriptions>
           <div v-for="(stat, fieldName) in (dataStats.field_stats || {})" :key="fieldName" class="field-stat">
             <template v-if="stat.distribution">
-              <strong>{{ getFieldLabel(fieldName) }}</strong>:
+              <strong>{{ getFieldLabel(String(fieldName)) }}</strong>:
               <el-tag v-for="(count, val) in stat.distribution" :key="val" size="small" style="margin:2px">{{ val }}: {{ count }}</el-tag>
             </template>
             <template v-else-if="stat.sum !== undefined">
-              <strong>{{ getFieldLabel(fieldName) }}</strong>:
-              合计 {{ stat.sum?.toFixed(2) }} / 平均 {{ stat.avg }} / 最小 {{ stat.min }} / 最大 {{ stat.max }}
+              <strong>{{ getFieldLabel(String(fieldName)) }}</strong>:
+              合计 {{ Number(stat.sum).toFixed(2) }} / 平均 {{ Number(stat.avg).toFixed(2) }} / 最小 {{ Number(stat.min).toFixed(2) }} / 最大 {{ Number(stat.max).toFixed(2) }}
             </template>
             <template v-else>
-              <strong>{{ getFieldLabel(fieldName) }}</strong>:
+              <strong>{{ getFieldLabel(String(fieldName)) }}</strong>:
               已填 {{ stat.filled }}/{{ stat.total }}
             </template>
           </div>
@@ -1376,10 +1376,10 @@ import { useRouter, useRoute } from 'vue-router'
 import {
   Plus, Edit, Delete, MagicStick, Document, Search, ArrowDown, ArrowUp,
   CopyDocument, Close, SetUp, Operation, View, Select, Minus, Calendar,
-  Pointer, Finished, Open, Upload, Picture, EditPen, Grid, Title,
+  Pointer, Finished, Open, Upload, Picture, EditPen, Grid,
   Folder, FolderOpened, List, Connection, DataLine, Ticket, Location,
   Brush, PictureFilled, User, OfficeBuilding, Link, Message, Phone,
-  Lock, Timer, Alarm, DateRange, Share, Star, Notebook, Download,
+  Lock, Timer, Share, Star, Notebook, Download,
   ArrowLeft, MoreFilled, Rank, RefreshRight, QuestionFilled, Promotion,
   InfoFilled, Coin, CircleCheck, CircleClose, Key
 } from '@element-plus/icons-vue'

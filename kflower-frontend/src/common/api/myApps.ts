@@ -21,7 +21,8 @@ export const appAPI = {
     is_published: boolean; is_public: boolean;
     knowledge_base_ids: number[]; knowledge_config: Record<string, any>;
     workflow_ids: number[]; workflow_config: Record<string, any>;
-    bound_agents: any[];
+    bound_agents: number[];  // 绑定的智能体ID列表
+    bound_templates: number[];  // 绑定的模板ID列表
     dashboard_config: any;
     config: any;
   }>) => request.put(`/apps/${id}`, data),
@@ -36,10 +37,32 @@ export const appAPI = {
   unpublish: (id: number) => request.post(`/apps/${id}/unpublish`),
   
   // 菜单管理
-  addMenu: (appId: number, data: { template_id: number; menu_label: string; menu_icon?: string; menu_order?: number; parent_id?: number }) => 
+  addMenu: (appId: number, data: {
+    template_id: number;
+    menu_label: string;
+    menu_icon?: string;
+    menu_order?: number;
+    parent_id?: number;
+    workflow_id?: number;
+    workflow_trigger?: string;
+    workflow_auto_approve?: boolean;
+    workflow_node_mapping?: Array<{ form_field: string; workflow_var: string }>;
+  }) =>
     request.post(`/apps/${appId}/menus`, data),
-  
-  updateMenu: (menuId: number, data: Partial<{ menu_label: string; menu_icon: string; menu_order: number; parent_id: number }>) => 
+
+  updateMenu: (menuId: number, data: Partial<{
+    menu_label: string;
+    menu_icon: string;
+    menu_order: number;
+    parent_id: number;
+    template_id: number;
+    is_visible: boolean;
+    workflow_id: number;
+    workflow_trigger: string;
+    workflow_auto_approve: boolean;
+    workflow_node_mapping: Array<{ form_field: string; workflow_var: string }>;
+    workflow_field_permissions: Record<string, any>;
+  }>) =>
     request.put(`/apps/menus/${menuId}`, data),
   
   deleteMenu: (menuId: number) => request.delete(`/apps/menus/${menuId}`),

@@ -21,193 +21,367 @@
       </div>
     </div>
 
-    <div class="designer-body">
-      <!-- 左侧：可用模板列表 -->
-      <div class="sidebar-left">
-        <div class="sidebar-left-header">
-          <h3>可用模板</h3>
-          <el-tooltip content="前往模板设计页新建模板" placement="top">
-            <el-button
-              size="small"
-              type="primary"
-              plain
-              @click="goCreateTemplate"
-            >
-              <el-icon><Plus /></el-icon> 新建模板
-            </el-button>
-          </el-tooltip>
-        </div>
-        <el-input
-          v-model="templateSearch"
-          placeholder="搜索模板..."
-          clearable
-          style="margin-bottom: 12px"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        
-        <el-scrollbar height="calc(100vh - 200px)">
-          <el-card
-            v-for="tpl in filteredTemplates"
-            :key="tpl.id"
-            class="template-card"
-            @click="addTemplateToMenu(tpl)"
-            style="cursor: pointer; margin-bottom: 12px"
-          >
-            <div class="template-info">
-              <h4>{{ tpl.name }}</h4>
-              <p>{{ tpl.description || '暂无描述' }}</p>
-              <el-tag size="small" type="success" v-if="tpl.is_published">已发布</el-tag>
-              <el-tag size="small" type="info" v-else>草稿</el-tag>
-            </div>
-          </el-card>
-          <el-empty v-if="filteredTemplates.length === 0" description="没有找到模板" />
-        </el-scrollbar>
-      </div>
-
-      <!-- 中间：菜单树 -->
-      <div class="center-canvas">
-        <h3>应用菜单</h3>
-        <el-button size="small" @click="addRootMenu" style="margin-bottom: 12px">
-          <el-icon><Plus /></el-icon> 添加根菜单
-        </el-button>
-        
-        <el-tree
-          :data="menuTree"
-          :props="{ label: 'label', children: 'children' }"
-          node-key="id"
-          default-expand-all
-          highlight-current
-          @node-contextmenu="handleNodeContextMenu"
-        >
-          <template #default="{ node, data }">
-            <span class="tree-node">
-              <el-icon><component :is="data.icon || 'Document'" /></el-icon>
-              <span>{{ node.label }}</span>
-              <el-button
-                size="small"
-                text
-                @click.stop="editMenu(data)"
-              >
-                <el-icon><Edit /></el-icon>
-              </el-button>
-              <el-button
-                size="small"
-                text
-                type="danger"
-                @click.stop="deleteMenu(data)"
-              >
-                <el-icon><Delete /></el-icon>
-              </el-button>
+    <!-- 顶部 Tab 导航 -->
+    <div class="designer-tabs">
+      <el-tabs v-model="designerTab" class="app-designer-tabs">
+        <el-tab-pane label="菜单设计" name="menu">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><Menu /></el-icon>
+              菜单设计
             </span>
           </template>
-        </el-tree>
-        
-        <el-empty v-if="menuTree.length === 0" description="还没有菜单，从左侧添加模板或点击添加根菜单">
-          <el-button type="primary" @click="addRootMenu">添加第一个菜单</el-button>
-        </el-empty>
-      </div>
+        </el-tab-pane>
+        <el-tab-pane label="表单关系" name="relation">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><Connection /></el-icon>
+              表单关系
+            </span>
+          </template>
+        </el-tab-pane>
+        <el-tab-pane label="仪表盘" name="dashboard">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><DataBoard /></el-icon>
+              仪表盘
+            </span>
+          </template>
+        </el-tab-pane>
+        <el-tab-pane label="应用属性" name="app">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><Setting /></el-icon>
+              应用属性
+            </span>
+          </template>
+        </el-tab-pane>
+      </el-tabs>
+    </div>
 
-      <!-- 右侧：属性面板 -->
-      <div class="sidebar-right">
-        <h3>属性配置</h3>
-        
-        <el-form :model="appData" label-width="80px" v-if="selectedMenu === null">
-          <h4>应用属性</h4>
-          <el-form-item label="应用名称">
-            <el-input v-model="appData.name" placeholder="如：客户关系管理系统" />
-          </el-form-item>
-          <el-form-item label="描述">
-            <el-input v-model="appData.description" type="textarea" :rows="3" />
-          </el-form-item>
-          <el-form-item label="图标">
-            <el-select v-model="appData.icon" placeholder="选择图标">
-              <el-option label="文档" value="Document" />
-              <el-option label="文件夹" value="Folder" />
-              <el-option label="购物车" value="ShoppingCart" />
-              <el-option label="客户" value="User" />
-              <el-option label="商品" value="Goods" />
-              <el-option label="设置" value="Setting" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="主题">
-            <el-radio-group v-model="appData.theme">
-              <el-radio label="light">浅色</el-radio>
-              <el-radio label="dark">深色</el-radio>
-            </el-radio-group>
-          </el-form-item>
-        </el-form>
-
-        <el-form :model="menuForm" label-width="80px" v-if="selectedMenu !== null">
-          <h4>菜单属性</h4>
-          <el-form-item label="菜单名称">
-            <el-input v-model="menuForm.menu_label" placeholder="菜单显示名称" />
-          </el-form-item>
-          <el-form-item label="关联模板">
-            <el-select v-model="menuForm.template_id" placeholder="选择表单模板">
-              <el-option
-                v-for="tpl in publishedTemplates"
-                :key="tpl.id"
-                :label="tpl.name"
-                :value="tpl.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="图标">
-            <el-select v-model="menuForm.menu_icon" placeholder="选择图标">
-              <el-option label="文档" value="Document" />
-              <el-option label="文件夹" value="Folder" />
-              <el-option label="客户" value="User" />
-              <el-option label="商品" value="Goods" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="排序">
-            <el-input-number v-model="menuForm.menu_order" :min="0" />
-          </el-form-item>
-          <el-form-item label="可见">
-            <el-switch v-model="menuForm.is_visible" />
-          </el-form-item>
-
-          <!-- ===== 流程审批配置（升级方案 4.1） ===== -->
-          <h4 style="margin-top:20px">流程审批</h4>
-          <el-form-item label="绑定工作流">
-            <el-select v-model="menuForm.workflow_id" placeholder="不绑定工作流" clearable>
-              <el-option
-                v-for="wf in allWorkflows"
-                :key="wf.id"
-                :label="wf.name"
-                :value="wf.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="触发方式" v-if="menuForm.workflow_id">
-            <el-select v-model="menuForm.workflow_trigger" placeholder="选择触发方式">
-              <el-option label="手动发起" value="manual" />
-              <el-option label="提交后自动发起" value="submit" />
-              <el-option label="修改后发起" value="update" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="自动发起" v-if="menuForm.workflow_id">
-            <el-switch v-model="menuForm.workflow_auto_approve" />
-            <div style="font-size:12px;color:var(--el-text-color-secondary);margin-top:4px">开启后提交表单时自动触发审批流程</div>
-          </el-form-item>
-          <el-form-item label="变量映射" v-if="menuForm.workflow_id">
-            <div class="field-mapping-list">
-              <div v-for="(map, idx) in (menuForm.workflow_node_mapping || [])" :key="idx" class="field-mapping-item">
-                <el-input v-model="map.form_field" placeholder="表单字段" style="width:120px" />
-                <span style="padding:0 8px">→</span>
-                <el-input v-model="map.workflow_var" placeholder="流程变量" style="width:120px" />
-                <el-button size="small" text type="danger" @click="removeMapping(idx)"><el-icon><Delete /></el-icon></el-button>
-              </div>
-              <el-button size="small" @click="addMapping" :disabled="!menuForm.workflow_id">
-                <el-icon><Plus /></el-icon> 添加映射
+    <!-- Tab 内容区域 -->
+    <div class="designer-body">
+      <!-- 菜单设计 Tab -->
+      <template v-if="designerTab === 'menu'">
+        <!-- 左侧：可用模板列表 -->
+        <div class="sidebar-left">
+          <div class="sidebar-left-header">
+            <h3>可用模板</h3>
+            <el-tooltip content="前往模板设计页新建模板" placement="top">
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                @click="goCreateTemplate"
+              >
+                <el-icon><Plus /></el-icon> 新建模板
               </el-button>
+            </el-tooltip>
+          </div>
+          <el-input
+            v-model="templateSearch"
+            placeholder="搜索模板..."
+            clearable
+            style="margin-bottom: 12px"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+
+          <el-scrollbar height="calc(100vh - 280px)">
+            <el-card
+              v-for="tpl in filteredTemplates"
+              :key="tpl.id"
+              class="template-card"
+              @click="addTemplateToMenu(tpl)"
+              style="cursor: pointer; margin-bottom: 12px"
+            >
+              <div class="template-info">
+                <h4>{{ tpl.name }}</h4>
+                <p>{{ tpl.description || '暂无描述' }}</p>
+                <el-tag size="small" type="success" v-if="tpl.is_published">已发布</el-tag>
+                <el-tag size="small" type="info" v-else>草稿</el-tag>
+              </div>
+            </el-card>
+            <el-empty v-if="filteredTemplates.length === 0" description="没有找到模板" />
+          </el-scrollbar>
+        </div>
+
+        <!-- 中间：菜单树 -->
+        <div class="center-canvas">
+          <h3>应用菜单</h3>
+          <el-button size="small" @click="addRootMenu" style="margin-bottom: 12px">
+            <el-icon><Plus /></el-icon> 添加根菜单
+          </el-button>
+
+          <el-tree
+            :data="menuTree"
+            :props="{ label: 'label', children: 'children' }"
+            node-key="id"
+            default-expand-all
+            highlight-current
+            @node-click="onMenuNodeClick"
+            @node-contextmenu="handleNodeContextMenu"
+          >
+            <template #default="{ node, data }">
+              <span class="tree-node">
+                <el-icon><component :is="data.icon || 'Document'" /></el-icon>
+                <span>{{ node.label }}</span>
+                <el-button
+                  size="small"
+                  text
+                  @click.stop="editMenu(data)"
+                >
+                  <el-icon><Edit /></el-icon>
+                </el-button>
+                <el-button
+                  size="small"
+                  text
+                  type="danger"
+                  @click.stop="deleteMenu(data)"
+                >
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </span>
+            </template>
+          </el-tree>
+
+          <el-empty v-if="menuTree.length === 0" description="还没有菜单，从左侧添加模板或点击添加根菜单">
+            <el-button type="primary" @click="addRootMenu">添加第一个菜单</el-button>
+          </el-empty>
+        </div>
+
+        <!-- 右侧：菜单属性面板 -->
+        <div class="sidebar-right">
+          <div class="panel-header">
+            <h3>{{ selectedMenu ? '菜单属性' : '请选择菜单' }}</h3>
+          </div>
+
+          <el-form :model="menuForm" label-width="80px" v-if="selectedMenu">
+            <el-form-item label="菜单名称">
+              <el-input v-model="menuForm.menu_label" placeholder="菜单显示名称" />
+            </el-form-item>
+            <el-form-item label="关联模板">
+              <el-select v-model="menuForm.template_id" placeholder="选择表单模板">
+                <el-option
+                  v-for="tpl in publishedTemplates"
+                  :key="tpl.id"
+                  :label="tpl.name"
+                  :value="tpl.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="图标">
+              <el-select v-model="menuForm.menu_icon" placeholder="选择图标">
+                <el-option label="文档" value="Document" />
+                <el-option label="文件夹" value="Folder" />
+                <el-option label="客户" value="User" />
+                <el-option label="商品" value="Goods" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="排序">
+              <el-input-number v-model="menuForm.menu_order" :min="0" />
+            </el-form-item>
+            <el-form-item label="可见">
+              <el-switch v-model="menuForm.is_visible" />
+            </el-form-item>
+
+            <!-- 流程审批配置 -->
+            <div class="section-divider">
+              <span>流程审批</span>
             </div>
-          </el-form-item>
-        </el-form>
-      </div>
+            <el-form-item label="绑定工作流">
+              <el-select v-model="menuForm.workflow_id" placeholder="不绑定工作流" clearable>
+                <el-option
+                  v-for="wf in allWorkflows"
+                  :key="wf.id"
+                  :label="wf.name"
+                  :value="wf.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="触发方式" v-if="menuForm.workflow_id">
+              <el-select v-model="menuForm.workflow_trigger" placeholder="选择触发方式">
+                <el-option label="手动发起" value="manual" />
+                <el-option label="提交后自动发起" value="submit" />
+                <el-option label="修改后发起" value="update" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="自动发起" v-if="menuForm.workflow_id">
+              <el-switch v-model="menuForm.workflow_auto_approve" />
+              <div style="font-size:12px;color:var(--el-text-color-secondary);margin-top:4px">开启后提交表单时自动触发审批流程</div>
+            </el-form-item>
+            <el-form-item label="变量映射" v-if="menuForm.workflow_id">
+              <div class="field-mapping-list">
+                <div v-for="(map, idx) in (menuForm.workflow_node_mapping || [])" :key="idx" class="field-mapping-item">
+                  <el-input v-model="map.form_field" placeholder="表单字段" style="width:120px" />
+                  <span style="padding:0 8px">→</span>
+                  <el-input v-model="map.workflow_var" placeholder="流程变量" style="width:120px" />
+                  <el-button size="small" text type="danger" @click="removeMapping(idx)"><el-icon><Delete /></el-icon></el-button>
+                </div>
+                <el-button size="small" @click="addMapping" :disabled="!menuForm.workflow_id">
+                  <el-icon><Plus /></el-icon> 添加映射
+                </el-button>
+              </div>
+            </el-form-item>
+
+            <!-- 保存菜单按钮 -->
+            <el-form-item>
+              <el-button type="primary" @click="saveMenu" :loading="saving" style="width: 100%">
+                保存菜单
+              </el-button>
+            </el-form-item>
+          </el-form>
+
+          <div v-else class="no-selection-hint">
+            <el-empty description="从左侧选择菜单查看属性" :image-size="60" />
+          </div>
+        </div>
+      </template>
+
+      <!-- 表单关系 Tab -->
+      <template v-else-if="designerTab === 'relation'">
+        <div class="placeholder-content">
+          <el-empty description="表单关系功能开发中..." :image-size="80">
+            <template #image>
+              <el-icon size="80" color="#909399"><Connection /></el-icon>
+            </template>
+          </el-empty>
+        </div>
+      </template>
+
+      <!-- 仪表盘 Tab -->
+      <template v-else-if="designerTab === 'dashboard'">
+        <div class="placeholder-content">
+          <el-empty description="仪表盘功能开发中..." :image-size="80">
+            <template #image>
+              <el-icon size="80" color="#909399"><DataBoard /></el-icon>
+            </template>
+          </el-empty>
+        </div>
+      </template>
+
+      <!-- 应用属性 Tab -->
+      <template v-else-if="designerTab === 'app'">
+        <div class="app-settings-container">
+          <el-card class="app-settings-card">
+            <template #header>
+              <div class="card-header">
+                <span><el-icon><InfoFilled /></el-icon> 基本信息</span>
+              </div>
+            </template>
+            <el-form :model="appData" label-width="100px">
+              <el-form-item label="应用名称">
+                <el-input v-model="appData.name" placeholder="如：客户关系管理系统" />
+              </el-form-item>
+              <el-form-item label="描述">
+                <el-input v-model="appData.description" type="textarea" :rows="3" />
+              </el-form-item>
+              <el-form-item label="图标">
+                <el-select v-model="appData.icon" placeholder="选择图标">
+                  <el-option label="文档" value="Document" />
+                  <el-option label="文件夹" value="Folder" />
+                  <el-option label="购物车" value="ShoppingCart" />
+                  <el-option label="客户" value="User" />
+                  <el-option label="商品" value="Goods" />
+                  <el-option label="设置" value="Setting" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="主题">
+                <el-radio-group v-model="appData.theme">
+                  <el-radio label="light">浅色</el-radio>
+                  <el-radio label="dark">深色</el-radio>
+                </el-radio-group>
+              </el-form-item>
+            </el-form>
+          </el-card>
+
+          <el-card class="app-settings-card">
+            <template #header>
+              <div class="card-header">
+                <span><el-icon><Connection /></el-icon> 模块绑定</span>
+              </div>
+            </template>
+            <div class="app-binding-section">
+              <!-- 绑定智能体 -->
+              <div class="binding-item">
+                <div class="binding-header">
+                  <el-icon><User /></el-icon>
+                  <span>绑定智能体</span>
+                </div>
+                <div class="binding-desc">选择应用中可用的智能体</div>
+                <el-select
+                  v-model="appData.bound_agents"
+                  multiple
+                  placeholder="选择绑定的智能体"
+                  style="width: 100%"
+                  clearable
+                >
+                  <el-option
+                    v-for="agent in availableAgents"
+                    :key="agent.id"
+                    :label="agent.name"
+                    :value="agent.id"
+                  />
+                </el-select>
+              </div>
+
+              <!-- 绑定知识库 -->
+              <div class="binding-item">
+                <div class="binding-header">
+                  <el-icon><Reading /></el-icon>
+                  <span>绑定知识库</span>
+                </div>
+                <div class="binding-desc">选择应用专属的知识库</div>
+                <el-select
+                  v-model="appData.knowledge_base_ids"
+                  multiple
+                  placeholder="选择绑定的知识库"
+                  style="width: 100%"
+                  clearable
+                >
+                  <el-option
+                    v-for="kb in availableKnowledgeBases"
+                    :key="kb.id"
+                    :label="kb.name"
+                    :value="kb.id"
+                  />
+                </el-select>
+              </div>
+
+              <!-- 绑定工作流 -->
+              <div class="binding-item">
+                <div class="binding-header">
+                  <el-icon><SetUp /></el-icon>
+                  <span>绑定工作流</span>
+                </div>
+                <div class="binding-desc">选择应用可用的工作流</div>
+                <el-select
+                  v-model="appData.workflow_ids"
+                  multiple
+                  placeholder="选择绑定的工作流"
+                  style="width: 100%"
+                  clearable
+                >
+                  <el-option
+                    v-for="wf in allWorkflows"
+                    :key="wf.id"
+                    :label="wf.name || wf.title"
+                    :value="wf.id"
+                  />
+                </el-select>
+              </div>
+            </div>
+          </el-card>
+
+          <div class="save-section">
+            <el-button type="primary" size="large" @click="saveApp" :loading="saving">
+              <el-icon><Check /></el-icon> 保存应用设置
+            </el-button>
+          </div>
+        </div>
+      </template>
     </div>
 
     <!-- 新建/编辑菜单对话框 -->
@@ -258,30 +432,40 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  ArrowLeft, Check, Promotion, RefreshRight, Search, Plus, Edit, Delete
+  ArrowLeft, Check, Promotion, RefreshRight, Search, Plus, Edit, Delete, User, Reading, Connection, Setting,
+  Menu, DataBoard, SetUp, InfoFilled
 } from '@element-plus/icons-vue'
 import appAPI from '@/common/api/myApps'
-import { templateAPI } from '@/common/api/index'
+import { templateAPI, aiAPI } from '@/common/api/index'
 
 const route = useRoute()
 const router = useRouter()
 
 const appId = Number(route.params.appId)
+const designerTab = ref('menu')  // 顶部 Tab：menu | relation | dashboard | app
+const appConfigTab = ref('basic')
+
 const appData = ref<any>({
   name: '',
   description: '',
   icon: 'Document',
   theme: 'light',
-  is_published: false
+  is_published: false,
+  bound_agents: [] as number[],
+  knowledge_base_ids: [] as number[],
+  workflow_ids: [] as number[],
 })
 const menuTree = ref<any[]>([])
 const allMenus = ref<any[]>([])
 const templates = ref<any[]>([])
 const allWorkflows = ref<any[]>([])
+const availableAgents = ref<any[]>([])
+const availableKnowledgeBases = ref<any[]>([])
 const publishedTemplates = computed(() => templates.value.filter(t => t.is_published))
 const templateSearch = ref('')
 const filteredTemplates = computed(() => {
@@ -392,7 +576,11 @@ function addTemplateToMenu(tpl: any) {
     parent_id: null,
     menu_icon: 'Document',
     menu_order: allMenus.value.length + 1,
-    is_visible: true
+    is_visible: true,
+    workflow_id: null,
+    workflow_trigger: 'manual',
+    workflow_auto_approve: false,
+    workflow_node_mapping: [],
   }
   isEditMenu.value = false
   showMenuDialog.value = true
@@ -406,7 +594,11 @@ function addRootMenu() {
     parent_id: null,
     menu_icon: 'Document',
     menu_order: allMenus.value.length + 1,
-    is_visible: true
+    is_visible: true,
+    workflow_id: null,
+    workflow_trigger: 'manual',
+    workflow_auto_approve: false,
+    workflow_node_mapping: [],
   }
   isEditMenu.value = false
   showMenuDialog.value = true
@@ -418,10 +610,14 @@ function editMenu(menu: any) {
   menuForm.value = {
     menu_label: menu.label,
     template_id: menu.template_id,
-    parent_id: null,
-    menu_icon: menu.icon,
-    menu_order: 0,
-    is_visible: true
+    parent_id: menu.parent_id || null,
+    menu_icon: menu.icon || 'Document',
+    menu_order: menu.menu_order || 0,
+    is_visible: menu.is_visible !== false,
+    workflow_id: menu.workflow_id || null,
+    workflow_trigger: menu.workflow_trigger || 'manual',
+    workflow_auto_approve: menu.workflow_auto_approve || false,
+    workflow_node_mapping: menu.workflow_node_mapping || [],
   }
 }
 
@@ -536,12 +732,40 @@ function handleNodeContextMenu(event: Event, node: any, data: any) {
   ElMessage.info('右键菜单功能开发中...')
 }
 
+// 点击菜单节点 - 切换到菜单设计 Tab 并加载菜单属性
+function onMenuNodeClick(data: any) {
+  designerTab.value = 'menu'  // 确保在菜单设计 Tab
+  editMenu(data)
+}
+
 onMounted(() => {
   loadAppData()
   loadMenuTree()
   loadTemplates()
   loadWorkflows()
+  loadModuleOptions()
 })
+
+// 加载模块绑定选项（智能体、知识库）
+async function loadModuleOptions() {
+  // 加载智能体列表
+  try {
+    const agentRes = await aiAPI.getAgentEngineAgents()
+    availableAgents.value = agentRes.data || []
+  } catch (e) {
+    console.error('加载智能体列表失败', e)
+  }
+  
+  // 加载知识库列表
+  try {
+    const kbRes = await fetch('/api/v1/knowledge-bases/', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+    }).then(r => r.json())
+    availableKnowledgeBases.value = Array.isArray(kbRes) ? kbRes : (kbRes.data || [])
+  } catch (e) {
+    console.error('加载知识库列表失败', e)
+  }
+}
 </script>
 
 <style scoped lang="scss">
@@ -549,6 +773,7 @@ onMounted(() => {
   height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--el-bg-color-page);
 }
 
 .designer-header {
@@ -577,15 +802,48 @@ onMounted(() => {
   }
 }
 
+.designer-tabs {
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-light);
+  padding: 0 20px;
+
+  .app-designer-tabs {
+    margin-bottom: 0;
+
+    :deep(.el-tabs__header) {
+      margin-bottom: 0;
+    }
+
+    :deep(.el-tabs__nav-wrap::after) {
+      display: none;
+    }
+  }
+
+  .tab-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    .el-icon {
+      font-size: 16px;
+    }
+  }
+}
+
 .designer-body {
   flex: 1;
   display: flex;
   overflow: hidden;
+
+  // 菜单设计 Tab 使用三栏布局
+  > template[v-if="designerTab === 'menu'] {
+    display: contents;
+  }
 }
 
 .sidebar-left {
   width: 280px;
-  background: var(--el-bg-color-page);
+  background: var(--el-bg-color);
   border-right: 1px solid var(--el-border-color-light);
   padding: 16px;
   display: flex;
@@ -651,24 +909,115 @@ onMounted(() => {
 }
 
 .sidebar-right {
-  width: 300px;
+  width: 320px;
   background: var(--el-bg-color);
   border-left: 1px solid var(--el-border-color-light);
   padding: 16px;
   overflow-y: auto;
 
-  h3 {
-    margin: 0 0 16px;
-    font-size: 14px;
-    color: var(--el-text-color-regular);
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
     border-bottom: 1px solid var(--el-border-color-light);
     padding-bottom: 12px;
+
+    h3 {
+      margin: 0;
+      font-size: 14px;
+      color: var(--el-text-color-regular);
+    }
   }
 
-  h4 {
-    margin: 0 0 16px;
-    font-size: 13px;
-    color: var(--el-text-color-secondary);
+  .section-divider {
+    margin: 20px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed var(--el-border-color-lighter);
+
+    span {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--el-text-color-primary);
+    }
   }
+
+  .no-selection-hint {
+    padding: 40px 0;
+    text-align: center;
+  }
+}
+
+/* 应用设置页面样式 */
+.app-settings-container {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.app-settings-card {
+  margin-bottom: 20px;
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+
+    .el-icon {
+      color: var(--el-color-primary);
+    }
+  }
+}
+
+/* 占位内容样式 */
+.placeholder-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--el-bg-color-page);
+}
+
+/* 应用模块绑定样式 */
+.app-binding-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.binding-item {
+  padding: 14px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  border: 1px solid var(--el-border-color-lighter);
+}
+
+.binding-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+
+  .el-icon {
+    font-size: 16px;
+    color: var(--el-color-primary);
+  }
+}
+
+.binding-desc {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 10px;
+}
+
+.save-section {
+  text-align: center;
+  margin-top: 24px;
 }
 </style>

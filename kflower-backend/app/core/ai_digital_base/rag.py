@@ -3,7 +3,7 @@ AI数字底座 - RAG检索模块
 基于向量数据库的检索增强生成
 统一使用 local_services.EmbeddingService 进行向量化
 """
-from typing import List, Dict, Optional, Any, Callable
+from typing import List, Dict, Optional, Any, Callable, Union
 import json
 import logging
 from app.core.ai_digital_base.gateway import ai_gateway
@@ -232,6 +232,51 @@ class RAGRetriever:
     
     async def search(
         self,
+        collection_name: Union[str, List[str]],
+        query: str,
+        top_k: int = 5,
+        filter_metadata: Optional[Dict] = None,
+        kb_id: int = None,
+        kb_config: Dict[str, Any] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        检索相关文档
+        
+        Args:
+            collection_name: 集合名称（字符串）或集合名称列表（支持多集合检索）
+            kb_id: 知识库 ID（用于选择正确的 embedding 模型）
+            kb_config: 知识库 embedding 配置（直接传入，优先于 kb_id）
+        """
+        # 支持多集合检索
+        if isinstance(collection_name, list):
+            all_results = []
+            for coll in collection_name:
+                results = await self._search_single_collection(
+                    collection_name=coll,
+                    query=query,
+                    top_k=top_k,
+                    filter_metadata=filter_metadata,
+                    kb_id=kb_id,
+                    kb_config=kb_config
+                )
+                all_results.extend(results)
+            
+            # 按相似度排序，取top_k
+            all_results.sort(key=lambda x: x["score"], reverse=True)
+            return all_results[:top_k]
+        
+        # 单集合检索
+        return await self._search_single_collection(
+            collection_name=collection_name,
+            query=query,
+            top_k=top_k,
+            filter_metadata=filter_metadata,
+            kb_id=kb_id,
+            kb_config=kb_config
+        )
+    
+    async def _search_single_collection(
+        self,
         collection_name: str,
         query: str,
         top_k: int = 5,
@@ -239,12 +284,7 @@ class RAGRetriever:
         kb_id: int = None,
         kb_config: Dict[str, Any] = None,
     ) -> List[Dict[str, Any]]:
-        """检索相关文档
-        
-        Args:
-            kb_id: 知识库 ID（用于选择正确的 embedding 模型）
-            kb_config: 知识库 embedding 配置（直接传入，优先于 kb_id）
-        """
+        """检索单个集合"""
         query_embedding = await self.embedding_service.embed_text(query, kb_id=kb_id, kb_config=kb_config)
         if not query_embedding:
             logger.error(f"KB#{kb_id} 查询向量化失败")
@@ -292,6 +332,40 @@ class RAGRetriever:
         norm1 = sum(a * a for a in vec1) ** 0.5
         norm2 = sum(b * b for b in vec2) ** 0.5
         return dot_product / (norm1 * norm2) if norm1 and norm2 else 0
+    
+    async def search_by_app_context(
+        self,
+        app_context: Any,  # AppContext对象
+        query: str,
+        top_k: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        基于应用上下文检索相关文档
+        自动获取应用关联的所有知识库集合
+        
+        Args:
+            app_context: AppContext 应用上下文对象
+            query: 查询文本
+            top_k: 返回结果数量
+            
+        Returns:
+            检索结果列表
+        """
+        # 获取应用关联的所有集合
+        if hasattr(app_context, 'get_rag_collections'):
+            collections = app_context.get_rag_collections()
+        else:
+            # 兼容旧代码：如果不是AppContext对象，假设是collection_name字符串
+            collections = [app_context] if isinstance(app_context, str) else ["knowledge"]
+        
+        logger.info(f"应用上下文检索，集合: {collections}")
+        
+        # 多集合检索
+        return await self.search(
+            collection_name=collections,
+            query=query,
+            top_k=top_k
+        )
     
     async def generate_with_context(
         self,

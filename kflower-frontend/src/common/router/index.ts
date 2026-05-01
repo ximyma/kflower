@@ -155,6 +155,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '我的应用' }
       },
       {
+        path: 'app-data-view',
+        name: 'AppDataView',
+        component: () => import('../../pc/views/AppDataView.vue'),
+        meta: { title: '应用数据视图' }
+      },
+      {
         path: 'ai-app-designer',
         name: 'AIAppDesigner',
         component: () => import('../../pc/views/my-apps/AIAppDesigner.vue'),

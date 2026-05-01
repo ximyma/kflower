@@ -118,17 +118,37 @@ async def get_detailed_providers(
 @router.get("/models/available")
 async def get_available_models(
     provider: str = None,
+    configured_only: bool = True,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    """获取可用模型列表"""
-    model_manager = AIModelManager()
-    all_models = model_manager.get_all_available_models()
+    """获取可用模型列表（默认只返回已配置提供商的模型）"""
+    await ai_gateway.load_config_from_db(db)
     
-    if provider:
-        models = all_models.get(provider, [])
+    model_manager = AIModelManager()
+    
+    if configured_only:
+        # 只返回已配置提供商的模型
+        configured_providers = []
+        for name, config in ai_gateway.providers.items():
+            # 有 API Key 或本地服务（不需要 API Key）的认为是已配置
+            is_local = name.startswith("ollama")
+            if config.get("api_key") or is_local:
+                configured_providers.append(name)
+        
+        # 获取这些提供商的模型
+        all_models = model_manager.get_all_available_models()
+        if provider:
+            models = {provider: all_models.get(provider, [])} if provider in configured_providers else {}
+        else:
+            models = {k: v for k, v in all_models.items() if k in configured_providers}
     else:
-        models = all_models
+        # 返回所有预设模型
+        all_models = model_manager.get_all_available_models()
+        if provider:
+            models = {provider: all_models.get(provider, [])}
+        else:
+            models = all_models
     
     return {"success": True, "data": models}
 

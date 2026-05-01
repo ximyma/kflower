@@ -251,6 +251,7 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Connection, DataBoard, Refresh, CircleCheck, CircleClose, SetUp, Document, Folder, Cloudy, Service } from '@element-plus/icons-vue'

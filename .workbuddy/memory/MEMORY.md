@@ -104,9 +104,52 @@ e:\kkflower\
   - 扩展前端API (`index.ts`) 添加 `createAgent`, `updateAgent`, `deleteAgent` 方法
   - 实现表单验证、错误处理和成功提示
 - **当前状态**：所有AI模块现已连接真实后端API，智能体CRUD操作完全可用，迁移功能就绪，工作流引擎升级完成，前端操作界面完善，系统可正常启动使用
+- **插件系统修复（2026-05-01）**：
+  - `app_plugins` 表缺少 `plugin_id`/`config`/`sort_order` 字段（已迁移）
+  - FastAPI 路由顺序问题：精确路由 `/bindings`、`/available` 必须在通配路由 `/{binding_id}` 之前注册
+  - 相关文件：`app/modules/my_apps/endpoints.py`（路由顺序）、`app/services/app_plugin_service.py`（服务）、`src/pc/components/AppPluginManager.vue`（前端UI）
+- **全模块整合优化方案（2026-05-01）**：
+  - 发现7个核心协同问题，输出方案文档 `Kflower全模块整合优化方案.md`
+  - P1（最高）：AppMenu 有 workflow_id 但 AppDesigner.vue 无流程选择UI
+  - P2（最高）：Agent 无 template_ids/workflow_ids/knowledge_base_ids 字段
+  - P3（高）：工具集 ToolExecutor handler=None 时静默失败
+  - 核心设计：引入 AppContext 应用上下文层统一协同所有模块
+  - 三阶段实施：核心修复 → 协同层建设（AppContext/插件调度/知识库隔离）→ 前端体验优化
 - **斑斑低代码平台流程设计升级**：按照斑斑平台教程全面升级流程审批模块
   - **前端设计器**：WorkflowDesigner.vue全面重构，支持12种节点类型、表单模板绑定、审批人配置（5种来源）、字段权限控制、数据源管理、条件配置
   - **后端扩展**：扩展Schema和API支持完整斑斑平台配置（node_definitions, edge_definitions, variables, form_template_id）
   - **关键修复**：修复Vue模板绑定错误（v-model不能绑定到可选链操作符?.）
   - **完整流程**：支持工作流保存、加载、验证，前端与后端API完全集成
   - **斑斑功能对照**：已实现模板绑定、审批人配置、字段权限、数据源管理等核心功能
+
+**2026-05-01 下午 - 全模块整合优化实施**
+- **任务1.1（流程审批绑定UI）**：修复前端API和组件，菜单现在可以正确保存工作流绑定
+- **任务1.2（Agent模块绑定）**：创建数据库迁移，为agents表添加6个新字段，更新CRUD API
+- **任务1.3（工具执行链路）**：优化ToolExecutor错误处理，确保错误正确上抛
+- **任务1.4（流程携带表单数据）**：/execute端点支持form_template_id和form_data_id参数
+- **任务2.1（AppContext机制）**：新建app/core/app_context.py，实现统一应用上下文
+- **任务2.2（插件钩子调度器）**：新建app/core/plugin_dispatcher.py，实现统一插件钩子调度
+- **新建文件**：migrations/add_agent_bindings.py, app/core/app_context.py, app/core/plugin_dispatcher.py
+- **关键改动**：前端API/myApps.ts、AppDesigner.vue、service.py、models/ai.py、ai_agent_engine.py、tools/executor.py、workflows.py
+
+**2026-05-01 下午 - AgentOrchestrator 智能体编排器优化**
+- 修复模型列表加载：API 路径改为 `/api/v1/ai/digital-base/models/available`，处理嵌套提供商格式
+- 修复知识库列表加载：API 路径改为 `/api/v1/knowledge/bases`
+- 修复插件列表加载：API 路径改为 `/api/v1/plugins/`，处理 success 字段格式
+- **增加提示词辅助功能**：
+  - 插入示例提示词按钮（6 种类型：客服、文档、数据分析、代码、HR、财务）
+  - 快捷模板下拉菜单
+  - AI 生成提示词功能（调用 `/chat` 端点生成专业提示词）
+- 相关文件：`src/pc/views/AgentOrchestrator.vue`
+
+**2026-05-01 傍晚 - 里程碑1.0打包准备**
+- **修复应用保存422错误**：`ApplicationUpdate` Schema 中 `bound_agents` 字段类型从 `List[Dict]` 改为 `List[int]`，与前端和数据库一致
+- **创建用户手册**：`docs/KFlower用户手册.md` - 12章节覆盖所有核心功能
+- **创建打包部署方案**：`docs/KFlower打包部署方案.md` - 13章节详细部署指南
+- **创建发布清单**：`docs/发布清单.md` - 发布内容、验收清单、已知问题
+- **项目达到里程碑1.0状态**：完整的AI智能低代码平台
+
+**2026-05-01 傍晚 - 智能体编排器Bug修复**
+- **修复提示词不能保存**：`loadAgents()` 函数增加所有字段映射（type/status/scope/template_ids/knowledge_base_ids/workflow_ids/plugin_ids/system_prompt）
+- **修复模型下拉列表**：`/ai/digital-base/models/available` 端点添加 `configured_only=true` 参数，只返回系统已配置提供商的模型
+- 相关文件：`AgentOrchestrator.vue`, `ai_digital_base.py`, `ai_agent_engine.py`

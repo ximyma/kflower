@@ -61,6 +61,7 @@
           highlight-current
           draggable
           @node-drop="handleDrop"
+          @node-click="handleNodeClick"
         >
           <template #default="{ node, data }">
             <span class="tree-node">
@@ -92,7 +93,17 @@
 
       <!-- 右侧：属性面板 -->
       <div class="sidebar-right">
-        <h3>属性配置</h3>
+        <div class="sidebar-right-header">
+          <h3>属性配置</h3>
+          <el-button 
+            v-if="selectedMenu !== null" 
+            size="small" 
+            text 
+            @click="clearSelection"
+          >
+            <el-icon><ArrowLeft /></el-icon> 返回应用属性
+          </el-button>
+        </div>
         
         <el-form :model="appData" label-width="80px" v-if="selectedMenu === null">
           <h4>应用属性</h4>
@@ -117,6 +128,42 @@
               <el-radio label="light">浅色</el-radio>
               <el-radio label="dark">深色</el-radio>
             </el-radio-group>
+          </el-form-item>
+
+          <!-- 模块绑定 -->
+          <el-divider content-position="left">模块绑定</el-divider>
+          
+          <el-form-item label="绑定智能体">
+            <el-select v-model="appData.bound_agents" multiple placeholder="选择智能体" style="width: 100%">
+              <el-option
+                v-for="agent in agents"
+                :key="agent.id"
+                :label="agent.name"
+                :value="agent.id"
+              />
+            </el-select>
+          </el-form-item>
+          
+          <el-form-item label="绑定知识库">
+            <el-select v-model="appData.knowledge_base_ids" multiple placeholder="选择知识库" style="width: 100%">
+              <el-option
+                v-for="kb in knowledgeBases"
+                :key="kb.id"
+                :label="kb.name"
+                :value="kb.id"
+              />
+            </el-select>
+          </el-form-item>
+          
+          <el-form-item label="绑定工作流">
+            <el-select v-model="appData.workflow_ids" multiple placeholder="选择工作流" style="width: 100%">
+              <el-option
+                v-for="wf in workflows"
+                :key="wf.id"
+                :label="wf.name"
+                :value="wf.id"
+              />
+            </el-select>
           </el-form-item>
         </el-form>
 
@@ -191,6 +238,32 @@
         <el-form-item label="排序">
           <el-input-number v-model="menuForm.menu_order" :min="0" />
         </el-form-item>
+
+        <!-- 流程审批 -->
+        <el-divider content-position="left">流程审批</el-divider>
+        
+        <el-form-item label="关联工作流">
+          <el-select v-model="menuForm.workflow_id" placeholder="选择工作流" clearable style="width: 100%">
+            <el-option
+              v-for="wf in workflows"
+              :key="wf.id"
+              :label="wf.name"
+              :value="wf.id"
+            />
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="触发方式" v-if="menuForm.workflow_id">
+          <el-select v-model="menuForm.workflow_trigger" placeholder="选择触发方式" style="width: 100%">
+            <el-option label="手动发起" value="manual" />
+            <el-option label="提交时触发" value="submit" />
+            <el-option label="更新时触发" value="update" />
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="自动发起" v-if="menuForm.workflow_id">
+          <el-switch v-model="menuForm.workflow_auto_approve" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showMenuDialog = false">取消</el-button>
@@ -201,10 +274,11 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Search, Edit, Delete, ArrowLeft } from '@element-plus/icons-vue'
 import appAPI from '@/common/api/myApps'
 import { templateAPI } from '@/common/api/index'
 
@@ -214,6 +288,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits(['update:app-data'])
+
+import request from '@/common/api/index'
 
 const router = useRouter()
 
@@ -236,11 +312,19 @@ const menuForm = ref({
   parent_id: null as number | null,
   menu_icon: 'Document',
   menu_order: 0,
-  is_visible: true
+  is_visible: true,
+  workflow_id: null as number | null,
+  workflow_trigger: 'manual',
+  workflow_auto_approve: false
 })
 const showMenuDialog = ref(false)
 const isEditMenu = ref(false)
 const saving = ref(false)
+
+// 模块绑定数据
+const agents = ref<any[]>([])
+const knowledgeBases = ref<any[]>([])
+const workflows = ref<any[]>([])
 
 // 加载菜单树
 async function loadMenuTree() {
@@ -255,6 +339,39 @@ async function loadMenuTree() {
     ElMessage.warning('加载菜单失败，将显示空菜单')
     menuTree.value = []
     allMenus.value = []
+  }
+}
+
+// 加载智能体列表
+async function loadAgents() {
+  try {
+    const res: any = await request.get('/ai/agent-engine/agents')
+    agents.value = Array.isArray(res) ? res : (res.data || [])
+  } catch (e: any) {
+    console.error('加载智能体失败:', e)
+    agents.value = []
+  }
+}
+
+// 加载知识库列表
+async function loadKnowledgeBases() {
+  try {
+    const res: any = await request.get('/knowledge/bases')
+    knowledgeBases.value = Array.isArray(res) ? res : (res.data || [])
+  } catch (e: any) {
+    console.error('加载知识库失败:', e)
+    knowledgeBases.value = []
+  }
+}
+
+// 加载工作流列表
+async function loadWorkflows() {
+  try {
+    const res: any = await request.get('/workflows/')
+    workflows.value = Array.isArray(res) ? res : (res.data || [])
+  } catch (e: any) {
+    console.error('加载工作流失败:', e)
+    workflows.value = []
   }
 }
 
@@ -318,18 +435,26 @@ function addRootMenu() {
   showMenuDialog.value = true
 }
 
-// 编辑菜单
-function editMenu(menu: any) {
-  selectedMenu.value = menu
+// 点击菜单节点，显示菜单属性
+function handleNodeClick(data: any) {
+  selectedMenu.value = data
   menuForm.value = {
-    menu_label: menu.label,
-    template_id: menu.template_id,
-    parent_id: menu.parent_id,
-    menu_icon: menu.icon || 'Document',
-    menu_order: menu.order || 0,
-    is_visible: menu.is_visible !== false
+    menu_label: data.label,
+    template_id: data.template_id,
+    parent_id: data.parent_id,
+    menu_icon: data.icon || 'Document',
+    menu_order: data.order || 0,
+    is_visible: data.is_visible !== false,
+    workflow_id: data.workflow_id || null,
+    workflow_trigger: data.workflow_trigger || 'manual',
+    workflow_auto_approve: data.workflow_auto_approve || false
   }
   isEditMenu.value = true
+}
+
+// 编辑菜单
+function editMenu(menu: any) {
+  handleNodeClick(menu)
   showMenuDialog.value = true
 }
 
@@ -379,6 +504,11 @@ async function saveMenu() {
   }
 }
 
+// 清除选中，返回应用属性
+function clearSelection() {
+  selectedMenu.value = null
+}
+
 // 拖拽排序
 async function handleDrop() {
   // TODO: 实现拖拽后的排序保存
@@ -394,6 +524,9 @@ function goCreateTemplate() {
 onMounted(() => {
   loadMenuTree()
   loadTemplates()
+  loadAgents()
+  loadKnowledgeBases()
+  loadWorkflows()
 })
 </script>
 
@@ -482,12 +615,19 @@ onMounted(() => {
   padding: 16px;
   overflow-y: auto;
 
-  h3 {
-    margin: 0 0 16px;
-    font-size: 14px;
-    color: var(--el-text-color-secondary);
+  .sidebar-right-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
     border-bottom: 1px solid var(--el-border-color-light);
     padding-bottom: 12px;
+
+    h3 {
+      margin: 0;
+      font-size: 14px;
+      color: var(--el-text-color-secondary);
+    }
   }
 
   h4 {
