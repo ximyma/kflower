@@ -100,6 +100,11 @@ class MyAppsService:
                     "is_visible": m.is_visible,
                     "list_page_config": m.list_page_config,
                     "form_page_config": m.form_page_config,
+                    "workflow_id": m.workflow_id,
+                    "workflow_trigger": m.workflow_trigger,
+                    "workflow_auto_approve": m.workflow_auto_approve,
+                    "workflow_field_permissions": m.workflow_field_permissions,
+                    "workflow_node_mapping": m.workflow_node_mapping if isinstance(m.workflow_node_mapping, list) else [],
                     "created_at": m.created_at,
                     "updated_at": m.updated_at,
                 }
@@ -286,6 +291,7 @@ class MyAppsService:
             is_visible=data.is_visible,
             list_page_config=data.list_page_config or {},
             form_page_config=data.form_page_config or {},
+            workflow_node_mapping=[],  # 初始化为空列表
             created_at=now,
             updated_at=now,
         )
@@ -333,7 +339,7 @@ class MyAppsService:
             "workflow_trigger": menu.workflow_trigger,
             "workflow_auto_approve": menu.workflow_auto_approve,
             "workflow_field_permissions": menu.workflow_field_permissions,
-            "workflow_node_mapping": menu.workflow_node_mapping,
+            "workflow_node_mapping": menu.workflow_node_mapping if isinstance(menu.workflow_node_mapping, list) else [],
             "created_at": menu.created_at or now,
             "updated_at": menu.updated_at or now,
         }
@@ -371,7 +377,7 @@ class MyAppsService:
                     workflow_id=menu.workflow_id,
                     workflow_trigger=menu.workflow_trigger,
                     workflow_auto_approve=menu.workflow_auto_approve,
-                    workflow_node_mapping=menu.workflow_node_mapping or [],
+                    workflow_node_mapping=menu.workflow_node_mapping if isinstance(menu.workflow_node_mapping, list) else [],
                     children=[]
                 )
                 menu_map[menu.id] = node
