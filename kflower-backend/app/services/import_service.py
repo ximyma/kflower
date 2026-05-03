@@ -323,8 +323,8 @@ def _detect_header_rows(all_rows: List[List[str]]) -> Tuple[List[Dict], int]:
     best_row = 0
     best_confidence = 0.0
     
-    # 检查前10行
-    max_check_rows = min(10, len(all_rows))
+    # 检查前30行作为可能的表头（对于复杂表格很有必要）
+    max_check_rows = min(30, len(all_rows) // 2 + 1)
     
     for row_idx in range(max_check_rows):
         cells = all_rows[row_idx]
@@ -434,6 +434,19 @@ def _parse_xlsx(file_bytes: bytes, sheet_name: str = None, file_type: str = 'xls
                 # 如果 openpyxl 失败，尝试不指定引擎
                 df = pd.read_excel(io.BytesIO(file_bytes), header=None, dtype=str)
         
+        # 获取 sheet_names（如果可能）
+        sheet_names = []
+        try:
+            # 使用 ExcelFile 获取所有工作表名称
+            if file_type == 'xls' and XLRD_AVAILABLE:
+                workbook = xlrd.open_workbook(file_contents=file_bytes)
+                sheet_names = workbook.sheet_names()
+            else:
+                excel_file = pd.ExcelFile(io.BytesIO(file_bytes))
+                sheet_names = excel_file.sheet_names
+        except Exception:
+            pass
+        
         df = df.fillna('')
         
         all_rows = []
@@ -453,7 +466,7 @@ def _parse_xlsx(file_bytes: bytes, sheet_name: str = None, file_type: str = 'xls
             'potential_headers': potential_headers,
             'detected_header_row': detected_row,
             'file_type': file_type,
-            'sheet_names': [],
+            'sheet_names': sheet_names,
             'source': 'excel'
         }
     except Exception as e:

@@ -835,7 +835,29 @@
 
 
     <!-- 导入Excel/图片弹窗 -->
-    <el-dialog v-model="showImport" title="导入Excel或图片生成表单" width="900px" destroy-on-close @open="onImportDialogOpen">
+    <el-dialog 
+      v-model="showImport" 
+      title="导入Excel或图片生成表单" 
+      width="1200px" 
+      top="2vh"
+      draggable
+      destroy-on-close 
+      @open="onImportDialogOpen"
+      :fullscreen="importDialogFullscreen"
+    >
+      <template #header="{ titleId }">
+        <div class="import-dialog-header" style="display:flex; align-items:center; justify-content:space-between; width:100%">
+          <span :id="titleId">导入Excel或图片生成表单</span>
+          <div class="dialog-header-actions">
+            <el-button text @click="importDialogFullscreen = !importDialogFullscreen" :title="importDialogFullscreen ? '还原' : '最大化'">
+              <el-icon><FullScreen v-if="!importDialogFullscreen" /><Close v-else /></el-icon>
+            </el-button>
+            <el-button text @click="showImport = false" title="关闭">
+              <el-icon><Close /></el-icon>
+            </el-button>
+          </div>
+        </div>
+      </template>
       <div class="import-container">
         <el-steps :active="importStep" finish-status="success" style="margin-bottom:24px">
           <el-step title="上传文件" />
@@ -913,24 +935,38 @@
               <el-tooltip content="选中后可以选择多行作为表头并合并">
                 <el-icon><InfoFilled /></el-icon>
               </el-tooltip>
-              <span v-if="importData.sheet_names && importData.sheet_names.length > 1" style="margin-left:16px">工作表：</span>
-              <el-select v-if="importData.sheet_names && importData.sheet_names.length > 1" v-model="importSheetName" placeholder="选择工作表" style="width:160px" @change="reparseWithSheet">
-                <el-option v-for="sn in importData.sheet_names" :key="sn" :label="sn" :value="sn" />
-              </el-select>
+              <span v-if="importData.sheet_names && importData.sheet_names.length >= 1" style="margin-left:16px">
+                <template v-if="importData.sheet_names.length === 1">
+                  工作表：<el-tag size="small">{{ importData.sheet_names[0] }}</el-tag>
+                </template>
+                <template v-else>
+                  工作表：
+                  <el-select 
+                    v-model="importSheetName" 
+                    placeholder="选择工作表" 
+                    style="width:180px" 
+                    @change="reparseWithSheet"
+                  >
+                    <el-option v-for="sn in importData.sheet_names" :key="sn" :label="sn" :value="sn" />
+                  </el-select>
+                </template>
+              </span>
             </div>
             
             <!-- 多行表头选择 -->
             <div v-if="enableMultiRowHeader" class="control-row" style="margin-top:12px">
-              <span>选择表头行（可多选）：</span>
-              <div class="multi-header-checkboxes" style="margin-top:8px; max-height: 120px; overflow-y: auto;">
-                <el-checkbox-group v-model="selectedHeaderRows">
+              <span>选择表头行（可多选，共 {{ (importData.all_rows || importData.rows).length }} 行）：</span>
+              <div class="multi-header-checkboxes" style="margin-top:8px; max-height: 400px; overflow-y: auto; border: 1px solid #dcdfe6; padding: 16px; border-radius: 4px; background-color: #f5f7fa;">
+                <el-checkbox-group v-model="selectedHeaderRows" style="display: flex; flex-direction: column; gap: 8px;">
                   <el-checkbox 
-                    v-for="(row, idx) in (importData.all_rows || importData.rows).slice(0, 5)" 
+                    v-for="(row, idx) in (importData.all_rows || importData.rows)" 
                     :key="idx" 
                     :label="idx"
                     @change="mergeMultiRowHeaders"
+                    style="margin-right: 0; padding: 8px; border-bottom: 1px solid #ebeef5;"
                   >
-                    第 {{ idx + 1 }} 行: {{ row.slice(0, 3).join(' | ') }}{{ row.length > 3 ? '...' : '' }}
+                    <span style="font-size: 14px; font-weight: 500;">第 {{ idx + 1 }} 行：</span>
+                    <span style="color: #606266;">{{ row.slice(0, 8).join(' | ') }}{{ row.length > 8 ? '...' : '' }}</span>
                   </el-checkbox>
                 </el-checkbox-group>
               </div>
@@ -960,7 +996,7 @@
             <el-button @click="importStep = 0">重新上传</el-button>
             <el-button type="primary" @click="goToFieldAdjust">下一步：调整字段</el-button>
           </div>
-          <el-table :data="importData.rows" border size="small" max-height="300" style="margin-top:12px">
+          <el-table :data="importData.rows" border size="small" max-height="450" style="margin-top:12px; width: 100%;">
             <el-table-column v-for="(h, idx) in importData.headers" :key="idx" :prop="String(idx)" :label="h" min-width="120" show-overflow-tooltip />
           </el-table>
         </div>
@@ -2368,6 +2404,7 @@ const showImport = ref(false)
 const importStep = ref(0)
 const importLoading = ref(false)
 const importFileName = ref('')
+const importDialogFullscreen = ref(false)  // 导入对话框全屏状态
 const importData = reactive({
   headers: [] as string[],
   rows: [] as any[],

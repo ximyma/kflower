@@ -88,11 +88,11 @@ async def parse_upload_file(
         potential_headers = result.get('potential_headers', [])
         detected_row = result.get('detected_header_row', 0)
         
-        # 如果没有候选表头，构建默认列表
+        # 如果没有候选表头，构建默认列表（增加检查范围）
         if not potential_headers:
             potential_headers = []
-            for idx, row in enumerate(all_rows[:10]):
-                preview = ' | '.join([c.strip() for c in row[:5] if c.strip()])
+            for idx, row in enumerate(all_rows[:50]):  # 增加检查范围到50行
+                preview = ' | '.join([c.strip() for c in row[:8] if c.strip()])
                 if not preview:
                     preview = '(空行)'
                 potential_headers.append({
@@ -110,7 +110,7 @@ async def parse_upload_file(
             "success": True,
             "message": f"成功解析 {source} 文件，共 {len(all_rows)} 行数据",
             "data": {
-                "all_rows": all_rows[:50],  # 限制返回行数
+                "all_rows": all_rows[:200],  # 增加返回行数到200行
                 "potential_headers": potential_headers,
                 "detected_header_row": detected_row,
                 "filename": filename,
@@ -169,7 +169,7 @@ async def apply_selected_header(
             }, status_code=400)
         
         # 生成字段定义
-        fields = generate_fields(headers, rows[:50])
+        fields = generate_fields(headers, rows[:100])  # 增加用于生成字段的数据行数
         
         # 构建预览
         preview = build_preview(headers, rows, fields)
@@ -179,7 +179,7 @@ async def apply_selected_header(
             "message": f"已应用表头，共 {len(headers)} 个字段，{len(rows)} 行数据",
             "data": {
                 "headers": headers,
-                "rows": rows[:20],
+                "rows": rows[:50],  # 增加预览数据行数到50行
                 "all_rows": all_rows,
                 "total_rows": len(rows),
                 "total_columns": len(headers),
