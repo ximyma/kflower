@@ -488,7 +488,7 @@ def _parse_xlsx(file_bytes: bytes, sheet_name: str = None) -> Dict[str, Any]:
 # ============ Word 解析 ============
 def parse_word(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     """
-    解析 Word 文档 (.docx)
+    解析 Word 文档 (.docx)，提取文本和表格
     
     Returns:
         {
@@ -508,117 +508,123 @@ def parse_word(file_bytes: bytes, filename: str) -> Dict[str, Any]:
         )
     
     try:
-        # 方法1: docx2txt
-        try:
-            text = docx2txt.process(io.BytesIO(file_bytes))
-        except:
-            text = None
-        
-        # 方法2: python-docx
         from docx import Document
         doc = Document(io.BytesIO(file_bytes))
         
-        if not text:
-            text = '\n'.join([p.text for p in doc.paragraphs if p.text.strip()])
-        
-        if not text.strip():
-            raise Exception("Word 文档内容为空")
-        
-        # 提取可能的表头（段落作为候选）
+        # 提取所有表格
         all_rows = []
-        potential_headers = []
+        table_count = 0
         
-        # 收集所有非空段落
-        paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
-        
-        for idx, para_text in enumerate(paragraphs):
-            # 标题样式优先
-            is_heading = False
-            if paragraphs and idx < len(doc.paragraphs):
-                para = doc.paragraphs[idx]
-                if para.style and 'Heading' in str(para.style.name):
-                    is_heading = True
-            
-            # 判断是否像表头
-            is_potential = False
-            confidence = 0.0
-            
-            # 短行可能是表头
-            if 2 <= len(para_text) <= 30:
-                is_potential = True
-                confidence = 0.6
-                if not para_text.endswith(('.', '。', ',', '，', '!', '！', '?', '？')):
-                    confidence += 0.2
-            
-            # 标题样式高置信度
-            if is_heading:
-                confidence = 0.9
-            
-            # 构建单元格（按标点或空格分割）
-            cells = re.split(r'[,，\t]', para_text)
-            cells = [c.strip() for c in cells if c.strip()]
-            
-            if not cells:
-                continue
-            
-            # 生成预览
-            preview = ' | '.join(cells[:5])
-            if len(cells) > 5:
-                preview += f' ... (共{len(cells)}个)'
-            
-            entry = {
-                'row': idx,
-                'cells': cells,
-                'preview': preview,
-                'is_potential': is_potential,
-                'confidence': confidence,
-                'is_heading': is_heading
-            }
-            
-            potential_headers.append(entry)
-            all_rows.append(cells)
-            
-            # 最多处理100个段落
-            if idx >= 99:
-                break
-        
-        # 使用 jieba 提取关键词作为额外候选
-        if JIEBA_AVAILABLE and len(all_rows) < 5:
-            try:
-                keywords = jieba.analyse.extract_tags(text, topK=15, withWeight=False)
-                keywords = [k for k in keywords if len(k) >= 2]
+        for table in doc.tables:
+            table_count += 1
+            for row in table.rows:
+                cells = []
+                for cell in row.cells:
+                    cell_text = cell.text.strip()
+                    cells.append(cell_text)
                 
-                for i, kw in enumerate(keywords):
-                    if kw not in all_rows:
-                        entry = {
-                            'row': len(all_rows),
-                            'cells': [kw],
-                            'preview': kw,
-                            'is_potential': True,
-                            'confidence': 0.5
-                        }
-                        potential_headers.append(entry)
-                        all_rows.append([kw])
-            except:
-                pass
+                if any(cells):  # 只添加非空行
+                    all_rows.append(cells)
         
-        # 默认返回前几行
-        detected_row = 0
-        if potential_headers:
-            # 找置信度最高的
-            for i, ph in enumerate(potential_headers):
-                if ph['is_potential'] and ph['confidence'] > 0.6:
-                    detected_row = i
+        # 如果没有表格，提取段落
+        if not all_rows:
+            # 方法1: docx2txt
+            try:
+                text = docx2txt.process(io.BytesIO(file_bytes))
+            except:
+                text = None
+            
+            if not text:
+                text = '\n'.join([p.text for p in doc.paragraphs if p.text.strip()])
+            
+            if not text.strip():
+                raise Exception("Word 文档内容为空")
+            
+            # 收集所有非空段落
+            paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+            
+            for idx, para_text in enumerate(paragraphs):
+                # 标题样式优先
+                is_heading = False
+                if paragraphs and idx < len(doc.paragraphs):
+                    para = doc.paragraphs[idx]
+                    if para.style and 'Heading' in str(para.style.name):
+                        is_heading = True
+                
+                # 判断是否像表头
+                is_potential = False
+                confidence = 0.0
+                
+                # 短行可能是表头
+                if 2 <= len(para_text) <= 30:
+                    is_potential = True
+                    confidence = 0.6
+                    if not para_text.endswith(('.', '。', ',', '，', '!', '！', '?', '？')):
+                        confidence += 0.2
+                
+                # 标题样式高置信度
+                if is_heading:
+                    confidence = 0.9
+                
+                # 构建单元格（按标点或空格分割）
+                cells = re.split(r'[,，\t]', para_text)
+                cells = [c.strip() for c in cells if c.strip()]
+                
+                if not cells:
+                    continue
+                
+                all_rows.append(cells)
+                
+                # 最多处理100个段落
+                if idx >= 99:
                     break
+            
+            # 使用 jieba 提取关键词作为额外候选
+            if JIEBA_AVAILABLE and len(all_rows) < 5:
+                try:
+                    keywords = jieba.analyse.extract_tags(text, topK=15, withWeight=False)
+                    keywords = [k for k in keywords if len(k) >= 2]
+                    
+                    for i, kw in enumerate(keywords):
+                        if kw not in all_rows:
+                            entry = {
+                                'row': len(all_rows),
+                                'cells': [kw],
+                                'preview': kw,
+                                'is_potential': True,
+                                'confidence': 0.5
+                            }
+                            potential_headers.append(entry)
+                            all_rows.append([kw])
+                except:
+                    pass
+        
+        if not all_rows:
+            raise Exception("Word 文档中未找到可识别的表格数据")
+        
+        # 生成候选表头
+        potential_headers = []
+        detected_row = 0
+        
+        for i, row in enumerate(all_rows[:10]):
+            if len(row) >= 2 and any(c.strip() for c in row):
+                entry = {
+                    'row': i,
+                    'cells': row,
+                    'preview': ' | '.join(row[:5]),
+                    'is_potential': True,
+                    'confidence': 0.8 if i == 0 else 0.5
+                }
+                potential_headers.append(entry)
         
         return {
             'success': True,
             'potential_headers': potential_headers,
             'detected_header_row': detected_row,
-            'all_rows': all_rows[:20] if all_rows else [['字段1', '字段2', '字段3']],
+            'all_rows': all_rows[:100],
             'file_type': 'docx',
             'source': 'word',
-            'extracted_text': text[:5000],
+            'extracted_text': f"从 {table_count} 个表格中提取" if table_count > 0 else "",
             'sheet_names': []
         }
         
@@ -633,6 +639,160 @@ def parse_word(file_bytes: bytes, filename: str) -> Dict[str, Any]:
                 f"3. 重新上传"
             )
         raise Exception(f"Word 文档解析失败：{error_msg}")
+
+
+# ============ PDF 解析 ============
+def parse_pdf(file_bytes: bytes, filename: str) -> Dict[str, Any]:
+    """
+    解析 PDF 文件，提取文本和表格数据
+    
+    Returns:
+        {
+            'success': True,
+            'potential_headers': [...],
+            'detected_header_row': 0,
+            'all_rows': [...],
+            'file_type': 'pdf',
+            'source': 'pdf',
+            'extracted_text': '...'
+        }
+    """
+    try:
+        import pdfplumber
+    except ImportError:
+        raise Exception(
+            "PDF 解析功能需要安装 pdfplumber 库。\n\n"
+            "请在终端运行：pip install pdfplumber"
+        )
+    
+    try:
+        pdf_file = io.BytesIO(file_bytes)
+        all_rows = []
+        potential_headers = []
+        full_text = ""
+        
+        with pdfplumber.open(pdf_file) as pdf:
+            page_count = len(pdf.pages)
+            
+            for page_num, page in enumerate(pdf.pages):
+                # 尝试提取表格
+                tables = page.extract_tables()
+                
+                if tables:
+                    for table_idx, table in enumerate(tables):
+                        if not table:
+                            continue
+                        
+                        # 处理表格数据
+                        for row_idx, row in enumerate(table):
+                            if not row:
+                                continue
+                            
+                            # 清理单元格数据
+                            cells = []
+                            for cell in row:
+                                if cell is None:
+                                    cells.append('')
+                                else:
+                                    # 清理单元格文本
+                                    cell_text = str(cell).strip()
+                                    # 移除多余的空白字符
+                                    cell_text = re.sub(r'\s+', ' ', cell_text)
+                                    cells.append(cell_text)
+                            
+                            if any(cells):  # 只添加非空行
+                                all_rows.append(cells)
+                
+                # 同时提取纯文本作为备选
+                page_text = page.extract_text()
+                if page_text:
+                    full_text += page_text + "\n\n"
+            
+            if not all_rows:
+                # 如果没有提取到表格，尝试从文本解析表格结构
+                all_rows = _parse_text_as_table(full_text)
+        
+        if not all_rows:
+            raise Exception(
+                "PDF 文件中未找到可识别的表格数据。\n\n"
+                "建议：\n"
+                "1. 如果 PDF 是扫描件，请将其截图后上传图片\n"
+                "2. 将 PDF 中的表格复制到 Excel，然后导入 Excel\n"
+                "3. 使用专业的 PDF 表格提取工具"
+            )
+        
+        # 生成候选表头
+        detected_row = 0
+        for i, row in enumerate(all_rows[:10]):
+            if len(row) >= 2 and any(c.strip() for c in row):
+                entry = {
+                    'row': i,
+                    'cells': row,
+                    'preview': ' | '.join(row[:5]),
+                    'is_potential': True,
+                    'confidence': 0.8 if i == 0 else 0.5
+                }
+                potential_headers.append(entry)
+        
+        return {
+            'success': True,
+            'potential_headers': potential_headers,
+            'detected_header_row': detected_row,
+            'all_rows': all_rows[:100],
+            'file_type': 'pdf',
+            'source': 'pdf',
+            'extracted_text': full_text[:5000],
+            'sheet_names': []
+        }
+        
+    except Exception as e:
+        error_msg = str(e)
+        if 'password' in error_msg.lower():
+            raise Exception("PDF 文件已加密，需要密码解锁")
+        if 'corrupt' in error_msg.lower() or 'invalid' in error_msg.lower():
+            raise Exception(
+                f"PDF 文件可能已损坏。\n\n"
+                f"建议：\n"
+                f"1. 用 PDF 阅读器重新打开文件\n"
+                f"2. 另存为新的 PDF 文件\n"
+                f"3. 或者将表格复制到 Excel 后导入"
+            )
+        raise Exception(f"PDF 解析失败：{error_msg}")
+
+
+def _parse_text_as_table(text: str) -> List[List[str]]:
+    """
+    尝试从纯文本中解析表格结构
+    """
+    rows = []
+    
+    # 按行分割
+    lines = text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # 尝试多种分隔符
+        cells = None
+        
+        # 尝试 Tab 分隔
+        if '\t' in line:
+            cells = [c.strip() for c in line.split('\t') if c.strip()]
+        
+        # 尝试多个空格分隔
+        if not cells and '  ' in line:
+            cells = [c.strip() for c in re.split(r'\s{2,}', line) if c.strip()]
+        
+        # 尝试逗号分隔
+        if not cells and ',' in line:
+            cells = [c.strip() for c in line.split(',') if c.strip()]
+        
+        if cells and len(cells) >= 2:
+            rows.append(cells)
+    
+    return rows
 
 
 # ============ 图片 OCR 解析 ============
@@ -925,12 +1085,7 @@ def parse_file(file_bytes: bytes, filename: str, header_row: int = 0, sheet_name
         raise Exception("JSON 文件请使用【JSON导入】功能")
     
     elif file_type == 'pdf':
-        raise Exception(
-            "PDF 文件暂不支持直接导入。\n\n"
-            "建议：\n"
-            "1. 将 PDF 中的表格复制到 Excel，然后导入 Excel\n"
-            "2. 将 PDF 截图保存为图片，然后导入图片"
-        )
+        return parse_pdf(file_bytes, filename)
     
     elif file_type == 'doc':
         raise Exception(

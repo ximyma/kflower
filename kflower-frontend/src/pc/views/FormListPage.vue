@@ -2,9 +2,14 @@
   <div class="form-list-page">
     <div class="page-header">
       <h2>{{ templateData?.name || '数据列表' }}</h2>
-      <el-button type="primary" @click="createNew">
-        <el-icon><Plus /></el-icon> 新增
-      </el-button>
+      <div class="header-buttons">
+        <el-button type="success" @click="openImportDialog">
+          <el-icon><Upload /></el-icon> 导入Excel
+        </el-button>
+        <el-button type="primary" @click="createNew">
+          <el-icon><Plus /></el-icon> 新增
+        </el-button>
+      </div>
     </div>
 
     <!-- 搜索栏 -->
@@ -233,16 +238,117 @@
         <el-button type="primary" :loading="permLoading" @click="savePermission">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- Excel导入弹窗 -->
+    <el-dialog v-model="showImportDialog" title="导入Excel数据" width="900px" destroy-on-close>
+      <div class="import-steps">
+        <el-steps :active="importStep" finish-status="success" style="margin-bottom:24px">
+          <el-step title="上传文件" />
+          <el-step title="映射字段" />
+          <el-step title="导入数据" />
+        </el-steps>
+
+        <!-- 步骤1: 上传文件 -->
+        <div v-if="importStep === 0">
+          <el-upload
+            ref="importUploadRef"
+            class="import-uploader"
+            drag
+            accept=".xlsx,.xls,.csv"
+            :auto-upload="false"
+            :limit="1"
+            :on-change="handleImportFileChange"
+            :on-exceed="handleImportExceed"
+          >
+            <el-icon class="el-icon--upload"><Upload /></el-icon>
+            <div class="el-upload__text">将Excel文件拖到此处，或<em>点击上传</em></div>
+            <template #tip>
+              <div class="el-upload__tip">支持 .xlsx, .xls, .csv 格式</div>
+            </template>
+          </el-upload>
+
+          <div v-if="importPreviewData.length > 0" style="margin-top:20px">
+            <h4>文件预览（前5行）：</h4>
+            <el-table :data="importPreviewData" border size="small" max-height="300">
+              <el-table-column
+                v-for="(col, idx) in importColumns"
+                :key="idx"
+                :prop="col"
+                :label="'列' + (idx + 1) + ': ' + col"
+                show-overflow-tooltip
+              />
+            </el-table>
+            <el-button type="primary" style="margin-top:16px" @click="startFieldMapping">下一步：映射字段</el-button>
+          </div>
+        </div>
+
+        <!-- 步骤2: 映射字段 -->
+        <div v-else-if="importStep === 1">
+          <el-alert type="info" :closable="false" style="margin-bottom:20px">
+            请将Excel列映射到表单字段。不映射的列将被忽略。
+          </el-alert>
+          
+          <div class="field-mapping-container">
+            <div class="mapping-header">
+              <span class="mapping-col">Excel列</span>
+              <span class="mapping-arrow">→</span>
+              <span class="mapping-col">表单字段</span>
+            </div>
+            <div v-for="(col, idx) in importColumns" :key="idx" class="mapping-row">
+              <span class="mapping-col">{{ col }}</span>
+              <span class="mapping-arrow">→</span>
+              <el-select v-model="fieldMapping[idx]" placeholder="请选择字段" clearable style="flex:1">
+                <el-option
+                  v-for="field in formFields"
+                  :key="field.name"
+                  :label="field.label"
+                  :value="field.name"
+                />
+              </el-select>
+            </div>
+          </div>
+
+          <div style="margin-top:20px;text-align:right">
+            <el-button @click="importStep = 0">上一步</el-button>
+            <el-button type="primary" :disabled="!hasMapping" @click="confirmImport">确认导入</el-button>
+          </div>
+        </div>
+
+        <!-- 步骤3: 导入进度 -->
+        <div v-else-if="importStep === 2">
+          <el-result
+            :icon="importResult.success ? 'success' : 'error'"
+            :title="importResult.success ? '导入成功' : '导入失败'"
+            :sub-title="importResult.message"
+          >
+            <template #extra>
+              <p v-if="importResult.errors && importResult.errors.length > 0">
+                <el-alert type="warning" :closable="false">
+                  <template #default>
+                    <div>部分数据导入失败：</div>
+                    <ul style="margin:8px 0 0 0;padding-left:20px">
+                      <li v-for="(err, idx) in importResult.errors.slice(0, 5)" :key="idx">{{ err }}</li>
+                    </ul>
+                  </template>
+                </el-alert>
+              </p>
+              <el-button type="primary" @click="closeImportDialog">完成</el-button>
+            </template>
+          </el-result>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, reactive } from 'vue'
+import { ref, onMounted, watch, reactive, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Plus, Search, View, Edit, EditPen, List, Key, Delete
+  Plus, Search, View, Edit, EditPen, List, Key, Delete, Upload
 } from '@element-plus/icons-vue'
+import * as XLSX from 'xlsx'
 import { templateAPI } from '@/common/api/index'
 
 const route = useRoute()
@@ -280,6 +386,22 @@ const dataFormLoading = ref(false)
 const showPermissionDialog = ref(false)
 const permForm = reactive({ is_public: false })
 const permLoading = ref(false)
+
+// Excel导入相关
+const showImportDialog = ref(false)
+const importStep = ref(0)
+const importFile = ref<File | null>(null)
+const importColumns = ref<string[]>([])
+const importPreviewData = ref<any[]>([])
+const importAllData = ref<any[]>([])
+const fieldMapping = reactive<Record<number, string>>({})
+const importResult = reactive({ success: false, message: '', errors: [] as string[] })
+const importUploadRef = ref()
+
+// 计算属性：是否有字段映射
+const hasMapping = computed(() => {
+  return Object.values(fieldMapping).some(v => v)
+})
 
 // 加载模板数据
 async function loadTemplate() {
@@ -445,6 +567,171 @@ async function submitDataForm() {
   }
 }
 
+// ========== Excel导入相关方法 ==========
+
+// 打开导入对话框
+function openImportDialog() {
+  showImportDialog.value = true
+  importStep.value = 0
+  importFile.value = null
+  importColumns.value = []
+  importPreviewData.value = []
+  importAllData.value = []
+  Object.keys(fieldMapping).forEach(k => delete fieldMapping[k])
+  importResult.success = false
+  importResult.message = ''
+  importResult.errors = []
+}
+
+// 处理文件上传
+function handleImportFileChange(uploadFile: any) {
+  const file = uploadFile.raw
+  if (!file) return
+
+  importFile.value = file
+
+  // 使用XLSX解析Excel文件
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const data = e.target?.result
+      const workbook = XLSX.read(data, { type: 'array' })
+      const sheetName = workbook.SheetNames[0]
+      const worksheet = workbook.Sheets[sheetName]
+      
+      // 转换为JSON数据
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+      
+      if (jsonData.length < 2) {
+        ElMessage.warning('Excel文件至少需要有标题行和一行数据')
+        return
+      }
+      
+      // 第一行为列名
+      const columns = jsonData[0] as string[]
+      importColumns.value = columns.map((col, idx) => col || `列${idx + 1}`)
+      
+      // 解析所有数据（跳过标题行）
+      const allRows = jsonData.slice(1).map((row: any) => {
+        const obj: Record<string, any> = {}
+        importColumns.value.forEach((col, idx) => {
+          obj[col] = row[idx]
+        })
+        return obj
+      })
+      
+      importAllData.value = allRows
+      importPreviewData.value = allRows.slice(0, 5)
+      
+      ElMessage.success(`成功解析 ${allRows.length} 行数据`)
+    } catch (err: any) {
+      ElMessage.error('解析Excel文件失败：' + (err.message || '未知错误'))
+    }
+  }
+  
+  reader.readAsArrayBuffer(file)
+}
+
+// 文件超出限制
+function handleImportExceed() {
+  ElMessage.warning('一次只能上传一个文件')
+}
+
+// 开始字段映射
+function startFieldMapping() {
+  if (importAllData.value.length === 0) {
+    ElMessage.warning('请先上传文件')
+    return
+  }
+  
+  // 尝试自动映射（根据列名和字段标签匹配）
+  importColumns.value.forEach((col, idx) => {
+    const matchedField = formFields.value.find(f => 
+      f.label === col || f.name === col
+    )
+    if (matchedField) {
+      fieldMapping[idx] = matchedField.name
+    }
+  })
+  
+  importStep.value = 1
+}
+
+// 确认导入
+async function confirmImport() {
+  if (!hasMapping.value) {
+    ElMessage.warning('请至少映射一个字段')
+    return
+  }
+  
+  try {
+    // 构建导入数据（将Excel列映射到表单字段）
+    const dataToImport = importAllData.value.map(row => {
+      const mapped: Record<string, any> = {}
+      Object.entries(fieldMapping).forEach(([colIdx, fieldName]) => {
+        if (fieldName) {
+          let value = row[importColumns.value[Number(colIdx)]]
+          
+          // 根据字段类型进行类型转换
+          const field = formFields.value.find(f => f.name === fieldName)
+          if (field) {
+            if (['number', 'money', 'percent'].includes(field.type)) {
+              // 数字类型：转换为数字
+              value = value ? Number(value) : null
+            } else if (field.type === 'switch') {
+              // 开关类型：转换为布尔值
+              value = value ? true : false
+            } else if (field.type === 'date' || field.type === 'datetime') {
+              // 日期类型：转换为字符串
+              if (value instanceof Date) {
+                value = value.toISOString().split('T')[0]
+              } else if (typeof value === 'string') {
+                value = value.trim()
+              }
+            } else if (field.type === 'checkbox') {
+              // 多选类型：转换为数组
+              if (typeof value === 'string') {
+                value = value.split(',').map(s => s.trim()).filter(Boolean)
+              } else if (!Array.isArray(value)) {
+                value = value ? [value] : []
+              }
+            }
+          }
+          
+          mapped[fieldName] = value
+        }
+      })
+      return mapped
+    })
+    
+    // 调用导入API
+    const res = await templateAPI.importData(templateId.value, dataToImport)
+    
+    importResult.success = res.success || true
+    importResult.message = res.message || `成功导入 ${res.imported || 0} 条数据`
+    importResult.errors = res.errors || []
+    importStep.value = 2
+    
+    // 刷新列表
+    if (importResult.success) {
+      loadData()
+    }
+  } catch (e: any) {
+    importResult.success = false
+    importResult.message = '导入失败：' + (e.message || '未知错误')
+    importResult.errors = []
+    importStep.value = 2
+  }
+}
+
+// 关闭导入对话框
+function closeImportDialog() {
+  showImportDialog.value = false
+  if (importResult.success) {
+    loadData()
+  }
+}
+
 // 打开数据列表
 function openFormList(row: any) {
   router.push(`/form/${templateId.value}/data`)
@@ -511,5 +798,60 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.import-uploader {
+  .el-upload__tip {
+    text-align: center;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+  }
+}
+
+.import-steps {
+  margin-bottom: 24px;
+}
+
+.field-mapping-container {
+  max-height: 500px;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+
+.mapping-header, .mapping-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+  
+  &:not(:last-child) {
+    border-bottom: 1px solid var(--el-border-color-lighter);
+  }
+}
+
+.mapping-header {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.mapping-col {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapping-arrow {
+  width: 40px;
+  text-align: center;
+  color: var(--el-color-primary);
+  font-weight: bold;
 }
 </style>

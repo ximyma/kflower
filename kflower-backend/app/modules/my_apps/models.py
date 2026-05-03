@@ -70,7 +70,7 @@ class AppMenu(Base):
     workflow_trigger = Column(String(20), default="manual", comment="触发方式: manual/submit/update")
     workflow_field_permissions = Column(JSON, default=dict, comment="流程中字段权限: {node_id: {field: readonly/hidden/edit}}")
     workflow_auto_approve = Column(Boolean, default=False, comment="提交后自动发起流程")
-    workflow_node_mapping = Column(JSON, default=dict, comment="表单字段到流程变量的映射")
+    workflow_node_mapping = Column(JSON, default=list, comment="表单字段到流程变量的映射")
     
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

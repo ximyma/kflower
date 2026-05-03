@@ -913,25 +913,102 @@ async def import_template_data(
     
     # 获取字段定义
     all_fields = []
-    field_map = {}  # label -> name 映射
+    field_name_map = {}  # name -> field def 映射
+    field_label_map = {}  # label -> name 映射（兼容旧格式）
     for mod in modules_list:
         if isinstance(mod, dict) and 'fields' in mod:
             for f in mod['fields']:
                 if isinstance(f, dict):
                     all_fields.append(f)
+                    if f.get('name'):
+                        field_name_map[f['name']] = f
                     if f.get('label'):
-                        field_map[f['label']] = f['name']
+                        field_label_map[f['label']] = f['name']
     
     imported_count = 0
     errors = []
     
     for idx, row in enumerate(request.data):
         try:
-            # 将标签转换为字段名
+            # 支持两种格式：字段名(key) 或 字段标签(key)
             data = {}
-            for label, name in field_map.items():
-                if label in row:
-                    data[name] = row[label]
+            for key, value in row.items():
+                # 优先使用字段名
+                if key in field_name_map:
+                    data[key] = value
+                # 兼容：如果key是字段标签，转换为字段名
+                elif key in field_label_map:
+                    data[field_label_map[key]] = value
+                # 如果都不是，保留原key（让数据库处理）
+                else:
+                    data[key] = value
+            
+            # 类型转换：根据字段定义转换值
+            for field in all_fields:
+                if not isinstance(field, dict):
+                    continue
+                field_name = field.get('name', '')
+                if not field_name or field_name not in data:
+                    continue
+                
+                field_type = field.get('type', 'text')
+                value = data[field_name]
+                
+                # 根据字段类型转换值
+                if field_type in ('number', 'money', 'percent'):
+                    # 数字类型：转换为 float 或 int
+                    if value is None or value == '':
+                        data[field_name] = None
+                    else:
+                        try:
+                            data[field_name] = float(value)
+                        except (ValueError, TypeError):
+                            data[field_name] = None
+                
+                elif field_type in ('date', 'datetime'):
+                    # 日期类型：转换为字符串 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)
+                    if value is None or value == '':
+                        data[field_name] = None
+                    elif isinstance(value, str):
+                        # 已经是字符串，保持原样
+                        data[field_name] = value.strip()
+                    elif hasattr(value, 'isoformat'):
+                        # datetime 对象
+                        if field_type == 'date':
+                            data[field_name] = value.strftime('%Y-%m-%d')
+                        else:
+                            data[field_name] = value.strftime('%Y-%m-%d %H:%M:%S')
+                
+                elif field_type == 'switch':
+                    # 开关类型：转换为 0/1
+                    if value is None:
+                        data[field_name] = 0
+                    elif isinstance(value, str):
+                        data[field_name] = 1 if value.lower() in ('true', '1', 'yes', '是') else 0
+                    else:
+                        data[field_name] = 1 if value else 0
+                
+                elif field_type == 'checkbox':
+                    # 多选类型：转换为 JSON 字符串
+                    if value is None:
+                        data[field_name] = '[]'
+                    elif isinstance(value, list):
+                        data[field_name] = json.dumps(value, ensure_ascii=False)
+                    elif isinstance(value, str):
+                        # 尝试解析为 JSON，如果不是则按逗号分隔
+                        try:
+                            parsed = json.loads(value)
+                            data[field_name] = json.dumps(parsed, ensure_ascii=False)
+                        except:
+                            items = [item.strip() for item in value.split(',') if item.strip()]
+                            data[field_name] = json.dumps(items, ensure_ascii=False)
+                
+                elif field_type in ('select', 'radio'):
+                    # 单选类型：保持原样（字符串）
+                    if value is None:
+                        data[field_name] = None
+                    else:
+                        data[field_name] = str(value)
             
             # 验证必填字段
             for field in all_fields:

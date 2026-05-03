@@ -282,15 +282,14 @@
     </el-dialog>
 
     <!-- 导入Excel对话框 -->
-    <el-dialog v-model="showImportDialog" title="导入Excel" width="500px">
+    <el-dialog v-model="showImportDialog" title="导入Excel" width="500px" :close-on-click-modal="false">
       <el-upload
         ref="uploadRef"
-        :action="uploadUrl"
-        :headers="uploadHeaders"
-        :on-success="handleImportSuccess"
-        :before-upload="beforeImportUpload"
+        :auto-upload="false"
+        :limit="1"
         accept=".xlsx,.xls,.csv"
-        :show-file-list="false"
+        :on-change="handleFileChange"
+        :on-exceed="handleExceed"
         drag
       >
         <el-icon><Upload /></el-icon>
@@ -298,13 +297,24 @@
         <template #tip>
           <div class="el-upload__tip">
             支持 .xlsx, .xls, .csv 格式，文件大小不超过10MB<br>
-            请确保Excel表头与字段名一致
+            请确保Excel第一行是表头（字段名）
           </div>
         </template>
       </el-upload>
+
+      <!-- 预览解析结果 -->
+      <div v-if="excelHeaders.length > 0" style="margin-top: 20px">
+        <el-alert type="success" :closable="false">
+          成功解析 {{ excelRows.length }} 行数据，{{ excelHeaders.length }} 列
+        </el-alert>
+        <div style="margin-top: 10px">
+          <el-button type="primary" @click="startMapping">下一步：映射字段</el-button>
+          <el-button @click="cancelImport">重新选择</el-button>
+        </div>
+      </div>
+
       <template #footer>
         <el-button @click="showImportDialog = false">取消</el-button>
-        <el-button type="primary" @click="confirmImport">确认导入</el-button>
       </template>
     </el-dialog>
 
@@ -438,15 +448,6 @@ const excelRows = ref<any[][]>([])
 const fieldMappings = ref<Record<string, string>>({}) // Excel列名 -> 字段名
 const excelFile = ref<File | null>(null)
 const mappingLoading = ref(false)
-
-// 上传配置
-const uploadUrl = computed(() => {
-  const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
-  return `${baseURL}/upload`
-})
-const uploadHeaders = computed(() => ({
-  Authorization: `Bearer ${userStore.token}`
-}))
 
 // 验证规则
 const editRules = computed(() => {
@@ -603,8 +604,6 @@ async function applyMappingAndImport() {
   mappingLoading.value = true
   try {
     const templateId = route.params.id as string
-    let successCount = 0
-    let errorCount = 0
     
     // 创建反向映射：字段名 -> Excel列索引
     const fieldToColIndex = new Map<string, number>()
@@ -615,7 +614,9 @@ async function applyMappingAndImport() {
       }
     })
     
-    // 处理每一行数据
+    // 收集所有行数据（批量导入）
+    const allData: Record<string, any>[] = []
+    
     for (const row of excelRows.value) {
       if (row.length === 0) continue
       
@@ -624,32 +625,44 @@ async function applyMappingAndImport() {
       // 根据映射填充数据
       fieldToColIndex.forEach((colIndex, fieldName) => {
         if (colIndex < row.length) {
-          data[fieldName] = row[colIndex]
+          let value = row[colIndex]
+          
+          // 根据字段类型进行类型转换
+          const field = displayFields.value.find(f => f.name === fieldName)
+          if (field) {
+            if (['number', 'money', 'percent'].includes(field.type)) {
+              // 数字类型：转换为数字
+              value = value ? Number(value) : null
+            } else if (field.type === 'switch') {
+              // 开关类型：转换为布尔值
+              value = value ? true : false
+            } else if (field.type === 'date' || field.type === 'datetime') {
+              // 日期类型：转换为字符串
+              if (value instanceof Date) {
+                value = value.toISOString().split('T')[0]
+              } else if (typeof value === 'string') {
+                value = value.trim()
+              }
+            }
+          }
+          
+          data[fieldName] = value
         }
       })
       
-      // 提交数据
-      try {
-        const res: any = await templateAPI.submitData(parseInt(templateId), { data })
-        // 后端返回的是 TemplateDataResponse，包含 id 字段
-        if (res.id) {
-          successCount++
-        } else {
-          errorCount++
-        }
-      } catch (e) {
-        errorCount++
-        console.error('提交失败:', e)
-      }
+      allData.push(data)
     }
     
-    ElMessage.success(`导入完成：成功 ${successCount} 条，失败 ${errorCount} 条`)
+    // 批量导入数据（调用正确的 API）
+    const res: any = await templateAPI.importData(parseInt(templateId), allData)
+    
+    ElMessage.success(`导入完成：成功 ${res.imported || allData.length} 条`)
     showMappingDialog.value = false
     loadData() // 刷新数据
     
-  } catch (e) {
+  } catch (e: any) {
     console.error('导入失败:', e)
-    ElMessage.error('导入失败：' + (e as Error).message)
+    ElMessage.error('导入失败：' + (e.message || '未知错误'))
   } finally {
     mappingLoading.value = false
   }
@@ -968,84 +981,85 @@ function importExcel() {
   showImportDialog.value = true
 }
 
-function beforeImportUpload(file: File) {
-  const isExcel = file.type.includes('excel') || file.type.includes('spreadsheet') ||
-    ['.xlsx', '.xls', '.csv'].some(ext => file.name.toLowerCase().endsWith(ext))
-  
+// 处理文件选择
+function handleFileChange(uploadFile: any) {
+  const file = uploadFile.raw
+  if (!file) return
+
+  // 验证文件类型
+  const isExcel = file.name.match(/\.(xlsx|xls|csv)$/i)
   if (!isExcel) {
     ElMessage.error('请上传Excel文件（.xlsx, .xls, .csv）')
-    return false
+    return
   }
-  
-  const isLt10M = file.size / 1024 / 1024 < 10
-  if (!isLt10M) {
-    ElMessage.error('文件大小不能超过10MB')
-    return false
-  }
-  
-  return true
-}
 
-async function handleImportSuccess(response: any, file: File) {
-  try {
-    if (response.url) {
-      // 如果有服务器返回的URL，可以下载解析
-      // 目前我们直接在前端解析上传的文件
-      ElMessage.success('文件上传成功，正在解析...')
-    }
-    
-    // 保存文件引用
-    excelFile.value = file
-    
-    // 解析Excel文件
-    const data = await parseExcelFile(file)
-    if (!data) {
-      ElMessage.error('Excel文件解析失败')
-      return
-    }
-    
-    // 提取表头和数据
-    const { headers, rows } = data
-    if (headers.length === 0 || rows.length === 0) {
-      ElMessage.error('Excel文件数据为空')
-      return
-    }
-    
-    // 保存数据
-    excelHeaders.value = headers
-    excelRows.value = rows
-    
-    // 自动匹配字段（基于标签）
-    const autoMappings: Record<string, string> = {}
-    headers.forEach((header, index) => {
-      if (header && typeof header === 'string') {
-        // 尝试匹配字段标签
-        const field = displayFields.value.find(f => 
-          f.label === header.trim() || 
-          f.name === header.trim().toLowerCase().replace(/\s+/g, '_')
-        )
-        if (field) {
-          autoMappings[header] = field.name
-        }
+  // 验证文件大小（10MB）
+  if (file.size / 1024 / 1024 > 10) {
+    ElMessage.error('文件大小不能超过10MB')
+    return
+  }
+
+  excelFile.value = file
+
+  // 解析Excel文件
+  parseExcelFile(file)
+    .then(data => {
+      if (data && data.headers.length > 0) {
+        excelHeaders.value = data.headers
+        excelRows.value = data.rows
+        ElMessage.success(`成功解析 ${data.rows.length} 行数据`)
       }
     })
-    
-    fieldMappings.value = autoMappings
-    
-    // 关闭上传对话框，打开映射对话框
-    showImportDialog.value = false
-    showMappingDialog.value = true
-    
-  } catch (e) {
-    console.error('Excel处理错误:', e)
-    ElMessage.error('Excel文件处理失败：' + (e as Error).message)
+    .catch(err => {
+      ElMessage.error('解析Excel文件失败：' + (err.message || '未知错误'))
+    })
+}
+
+// 文件超出限制
+function handleExceed() {
+  ElMessage.warning('一次只能上传一个文件')
+}
+
+// 开始字段映射
+function startMapping() {
+  if (excelHeaders.value.length === 0) {
+    ElMessage.warning('请先上传文件')
+    return
   }
+
+  // 自动匹配字段
+  const autoMappings: Record<string, string> = {}
+  excelHeaders.value.forEach((header, idx) => {
+    if (!header) return
+    
+    // 尝试匹配字段标签或字段名
+    const field = displayFields.value.find(f => 
+      f.label === header.trim() || 
+      f.name === header.trim().toLowerCase().replace(/\s+/g, '_')
+    )
+    
+    if (field) {
+      autoMappings[header] = field.name
+    }
+  })
+
+  fieldMappings.value = autoMappings
+  showImportDialog.value = false
+  showMappingDialog.value = true
+}
+
+// 取消导入
+function cancelImport() {
+  excelHeaders.value = []
+  excelRows.value = []
+  excelFile.value = null
 }
 
 // 解析Excel文件
 function parseExcelFile(file: File): Promise<{ headers: string[], rows: any[][] }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
+    
     reader.onload = (e) => {
       try {
         const data = e.target?.result
@@ -1054,21 +1068,44 @@ function parseExcelFile(file: File): Promise<{ headers: string[], rows: any[][] 
           return
         }
         
-        const workbook = XLSX.read(data, { type: 'binary' })
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })
+        // 使用 ArrayBuffer 方式读取（xlsx 推荐）
+        const workbook = XLSX.read(data, { type: 'array' })
         
-        if (jsonData.length < 2) {
-          reject(new Error('Excel文件数据为空或格式不正确'))
+        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+          reject(new Error('Excel文件中没有找到工作表'))
           return
         }
         
-        const headers = jsonData[0] as string[]
-        const rows = jsonData.slice(1) as any[][]
+        const firstSheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[firstSheetName]
+        
+        // 读取所有数据（header: 1 表示返回二维数组）
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+        
+        if (!jsonData || jsonData.length < 2) {
+          reject(new Error('Excel文件数据为空或格式不正确（需要至少一行表头和一行数据）'))
+          return
+        }
+        
+        // 第一行为表头
+        const headers = (jsonData[0] as any[]).map((h, idx) => {
+          if (h === null || h === undefined || h === '') {
+            return `列${idx + 1}`
+          }
+          return String(h).trim()
+        })
+        
+        // 其余行为数据
+        const rows = jsonData.slice(1).map(row => {
+          const rowArray = row as any[]
+          // 将行数据转换为以header为key的对象（便于后续处理）
+          return rowArray
+        })
         
         resolve({ headers, rows })
       } catch (e) {
-        reject(e)
+        console.error('Excel解析错误:', e)
+        reject(new Error('Excel文件解析失败：' + (e as Error).message))
       }
     }
     
@@ -1076,65 +1113,58 @@ function parseExcelFile(file: File): Promise<{ headers: string[], rows: any[][] 
       reject(new Error('文件读取失败'))
     }
     
-    reader.readAsBinaryString(file)
+    // 使用 ArrayBuffer（xlsx 库推荐）
+    reader.readAsArrayBuffer(file)
   })
 }
 
 async function confirmImport() {
-  // 新流程：如果有上传的文件，解析并显示映射对话框
-  if (!uploadRef.value || !uploadRef.value.uploadFiles || uploadRef.value.uploadFiles.length === 0) {
-    ElMessage.warning('请先上传Excel文件')
+  // 验证是否有映射
+  const mappedCount = Object.values(fieldMappings.value).filter(v => v).length
+  if (mappedCount === 0) {
+    ElMessage.warning('请至少映射一个字段')
     return
   }
 
-  const file = uploadRef.value.uploadFiles[0].raw
-  if (!file) {
-    ElMessage.warning('文件不存在')
+  // 验证必填字段是否已映射
+  const missingRequired = displayFields.value
+    .filter(f => f.required && !Object.values(fieldMappings.value).includes(f.name))
+    .map(f => f.label)
+  
+  if (missingRequired.length > 0) {
+    ElMessage.warning(`必填字段未映射：${missingRequired.join(', ')}`)
     return
   }
 
   try {
-    // 解析Excel文件
-    const data = await parseExcelFile(file)
-    if (!data) {
-      ElMessage.error('Excel文件解析失败')
-      return
-    }
-    
-    const { headers, rows } = data
-    if (headers.length === 0 || rows.length === 0) {
-      ElMessage.error('Excel文件数据为空')
-      return
-    }
-    
-    // 保存数据
-    excelHeaders.value = headers
-    excelRows.value = rows
-    excelFile.value = file
-    
-    // 自动匹配字段
-    const autoMappings: Record<string, string> = {}
-    headers.forEach((header, index) => {
-      if (header && typeof header === 'string') {
-        const field = displayFields.value.find(f => 
-          f.label === header.trim() || 
-          f.name === header.trim().toLowerCase().replace(/\s+/g, '_')
-        )
-        if (field) {
-          autoMappings[header] = field.name
+    // 构建导入数据：将Excel列映射到表单字段
+    const dataToImport = excelRows.value.map(row => {
+      const mapped: Record<string, any> = {}
+      Object.entries(fieldMappings.value).forEach(([excelCol, fieldName]) => {
+        if (fieldName && excelCol !== undefined) {
+          const colIndex = excelHeaders.value.indexOf(excelCol)
+          if (colIndex >= 0 && row[colIndex] !== undefined) {
+            mapped[fieldName] = row[colIndex]
+          }
         }
-      }
+      })
+      return mapped
     })
+
+    // 调用后端导入API
+    const templateId = route.params.id || route.params.templateId
+    const result = await templateAPI.importData(Number(templateId), dataToImport)
+
+    ElMessage.success(`成功导入 ${result.imported || 0} 条数据`)
     
-    fieldMappings.value = autoMappings
-    
-    // 关闭上传对话框，打开映射对话框
+    // 关闭对话框并刷新数据
+    showMappingDialog.value = false
     showImportDialog.value = false
-    showMappingDialog.value = true
+    refreshData()
     
-  } catch (e) {
-    console.error('Excel处理错误:', e)
-    ElMessage.error('Excel文件处理失败：' + (e as Error).message)
+  } catch (e: any) {
+    ElMessage.error('导入失败：' + (e.message || '未知错误'))
+    console.error('导入错误:', e)
   }
 }
 

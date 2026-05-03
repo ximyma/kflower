@@ -373,7 +373,14 @@
   >
     <div class="chat-container">
       <div class="chat-model-selector">
-        <el-select v-model="selectedModel" placeholder="选择AI模型" size="small" style="width: 200px;">
+        <el-select
+          v-model="selectedModel"
+          placeholder="选择AI模型"
+          size="small"
+          style="width: 200px;"
+          popper-class="model-select-dropdown"
+          :teleported="true"
+        >
           <el-option
             v-for="model in availableModels"
             :key="model.id"
@@ -2544,5 +2551,46 @@ function exportWorkflow() {
 
 .chat-input-area .el-input {
   flex: 1;
+}
+
+/* 模型下拉框样式 - 确保显示在下拉框下方 */
+.model-select-dropdown {
+  z-index: 3000 !important;
+}
+
+.model-select-dropdown .el-select-dropdown__item {
+  padding: 8px 20px;
+}
+
+.model-select-dropdown .el-select-dropdown__item.selected {
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+</style>
+
+<!-- 非scoped 样式，确保下拉框无论渲染到哪里都能正确显示 -->
+<style>
+.model-select-dropdown {
+  z-index: 10000 !important;
+}
+
+.model-select-dropdown .el-select-dropdown__item {
+  padding: 8px 20px !important;
+  font-size: 14px;
+}
+
+.model-select-dropdown .el-select-dropdown__item.selected {
+  font-weight: 600 !important;
+  color: var(--el-color-primary) !important;
+  background-color: var(--el-color-primary-light-9) !important;
+}
+
+.model-select-dropdown .el-select-dropdown__item:hover {
+  background-color: var(--el-fill-color-light) !important;
+}
+
+/* 确保对话框内的下拉框不会被遮挡 */
+.el-dialog .el-select__popper {
+  z-index: 10000 !important;
 }
 </style>

@@ -43,7 +43,13 @@ class ApplicationResponse(ApplicationBase):
     organization_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
+    # ===== 添加缺失的字段 =====
+    workflow_ids: Optional[List[int]] = None
+    workflow_config: Optional[Dict] = None
+    knowledge_base_ids: Optional[List[int]] = None
+    knowledge_config: Optional[Dict] = None
+    bound_agents: Optional[List[int]] = None
+    
     class Config:
         from_attributes = True
 

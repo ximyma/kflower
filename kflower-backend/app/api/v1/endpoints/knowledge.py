@@ -287,13 +287,13 @@ async def upload_document(
 
 
 @router.post("/upload-batch/{kb_id}")
-async def upload_documents_batch(
+async def upload_document_batch(
     kb_id: int,
-    files: List[UploadFile] = File(...),
+    file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """批量上传文档到知识库"""
+    """批量上传文档到知识库（支持逐个上传）"""
     # 检查知识库
     result = await db.execute(
         select(KnowledgeBase).where(KnowledgeBase.id == kb_id, KnowledgeBase.is_active == True)
@@ -301,61 +301,43 @@ async def upload_documents_batch(
     kb = result.scalar_one_or_none()
     if not kb:
         raise HTTPException(status_code=404, detail="知识库不存在")
-
-    uploaded = []
+    
+    # 保存文件
+    file_ext = os.path.splitext(file.filename)[1]
+    file_id = uuid.uuid4().hex
     kb_upload_dir = os.path.join(settings.UPLOAD_DIR, f"kb_{kb_id}")
     os.makedirs(kb_upload_dir, exist_ok=True)
-
-    for file in files:
-        file_ext = os.path.splitext(file.filename)[1]
-        file_id = uuid.uuid4().hex
-        file_path = os.path.join(kb_upload_dir, f"{file_id}{file_ext}")
-
-        with open(file_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
-
-        doc = KnowledgeDocument(
-            knowledge_base_id=kb_id,
-            title=file.filename,
-            file_name=file.filename,
-            file_path=file_path,
-            file_size=len(content),
-            file_type=file_ext[1:] if file_ext else "unknown",
-            parsing_status="pending"
-        )
-        db.add(doc)
-        kb.doc_count = (kb.doc_count or 0) + 1
-
-        uploaded.append({
-            "title": file.filename,
-            "file_size": len(content),
-            "file_type": file_ext[1:] if file_ext else "unknown",
-        })
-
-    await db.commit()
-
-    # 批量上传后自动解析（仅文本提取+关键词+摘要，不向量化）
-    parse_errors = []
-    for item in uploaded:
-        try:
-            doc_result = await db.execute(
-                select(KnowledgeDocument).where(KnowledgeDocument.id == item["id"])
-            )
-            doc = doc_result.scalar_one_or_none()
-            if doc:
-                await _parse_document(doc.id, db)
-        except Exception as e:
-            parse_errors.append({"title": item["title"], "error": str(e)})
-
-    return BaseResponse(
-        message=f"成功上传 {len(uploaded)} 个文档",
-        data={
-            "count": len(uploaded),
-            "documents": uploaded,
-            "parse_errors": parse_errors if parse_errors else None,
-        }
+    file_path = os.path.join(kb_upload_dir, f"{file_id}{file_ext}")
+    
+    with open(file_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    
+    # 创建文档记录
+    doc = KnowledgeDocument(
+        knowledge_base_id=kb_id,
+        title=file.filename,
+        file_name=file.filename,
+        file_path=file_path,
+        file_size=len(content),
+        file_type=file_ext[1:] if file_ext else "unknown",
+        parsing_status="pending"
     )
+    
+    db.add(doc)
+    kb.doc_count = (kb.doc_count or 0) + 1
+    
+    await db.commit()
+    await db.refresh(doc)
+    
+    return {
+        "id": doc.id,
+        "title": doc.title,
+        "file_name": doc.file_name,
+        "file_size": doc.file_size,
+        "parsing_status": doc.parsing_status
+    }
+
 
 
 @router.delete("/documents/{doc_id}")
@@ -890,16 +872,25 @@ def _extract_text(file_path: str, file_type: str) -> str:
 
 def _extract_text_from_image(file_path: str) -> str:
     """使用OCR提取图片文字"""
-    from app.core.ai_digital_base.local_services import ocr_service
-
+    from app.core.ai_digital_base.local_services import ocr_service, TESSERACT_AVAILABLE
+    
+    # 检查 OCR 是否可用
+    if not TESSERACT_AVAILABLE:
+        logger.warning("OCR提取失败: pytesseract 未安装")
+        return ""
+    
+    if not ocr_service.is_configured():
+        logger.warning("OCR提取失败: Tesseract 未配置或不可用")
+        return ""
+    
     with open(file_path, "rb") as f:
         image_data = f.read()
-
+    
     result = ocr_service.extract_text(image_data)
     if result.get("success"):
         return result.get("text", "")
     else:
-        logger.warning(f"OCR提取失败: {result.get('error')}")
+        logger.warning(f"OCR提取失败: {result.get('error', '未知错误')}")
         return ""
 
 

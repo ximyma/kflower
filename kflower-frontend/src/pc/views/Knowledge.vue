@@ -417,6 +417,7 @@
         :on-success="onBatchUploadSuccess"
         :on-error="onBatchUploadError"
         :before-upload="beforeBatchUpload"
+        :name="'file'"
         multiple
         drag
         :show-file-list="true"

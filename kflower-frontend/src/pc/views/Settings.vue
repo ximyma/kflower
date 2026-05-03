@@ -12,9 +12,14 @@
           <template #header>
             <div class="card-header">
               <span>🤖 AI 配置状态</span>
-              <el-button size="small" @click="refreshConfigStatus" :loading="loadingConfigStatus">
-                <el-icon><Refresh /></el-icon> 刷新
-              </el-button>
+              <div>
+                <el-button size="small" @click="testAllAIServices" :loading="testingAll" type="warning">
+                  <el-icon><Cpu /></el-icon> 一键检测
+                </el-button>
+                <el-button size="small" @click="refreshConfigStatus" :loading="loadingConfigStatus">
+                  <el-icon><Refresh /></el-icon> 刷新
+                </el-button>
+              </div>
             </div>
           </template>
 
@@ -54,11 +59,19 @@
               <div class="status-info">
                 <div class="status-title">Embedding</div>
                 <div class="status-desc">
-                  {{ aiConfigStatus.embedding?.available
-                    ? (aiConfigStatus.embedding.current_model || '未知')
-                    : aiConfigStatus.embedding?.st_available
-                      ? 'API未配置'
-                      : 'sentence-transformers未安装' }}
+                  <template v-if="aiConfigStatus.embedding?.available">
+                    <span v-if="aiConfigStatus.embedding.local_models?.length">
+                      本地模型: {{ aiConfigStatus.embedding.local_models.length }}个
+                    </span>
+                    <span v-else>
+                      {{ aiConfigStatus.embedding.current_model || '已配置' }}
+                    </span>
+                  </template>
+                  <template v-else>
+                    {{ !aiConfigStatus.embedding?.st_available
+                      ? 'sentence-transformers未安装'
+                      : '请添加Embedding模型' }}
+                  </template>
                 </div>
                 <div class="status-provider" v-if="aiConfigStatus.embedding?.current_provider">
                   {{ aiConfigStatus.embedding.current_provider }}
@@ -90,7 +103,7 @@
               </div>
               <div class="status-info">
                 <div class="status-title">OCR</div>
-                <div class="status-desc">{{ aiConfigStatus.ocr?.available ? '已安装' : '未安装' }}</div>
+                <div class="status-desc">{{ aiConfigStatus.ocr?.available ? '已就绪' : '未配置' }}</div>
               </div>
             </div>
           </div>
@@ -110,6 +123,44 @@
               <div v-for="(w, i) in aiConfigStatus.warnings" :key="i" style="margin-top:4px">{{ w }}</div>
             </template>
           </el-alert>
+        </el-card>
+
+        <!-- OCR 配置 -->
+        <el-card style="margin-top:16px">
+          <template #header>
+            <div class="card-header">
+              <span>OCR 文字识别配置</span>
+              <el-button size="small" @click="testOcr" :loading="testingOcr">
+                <el-icon><VideoPlay /></el-icon> 测试 OCR
+              </el-button>
+            </div>
+          </template>
+          
+          <el-form :model="ocrForm" label-width="120px" style="max-width:600px">
+            <el-form-item label="Tesseract 路径">
+              <el-input v-model="ocrForm.tesseractPath" placeholder="例如: D:\Tesseract-OCR\tesseract.exe">
+                <template #append>
+                  <el-button @click="autoDetectTesseract">自动检测</el-button>
+                </template>
+              </el-input>
+              <div class="form-tip">Tesseract-OCR 安装路径，Windows 下通常是 D:\Tesseract-OCR\tesseract.exe 或 C:\Program Files\Tesseract-OCR\tesseract.exe</div>
+            </el-form-item>
+            
+            <el-form-item label="识别语言">
+              <el-select v-model="ocrForm.lang" style="width:100%">
+                <el-option label="中文简体" value="chi_sim" />
+                <el-option label="英文" value="eng" />
+                <el-option label="中英文混合" value="chi_sim+eng" />
+                <el-option label="中文繁体" value="chi_tra" />
+              </el-select>
+            </el-form-item>
+            
+            <el-form-item>
+              <el-button type="primary" @click="saveOcrConfig" :loading="savingOcr">
+                <el-icon><Check /></el-icon> 保存配置
+              </el-button>
+            </el-form-item>
+          </el-form>
         </el-card>
 
         <el-card>
@@ -378,7 +429,7 @@
               <template #default="{ row }">
                 <el-button type="primary" size="small" link @click="editEmbeddingModel(row)">编辑</el-button>
                 <el-button type="success" size="small" link @click="setDefaultEmbeddingModel(row)" v-if="!row.is_default && !row.isDefault">设为默认</el-button>
-                <el-button type="warning" size="small" link @click="testEmbeddingModel(row)">测试</el-button>
+                <el-button type="warning" size="small" link @click="testEmbedModelRow(row)">测试</el-button>
                 <el-button type="danger" size="small" link @click="deleteEmbeddingModel(row)" v-if="!row.is_builtin">删除</el-button>
               </template>
             </el-table-column>
@@ -696,31 +747,17 @@
     <!-- 添加/编辑 Rerank 模型对话框 -->
     <el-dialog v-model="showRerankDialog" :title="editingRerank ? '编辑 Rerank 模型' : '添加 Rerank 模型'" width="600px">
       <el-form :model="rerankForm" label-width="130px">
-        <el-form-item label="模型名称" required>
-          <el-input v-model="rerankForm.name" placeholder="如: BGE Reranker" />
+        <el-form-item label="模型名称">
+          <el-input v-model="rerankForm.name" placeholder="留空则自动使用模型 ID 作为名称（可选）" />
         </el-form-item>
         <el-form-item label="模型 ID" required>
-          <el-select
+          <el-input
             v-model="rerankForm.model"
-            filterable
-            allow-create
-            placeholder="选择或输入 Rerank 模型 ID"
+            placeholder="输入 Rerank 模型 ID，如 BAAI/bge-reranker-v2-m3"
+            clearable
             style="width:100%"
-            :reserve-keyword="false"
-          >
-            <el-option-group label="SiliconFlow (推荐)">
-              <el-option value="BAAI/bge-reranker-v2-m3" label="BAAI/bge-reranker-v2-m3" description="BGE 多语言重排序模型" />
-              <el-option value="BAAI/bge-reranker-base" label="BAAI/bge-reranker-base" description="BGE 基础重排序模型" />
-            </el-option-group>
-            <el-option-group label="Cohere">
-              <el-option value="rerank-multilingual-v2.0" label="rerank-multilingual-v2.0" description="Cohere 多语言重排序" />
-              <el-option value="rerank-english-v2.0" label="rerank-english-v2.0" description="Cohere 英文重排序" />
-            </el-option-group>
-            <el-option-group label="本地模型">
-              <el-option value="Xorbits/neural-searcher" label="Xorbits/neural-searcher" description="本地神经搜索模型" />
-            </el-option-group>
-          </el-select>
-          <div class="form-tip">可直接输入自定义模型 ID，支持 HuggingFace 模型名称</div>
+          />
+          <div class="form-tip">支持任意 Rerank 模型 ID，包括自定义模型</div>
         </el-form-item>
         <el-form-item label="部署方式">
           <el-select v-model="rerankForm.provider" style="width:100%">
@@ -769,27 +806,18 @@
           </el-radio-group>
         </el-form-item>
         
-        <el-form-item label="模型名称" required>
-          <el-input v-model="embeddingForm.name" placeholder="如: 阿里云 Embedding" />
+        <el-form-item label="模型名称">
+          <el-input v-model="embeddingForm.name" placeholder="留空则自动使用模型 ID 作为名称（可选）" />
         </el-form-item>
         
         <el-form-item label="模型 ID" required>
-          <el-select v-model="embeddingForm.model" filterable allow-create placeholder="选择或输入模型ID" style="width:100%">
-            <el-option-group v-if="embeddingForm.provider === 'api'" label="API 模型">
-              <el-option value="text-embedding-v2" label="text-embedding-v2" description="DashScope 1536维" />
-              <el-option value="text-embedding-v3" label="text-embedding-v3" description="DashScope 1024维" />
-              <el-option value="text-embedding-3-small" label="text-embedding-3-small" description="OpenAI 1536维" />
-              <el-option value="text-embedding-3-large" label="text-embedding-3-large" description="OpenAI 3072维" />
-            </el-option-group>
-            <el-option-group v-if="embeddingForm.provider === 'local'" label="本地模型">
-              <el-option value="BAAI/bge-m3" label="BAAI/bge-m3" description="BGE多语言模型 1024维" />
-              <el-option value="BAAI/bge-large-zh-v1.5" label="BAAI/bge-large-zh-v1.5" description="BGE大型中文模型 1024维" />
-              <el-option value="BAAI/bge-base-zh-v1.5" label="BAAI/bge-base-zh-v1.5" description="BGE基础中文模型 768维" />
-              <el-option value="sentence-transformers/all-mpnet-base-v2" label="all-mpnet-base-v2" description="MPNet高质量英文模型 768维" />
-              <el-option value="all-MiniLM-L6-v2" label="all-MiniLM-L6-v2" description="轻量级英文模型 384维" />
-              <el-option value="shibing624/text2vec-base-chinese" label="text2vec-base-chinese" description="中文向量化模型 768维" />
-            </el-option-group>
-          </el-select>
+          <el-input
+            v-model="embeddingForm.model"
+            placeholder="输入模型 ID，如 text-embedding-v2 或 BAAI/bge-m3"
+            clearable
+            style="width:100%"
+          />
+          <div class="form-tip">支持任意模型 ID，包括自定义模型</div>
         </el-form-item>
         
         <el-form-item label="向量维度">
@@ -834,6 +862,9 @@
       </el-form>
       <template #footer>
         <el-button @click="showEmbeddingDialog = false">取消</el-button>
+        <el-button type="info" @click="testEmbeddingModel" :loading="testingEmbedding" :disabled="!embeddingForm.model.trim()">
+          测试模型
+        </el-button>
         <el-button type="primary" @click="saveEmbeddingModel" :loading="savingEmbedding">
           {{ editingEmbedding ? '保存' : '添加' }}
         </el-button>
@@ -851,6 +882,115 @@ import { systemAPI, localAIAPI } from '../../common/api'
 const activeTab = ref('ai-models')
 const aiConfigStatus = ref<any>(null)
 const loadingConfigStatus = ref(false)
+const testingAll = ref(false)
+
+// OCR 配置
+const ocrForm = reactive({
+  tesseractPath: '',
+  lang: 'chi_sim+eng'
+})
+const testingOcr = ref(false)
+const savingOcr = ref(false)
+
+// 加载 OCR 配置
+async function loadOcrConfig() {
+  try {
+    // 从状态中获取当前的 OCR 配置
+    if (aiConfigStatus.value?.ocr?.tesseract_cmd) {
+      ocrForm.tesseractPath = aiConfigStatus.value.ocr.tesseract_cmd
+    }
+    if (aiConfigStatus.value?.ocr?.lang) {
+      ocrForm.lang = aiConfigStatus.value.ocr.lang
+    }
+  } catch (err) {
+    console.error('加载OCR配置失败', err)
+  }
+}
+
+// 自动检测 Tesseract 路径
+async function autoDetectTesseract() {
+  try {
+    // 调用 OCR 状态 API（使用封装的 API，自动携带 token）
+    const res: any = await localAIAPI.ocrStatus()
+    if (res && res.success !== false && res.data?.tesseract_cmd) {
+      ocrForm.tesseractPath = res.data.tesseract_cmd
+      ElMessage.success('已自动检测到 Tesseract: ' + res.data.tesseract_cmd)
+      return
+    }
+  } catch (err) {
+    console.error('检测OCR状态失败', err)
+  }
+  
+  ElMessage.warning('未自动检测到 Tesseract，请手动选择安装路径')
+}
+
+// 测试 OCR 功能
+async function testOcr() {
+  if (!ocrForm.tesseractPath) {
+    ElMessage.warning('请先配置 Tesseract 路径')
+    return
+  }
+  
+  testingOcr.value = true
+  try {
+    // 创建一个简单的测试图片（白色背景，黑色文字）
+    const canvas = document.createElement('canvas')
+    canvas.width = 200
+    canvas.height = 50
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = 'white'
+    ctx.fillRect(0, 0, 200, 50)
+    ctx.fillStyle = 'black'
+    ctx.font = '20px Arial'
+    ctx.fillText('测试 OCR', 20, 30)
+    
+    // 转换为 Blob
+    const blob = await new Promise<Blob>((resolve) => {
+      canvas.toBlob((b) => resolve(b!), 'image/png')
+    })
+    
+    // 创建 File 对象
+    const testFile = new File([blob], 'test.png', { type: 'image/png' })
+    
+    // 调用 OCR API（使用封装的 API，自动携带 token）
+    const res: any = await localAIAPI.ocrText(testFile, ocrForm.lang)
+    
+    if (res && res.success !== false) {
+      ElMessage.success('OCR 测试成功！识别结果: ' + (res.data?.text || res.text || '成功'))
+    } else {
+      ElMessage.error('OCR 测试失败: ' + (res?.message || res?.detail || '未知错误'))
+    }
+  } catch (err: any) {
+    ElMessage.error('OCR 测试失败: ' + (err?.message || err?.response?.data?.detail || '请检查 Tesseract 路径是否正确'))
+  } finally {
+    testingOcr.value = false
+  }
+}
+
+// 保存 OCR 配置
+async function saveOcrConfig() {
+  if (!ocrForm.tesseractPath) {
+    ElMessage.warning('请输入 Tesseract 路径')
+    return
+  }
+  
+  savingOcr.value = true
+  try {
+    const res: any = await localAIAPI.ocrConfigure(ocrForm.tesseractPath, ocrForm.lang)
+    
+    if (res && res.success !== false) {
+      ElMessage.success('OCR 配置已保存: ' + res.message)
+      // 刷新状态
+      refreshConfigStatus()
+    } else {
+      ElMessage.error('保存失败: ' + (res?.message || res?.detail || '未知错误'))
+    }
+  } catch (err: any) {
+    ElMessage.error('保存失败: ' + (err?.message || err?.response?.data?.detail || '网络错误'))
+  } finally {
+    savingOcr.value = false
+  }
+}
 
 // AI模型管理
 const aiModels = ref<any[]>([])
@@ -1040,6 +1180,72 @@ async function loadAIConfigStatus() {
 
 function refreshConfigStatus() {
   loadAIConfigStatus()
+}
+
+// 一键检测所有 AI 服务
+async function testAllAIServices() {
+  testingAll.value = true
+  const results: string[] = []
+  
+  try {
+    // 1. 测试 OCR
+    if (aiConfigStatus.value?.ocr?.available) {
+      try {
+        const res: any = await localAIAPI.ocrStatus()
+        if (res?.success !== false) {
+          results.push('✅ OCR: 已就绪')
+        } else {
+          results.push('❌ OCR: 测试失败')
+        }
+      } catch {
+        results.push('❌ OCR: 连接失败')
+      }
+    } else {
+      results.push('⚠️ OCR: 未配置')
+    }
+    
+    // 2. 测试 Embedding
+    if (aiConfigStatus.value?.embedding?.available) {
+      try {
+        const res: any = await localAIAPI.testEmbedModel(
+          aiConfigStatus.value.embedding.current_model || 'default'
+        )
+        if (res?.success !== false) {
+          results.push(`✅ Embedding: 已就绪 (维度: ${res.data?.dimension || '未知'})`)
+        } else {
+          results.push('❌ Embedding: 测试失败')
+        }
+      } catch {
+        results.push('❌ Embedding: 连接失败')
+      }
+    } else {
+      results.push('⚠️ Embedding: 未配置')
+    }
+    
+    // 3. 测试 Jieba (通过文本分割 API)
+    try {
+      const res: any = await localAIAPI.textSegment('测试')
+      if (res?.success !== false) {
+        results.push('✅ Jieba: 已就绪')
+      } else {
+        results.push('❌ Jieba: 测试失败')
+      }
+    } catch {
+      results.push('❌ Jieba: 连接失败')
+    }
+    
+    // 显示结果
+    ElMessageBox.alert(
+      results.join('<br>'),
+      'AI 服务检测结果',
+      {
+        confirmButtonText: '确定',
+        dangerouslyUseHTMLString: true
+      }
+    )
+  } finally {
+    testingAll.value = false
+  }
 }
 
 async function loadAiModels() {
@@ -1415,8 +1621,8 @@ function editRerankModel(row: any) {
 }
 
 async function saveRerankModel() {
-  if (!rerankForm.name.trim() || !rerankForm.model.trim()) {
-    ElMessage.warning('请填写模型名称和模型ID')
+  if (!rerankForm.model.trim()) {
+    ElMessage.warning('请填写模型 ID')
     return
   }
   
@@ -1424,7 +1630,13 @@ async function saveRerankModel() {
   try {
     const modelData = {
       id: editingRerank.value?.id || Date.now(),
-      ...rerankForm
+      name: rerankForm.name.trim() || rerankForm.model,  // name 可空，默认用 model 作为名称
+      model: rerankForm.model,
+      provider: rerankForm.provider,
+      api_url: rerankForm.apiUrl,
+      api_key: rerankForm.apiKey,
+      model_path: rerankForm.modelPath,
+      enabled: rerankForm.enabled
     }
     
     if (editingRerank.value) {
@@ -1489,14 +1701,12 @@ async function updateEmbeddingField(field: string, value: any) {
 }
 
 function handleEmbeddingProviderChange(provider: string) {
-  // 切换类型时清空相关字段
+  // 切换类型时清空相关字段（让用户自由填写）
   if (provider === 'api') {
-    embeddingForm.model = 'text-embedding-v2'
     embeddingForm.dimension = 1536
     embeddingForm.apiBase = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
     embeddingForm.apiKey = ''
   } else {
-    embeddingForm.model = 'BAAI/bge-m3'
     embeddingForm.dimension = 1024
     embeddingForm.device = 'cpu'
     embeddingForm.modelPath = ''
@@ -1540,10 +1750,6 @@ function editEmbeddingModel(row: any) {
 }
 
 async function saveEmbeddingModel() {
-  if (!embeddingForm.name.trim()) {
-    ElMessage.warning('请填写模型名称')
-    return
-  }
   if (!embeddingForm.model.trim()) {
     ElMessage.warning('请填写模型 ID')
     return
@@ -1556,7 +1762,7 @@ async function saveEmbeddingModel() {
   savingEmbedding.value = true
   try {
     const modelData = {
-      name: embeddingForm.name,
+      name: embeddingForm.name.trim() || embeddingForm.model,  // name 可空，默认用 model 作为名称
       model: embeddingForm.model,
       provider: embeddingForm.provider,
       dimension: embeddingForm.dimension,
@@ -1590,6 +1796,64 @@ async function saveEmbeddingModel() {
   }
 }
 
+// 测试对话框中的 Embedding 模型配置（先保存再测试）
+async function testEmbeddingModel() {
+  if (!embeddingForm.model.trim()) {
+    ElMessage.warning('请先填写模型 ID')
+    return
+  }
+  if (embeddingForm.provider === 'api' && !embeddingForm.apiKey.trim()) {
+    ElMessage.warning('API 模型需要填写 API Key')
+    return
+  }
+
+  testingEmbedding.value = true
+  try {
+    ElMessage.info('正在保存并测试模型，请稍候...')
+    
+    // 先保存模型
+    const modelData = {
+      name: embeddingForm.name || embeddingForm.model,
+      model: embeddingForm.model,
+      provider: embeddingForm.provider,
+      dimension: embeddingForm.dimension,
+      description: embeddingForm.description,
+      api_key: embeddingForm.apiKey,
+      api_base: embeddingForm.apiBase,
+      model_path: embeddingForm.modelPath,
+      device: embeddingForm.device,
+      batch_size: embeddingForm.batchSize,
+      enabled: embeddingForm.enabled
+    }
+    
+    // 保存模型（不管是否已存在）
+    let res: any
+    if (editingEmbedding.value) {
+      res = await localAIAPI.updateEmbedModel(embeddingForm.model, modelData)
+    } else {
+      res = await localAIAPI.addEmbedModel(modelData)
+    }
+    
+    if (!res || res.success === false) {
+      ElMessage.error('保存模型失败: ' + (res?.message || '未知错误'))
+      testingEmbedding.value = false
+      return
+    }
+    
+    // 测试模型
+    const testRes: any = await localAIAPI.testEmbedModel(embeddingForm.model)
+    if (testRes && testRes.success !== false) {
+      ElMessage.success('测试成功！模型: ' + testRes.data?.model + '，维度: ' + testRes.data?.dimension)
+    } else {
+      ElMessage.error('测试失败: ' + (testRes?.message || testRes?.detail || '未知错误'))
+    }
+  } catch (e: any) {
+    ElMessage.error('测试失败: ' + (e?.message || e?.response?.data?.detail || '请检查模型配置'))
+  } finally {
+    testingEmbedding.value = false
+  }
+}
+
 async function deleteEmbeddingModel(row: any) {
   try {
     await ElMessageBox.confirm(`确定删除 "${row.name || row.model}" 吗？`, '确认删除', { type: 'warning' })
@@ -1618,7 +1882,7 @@ async function setDefaultEmbeddingModel(row: any) {
   }
 }
 
-async function testEmbeddingModel(row: any) {
+async function testEmbedModelRow(row: any) {
   try {
     const modelId = row.model || row.name
     ElMessage.info('正在测试模型，请稍候...')

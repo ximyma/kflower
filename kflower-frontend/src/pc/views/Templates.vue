@@ -909,11 +909,45 @@
               <el-select v-model="importHeaderRow" placeholder="选择表头行" style="width:200px" @change="reparseWithHeaderRow">
                 <el-option v-for="(_, idx) in (importData.all_rows || importData.rows)" :key="idx" :label="`第 ${idx + 1} 行` + (idx === 0 ? '（默认）' : '')" :value="idx" />
               </el-select>
+              <el-checkbox v-model="enableMultiRowHeader" style="margin-left:16px">多行表头</el-checkbox>
+              <el-tooltip content="选中后可以选择多行作为表头并合并">
+                <el-icon><InfoFilled /></el-icon>
+              </el-tooltip>
               <span v-if="importData.sheet_names && importData.sheet_names.length > 1" style="margin-left:16px">工作表：</span>
               <el-select v-if="importData.sheet_names && importData.sheet_names.length > 1" v-model="importSheetName" placeholder="选择工作表" style="width:160px" @change="reparseWithSheet">
                 <el-option v-for="sn in importData.sheet_names" :key="sn" :label="sn" :value="sn" />
               </el-select>
             </div>
+            
+            <!-- 多行表头选择 -->
+            <div v-if="enableMultiRowHeader" class="control-row" style="margin-top:12px">
+              <span>选择表头行（可多选）：</span>
+              <div class="multi-header-checkboxes" style="margin-top:8px; max-height: 120px; overflow-y: auto;">
+                <el-checkbox-group v-model="selectedHeaderRows">
+                  <el-checkbox 
+                    v-for="(row, idx) in (importData.all_rows || importData.rows).slice(0, 5)" 
+                    :key="idx" 
+                    :label="idx"
+                    @change="mergeMultiRowHeaders"
+                  >
+                    第 {{ idx + 1 }} 行: {{ row.slice(0, 3).join(' | ') }}{{ row.length > 3 ? '...' : '' }}
+                  </el-checkbox>
+                </el-checkbox-group>
+              </div>
+              <div v-if="selectedHeaderRows.length > 0" class="control-row" style="margin-top:8px">
+                <span>合并方式：</span>
+                <el-radio-group v-model="multiHeaderMergeType" @change="mergeMultiRowHeaders">
+                  <el-radio label="vertical">垂直合并（用空格连接）</el-radio>
+                  <el-radio label="first">仅使用第一行</el-radio>
+                </el-radio-group>
+              </div>
+              <div v-if="mergedHeaderPreview.length > 0" class="control-row" style="margin-top:8px">
+                <span>合并预览：</span>
+                <el-tag v-for="(h, idx) in mergedHeaderPreview.slice(0, 6)" :key="idx" size="small" style="margin-right:4px">{{ h }}</el-tag>
+                <el-tag v-if="mergedHeaderPreview.length > 6" size="small">... 共 {{ mergedHeaderPreview.length }} 个</el-tag>
+              </div>
+            </div>
+            
             <div class="control-row" style="margin-top:8px">
               <span>选择导入字段：</span>
               <el-checkbox v-model="importSelectAll" :indeterminate="importSelectIndeterminate" @change="onImportSelectAllChange">全选</el-checkbox>
@@ -2354,6 +2388,65 @@ const importHeaderRow = ref(0)
 const importSheetName = ref('')
 const importDependenciesStatus = ref<any>(null)  // 依赖状态
 
+// 多行表头相关变量
+const enableMultiRowHeader = ref(false)
+const selectedHeaderRows = ref<number[]>([0])
+const multiHeaderMergeType = ref('vertical')
+const mergedHeaderPreview = ref<string[]>([])
+
+// 合并多行表头
+function mergeMultiRowHeaders() {
+  if (!enableMultiRowHeader.value || selectedHeaderRows.value.length === 0) {
+    mergedHeaderPreview.value = []
+    return
+  }
+  
+  const allRows = importData.all_rows || importData.rows || []
+  if (allRows.length === 0) {
+    mergedHeaderPreview.value = []
+    return
+  }
+  
+  // 获取选中的行
+  const selectedRows = selectedHeaderRows.value.map(idx => allRows[idx]).filter(row => row)
+  
+  if (selectedRows.length === 0) {
+    mergedHeaderPreview.value = []
+    return
+  }
+  
+  if (selectedRows.length === 1) {
+    // 只有一行，直接使用
+    mergedHeaderPreview.value = selectedRows[0].map(c => String(c || '').trim())
+    return
+  }
+  
+  // 多行合并
+  if (multiHeaderMergeType.value === 'vertical') {
+    // 垂直合并：用空格连接对应列
+    const maxCols = Math.max(...selectedRows.map(r => r.length))
+    const merged: string[] = []
+    
+    for (let col = 0; col < maxCols; col++) {
+      const parts: string[] = []
+      for (const row of selectedRows) {
+        if (col < row.length) {
+          const cell = String(row[col] || '').trim()
+          if (cell) {
+            parts.push(cell)
+          }
+        }
+      }
+      merged.push(parts.join(' '))
+    }
+    
+    mergedHeaderPreview.value = merged
+  } else {
+    // 仅使用第一行
+    mergedHeaderPreview.value = selectedRows[0].map(c => String(c || '').trim())
+  }
+}
+
 // 获取导入依赖状态
 async function fetchImportDependenciesStatus() {
   try {
@@ -2531,8 +2624,60 @@ async function selectHeaderRow(rowIndex: number) {
 }
 
 async function reparseWithHeaderRow() {
-  // 切换表头行只需重新应用，不需要重新上传文件
-  await applyHeaderRow(importHeaderRow.value)
+  // 如果启用了多行表头且有合并后的表头，直接使用
+  if (enableMultiRowHeader.value && mergedHeaderPreview.value.length > 0) {
+    await applyMergedHeader()
+  } else {
+    // 否则调用后端API重新应用表头行
+    await applyHeaderRow(importHeaderRow.value)
+  }
+}
+
+// 应用合并后的多行表头
+async function applyMergedHeader() {
+  if (!importData.all_rows || importData.all_rows.length === 0) return
+  
+  try {
+    // 使用前端合并后的表头
+    const mergedHeaders = mergedHeaderPreview.value
+    const headerRowIndex = Math.min(...selectedHeaderRows.value)
+    const maxCol = mergedHeaders.length
+    
+    // 数据行从表头行之后开始
+    const dataStartIndex = Math.max(...selectedHeaderRows.value) + 1
+    const dataRows = importData.all_rows.slice(dataStartIndex).map(row => row.slice(0, maxCol))
+    
+    // 更新 importData
+    importData.headers = mergedHeaders
+    importData.rows = dataRows
+    importData.total_rows = dataRows.length
+    importData.total_columns = maxCol
+    importData.header_row = headerRowIndex
+    
+    // 生成字段定义
+    const fields: any[] = mergedHeaders.map((label: string, idx: number) => ({
+      label,
+      name: `field_${idx + 1}`,
+      type: 'text',
+      required: false,
+      width: '100%'
+    }))
+    
+    importFields.value = fields.map((f: any) => ({
+      ...f,
+      optionsText: ''
+    }))
+    
+    // 初始化字段全选
+    importSelectedFields.value = {}
+    mergedHeaders.forEach((_: any, idx: number) => { importSelectedFields.value[idx] = true })
+    importSelectAll.value = true
+    importSelectIndeterminate.value = false
+    
+    ElMessage.success('已应用合并后的表头')
+  } catch (e: any) {
+    ElMessage.error('应用表头失败: ' + (e.message || '未知错误'))
+  }
 }
 
 async function reparseWithSheet() {

@@ -23,6 +23,12 @@ api.interceptors.request.use(
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${token}`
     }
+    // 自动处理 FormData：让浏览器自动设置正确的 Content-Type（含 boundary）
+    if (config.data instanceof FormData) {
+      // axios 实例有默认 Content-Type，发送 FormData 时必须删除，
+      // 否则浏览器不会自动添加 multipart/form-data 的 boundary
+      delete config.headers['Content-Type']
+    }
     return config
   },
   (error: AxiosError) => {
@@ -286,16 +292,26 @@ export const localAIAPI = {
     const form = new FormData()
     form.append('file', file)
     if (lang) form.append('lang', lang)
-    return api.post('/local-ai/ocr/text', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    return api.post('/local-ai/ocr/text', form, {
+      headers: { 'Content-Type': undefined as any }
+    })
   },
   ocrTable: (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return api.post('/local-ai/ocr/table', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    return api.post('/local-ai/ocr/table', form, {
+      headers: { 'Content-Type': undefined as any }
+    })
   },
   ocrStatus: () => api.get('/local-ai/ocr/status'),
-  ocrConfigure: (tesseractPath: string, lang?: string) =>
-    api.put('/local-ai/ocr/config', null, { params: { tesseract_path: tesseractPath, lang: lang || 'chi_sim+eng' } }),
+  ocrConfigure: (tesseractPath: string, lang?: string) => {
+    const formData = new FormData()
+    formData.append('tesseract_path', tesseractPath)
+    if (lang) formData.append('lang', lang)
+    return api.put('/local-ai/ocr/config', formData, {
+      headers: { 'Content-Type': undefined as any }
+    })
+  },
   textSegment: (text: string, mode?: string) =>
     api.post('/local-ai/text/segment', { text, mode: mode || 'default' }),
   textKeywords: (text: string, topK?: number) =>
@@ -342,7 +358,9 @@ export const localAIAPI = {
     const form = new FormData()
     form.append('file', file)
     form.append('operations', JSON.stringify(operations || ['ocr', 'segment']))
-    return api.post('/local-ai/process-attachment', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    return api.post('/local-ai/process-attachment', form, {
+      headers: { 'Content-Type': undefined as any }
+    })
   },
   servicesStatus: () => api.get('/local-ai/services-status'),
 }
@@ -389,8 +407,8 @@ export const docConverterAPI = {
     form.append('file', file)
     form.append('target_format', targetFormat)
     return api.post('/doc-converter/convert', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
       responseType: 'blob',
+      headers: { 'Content-Type': undefined as any }
     })
   },
   // Excel/CSV 提取为 JSON
@@ -400,7 +418,7 @@ export const docConverterAPI = {
     if (headerRow !== undefined) form.append('header_row', String(headerRow))
     if (maxRows !== undefined) form.append('max_rows', String(maxRows))
     return api.post('/doc-converter/extract-json', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined as any }
     })
   },
   // 自动转换旧格式（上传前置处理）
@@ -408,8 +426,8 @@ export const docConverterAPI = {
     const form = new FormData()
     form.append('file', file)
     return api.post('/doc-converter/auto-convert', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
       responseType: 'blob',
+      headers: { 'Content-Type': undefined as any }
     })
   },
   // 批量转换（返回 zip blob）
@@ -418,8 +436,8 @@ export const docConverterAPI = {
     files.forEach(f => form.append('files', f))
     form.append('target_format', targetFormat)
     return api.post('/doc-converter/batch-convert', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
       responseType: 'blob',
+      headers: { 'Content-Type': undefined as any }
     })
   },
 }

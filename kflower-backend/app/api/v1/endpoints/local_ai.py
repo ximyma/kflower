@@ -4,7 +4,7 @@ API路由 - 本地AI服务
 """
 import io
 import json
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
@@ -327,7 +327,7 @@ async def embed_list_models(
 
 @router.post("/embed/models")
 async def embed_add_model(
-    model_config: dict,
+    model_config: dict = Body(...),
     current_user: User = Depends(get_current_user)
 ):
     """添加自定义嵌入模型"""
@@ -338,7 +338,7 @@ async def embed_add_model(
 @router.put("/embed/models/{model_id}")
 async def embed_update_model(
     model_id: str,
-    model_config: dict,
+    model_config: dict = Body(...),
     current_user: User = Depends(get_current_user)
 ):
     """更新自定义嵌入模型"""

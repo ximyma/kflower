@@ -134,28 +134,31 @@ class OCRService:
     def extract_text(self, image_data: bytes, lang: str = None) -> Dict[str, Any]:
         """
         从图片中提取文字
-
+        
         Args:
             image_data: 图片二进制数据
             lang: 语言代码，默认 chi_sim+eng
-
+            
         Returns:
             {"success": True, "text": "...", "confidence": 0.95}
         """
         if not TESSERACT_AVAILABLE:
             return {"success": False, "error": "Tesseract OCR 未安装"}
-
+        
+        if not self.is_configured():
+            return {"success": False, "error": "Tesseract 未配置或不可用，请到系统设置中配置"}
+        
         lang = lang or self.default_lang
-
+        
         try:
             # 打开并预处理图片
             pil_img = Image.open(io.BytesIO(image_data))
             if pil_img.mode != "RGB":
                 pil_img = pil_img.convert("RGB")
-
+            
             # 图像预处理
             processed_img = self._preprocess(pil_img)
-
+            
             # OCR 识别
             custom_config = r"--oem 3 --psm 6"
             text = pytesseract.image_to_string(
@@ -163,7 +166,7 @@ class OCRService:
                 lang=lang,
                 config=custom_config
             )
-
+            
             # 估算置信度
             data = pytesseract.image_to_data(
                 processed_img,
@@ -173,15 +176,16 @@ class OCRService:
             )
             confidences = [int(conf) for conf in data["conf"] if int(conf) > 0]
             avg_confidence = sum(confidences) / len(confidences) / 100 if confidences else 0.5
-
+            
             return {
                 "success": True,
                 "text": text.strip(),
                 "confidence": round(avg_confidence, 2),
                 "lang": lang
             }
-
+            
         except Exception as e:
+            logger.error(f"OCR提取失败: {e}, tesseract_path={self.tesseract_path}")
             return {"success": False, "error": str(e)}
 
     def extract_table(self, image_data: bytes) -> Dict[str, Any]:

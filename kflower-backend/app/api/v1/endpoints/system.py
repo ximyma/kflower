@@ -558,14 +558,26 @@ async def get_ai_config_status(
     except Exception:
         pass
     
-    # 4. OCR状态
+    # 4. OCR状态（使用ocr_service检查配置路径）
     ocr_available = False
     try:
-        import pytesseract
-        pytesseract.get_tesseract_version()
-        ocr_available = True
+        from app.core.ai_digital_base.local_services import ocr_service
+        ocr_available = ocr_service.is_configured()
     except Exception:
         pass
+    
+    # 5. Embedding状态改进：检查是否有任何可用模型
+    # （用户可能配置了本地模型但未切换provider）
+    if not embed_available and ST_AVAILABLE:
+        local_models = [m for m in embed_models if m.get("provider") == "local"]
+        if local_models:
+            embed_available = True
+            # 如果当前provider是api但有本地模型，标记为local
+            if embed_provider == "api":
+                embed_provider = "local"
+    
+    # 6. 本地模型列表
+    local_embed_models = [m for m in embed_models if m.get("provider") == "local"]
     
     return BaseResponse(data={
         # 对话模型
@@ -583,6 +595,7 @@ async def get_ai_config_status(
             "current_provider": embed_provider,
             "st_available": ST_AVAILABLE,
             "api_key_configured": bool(embed_svc.embedding_api_key),
+            "local_models": local_embed_models,  # 本地模型列表
         },
         # Rerank模型
         "rerank": {
@@ -599,23 +612,30 @@ async def get_ai_config_status(
             "未配置对话模型" if not chat_available else None,
             "未配置Embedding模型，RAG知识库功能不可用" if not embed_available else None,
             "sentence-transformers未安装，无法使用本地Embedding模型" if not ST_AVAILABLE else None,
-        ] if not chat_available or not embed_available or not ST_AVAILABLE else [],
+            "OCR未配置或Tesseract不可用" if not ocr_available else None,
+        ] if not chat_available or not embed_available or not ST_AVAILABLE or not ocr_available else [],
     })
 
 
 async def _get_ai_models_config():
-    """从数据库获取AI模型配置"""
+    """从数据库获取AI模型配置 - 从SystemConfigModel表读取（与get_system_config一致）"""
     from sqlalchemy import select as sql_select
-    from app.models.ai import SystemConfig
+    from app.models.system import SystemConfig as SystemConfigModel
     from app.core.database import AsyncSessionLocal
     
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            sql_select(SystemConfig).where(SystemConfig.key == "ai_models")
+            sql_select(SystemConfigModel).where(
+                SystemConfigModel.key == "ai_models",
+                SystemConfigModel.organization_id == None
+            )
         )
         cfg = result.scalar_one_or_none()
         if cfg and cfg.value:
-            return json.loads(cfg.value)
+            try:
+                return json.loads(cfg.value)
+            except:
+                return []
     return []
 
 

@@ -87,6 +87,12 @@ class MyAppsService:
             "organization_id": app.organization_id,
             "created_at": app.created_at,
             "updated_at": app.updated_at,
+            # ===== 添加缺失的字段 =====
+            "workflow_ids": app.workflow_ids,
+            "workflow_config": app.workflow_config,
+            "knowledge_base_ids": app.knowledge_base_ids,
+            "knowledge_config": app.knowledge_config,
+            "bound_agents": app.bound_agents,
             # 关联数据用 AppMenuSimple 手动构造，避免 children lazy-load
             "menus": [
                 {

@@ -13,7 +13,21 @@
           <el-option value="workflow" label="流程审批" />
           <el-option value="analytics" label="决策分析" />
         </el-select>
-        <el-select v-model="selectedModelId" size="small" class="header-select header-select-wide" @change="handleModelChange" placeholder="选择模型">
+        <el-select 
+          v-model="selectedModelId" 
+          size="small" 
+          class="header-select header-select-wide" 
+          @change="handleModelChange" 
+          placeholder="选择模型"
+          teleported
+          popper-class="ai-model-dropdown"
+          :popper-options="{
+            placement: 'bottom-start',
+            modifiers: [
+              { name: 'preventOverflow', options: { boundary: 'viewport' } }
+            ]
+          }"
+        >
           <el-option v-for="model in aiStore.models" :key="model.modelId" :label="model.modelName || model.modelId" :value="model.modelId">
             <span>{{ model.modelName || model.modelId }}</span>
             <el-tag size="small" type="info" style="margin-left:8px">{{ model.provider }}</el-tag>
@@ -318,7 +332,10 @@ async function handleSend() {
   width: 400px; height: 550px;
   background: white; border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-  display: flex; flex-direction: column; overflow: hidden;
+  display: flex; flex-direction: column;
+  /* 移除 overflow: hidden，避免下拉框被裁剪 */
+  /* overflow: hidden; */
+  z-index: 9999;
 }
 .chat-header {
   padding: 12px 16px;
@@ -412,5 +429,23 @@ async function handleSend() {
 }
 .header-close-btn:hover {
   background: #ff4757;
+}
+</style>
+
+<!-- 非scoped 样式，确保下拉框正确显示 -->
+<style>
+.ai-model-dropdown {
+  z-index: 20000 !important;
+}
+
+.ai-model-dropdown .el-select-dropdown__item {
+  padding: 8px 20px !important;
+  font-size: 14px;
+}
+
+.ai-model-dropdown .el-select-dropdown__item.selected {
+  font-weight: 600 !important;
+  color: var(--el-color-primary) !important;
+  background-color: var(--el-color-primary-light-9) !important;
 }
 </style>

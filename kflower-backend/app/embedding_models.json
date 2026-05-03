@@ -12,7 +12,20 @@
       "device": "cpu",
       "batch_size": 32,
       "enabled": true
+    },
+    "all-MiniLM-L6-v2": {
+      "name": "all-MiniLM-L6-v2",
+      "model": "all-MiniLM-L6-v2",
+      "provider": "local",
+      "dimension": 1024,
+      "description": "all-MiniLM-L6-v2",
+      "api_key": "",
+      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "model_path": "all-MiniLM-L6-v2",
+      "device": "cpu",
+      "batch_size": 32,
+      "enabled": true
     }
   },
-  "default_model": null
+  "default_model": "all-MiniLM-L6-v2"
 }
