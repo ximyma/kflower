@@ -79,6 +79,9 @@ def detect_file_type(file_bytes: bytes, filename: str = "") -> str:
         return 'tiff'
     if file_bytes[:5] == b'%PDF-':
         return 'pdf'
+    # 检查 .xls 文件 (CFBF 格式，Excel 97-2003)
+    if len(file_bytes) >= 8 and file_bytes[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
+        return 'xls'
     if file_bytes[:2] == b'PK':
         return _detect_zip_type(file_bytes)
     if _looks_like_csv(file_bytes):
@@ -169,7 +172,7 @@ def parse_excel_or_csv(file_bytes: bytes, filename: str, header_row: int = 0, sh
     if file_type == 'csv':
         return _parse_csv(file_bytes)
     elif file_type in ('xlsx', 'xls'):
-        return _parse_xlsx(file_bytes, sheet_name)
+        return _parse_xlsx(file_bytes, sheet_name, file_type)
     else:
         raise Exception(
             f"无法解析此文件格式。\n\n"
@@ -369,56 +372,68 @@ def _split_csv_line(line: str, delimiter: str = ',') -> List[str]:
     return result
 
 
-def _parse_xlsx(file_bytes: bytes, sheet_name: str = None) -> Dict[str, Any]:
+def _parse_xlsx(file_bytes: bytes, sheet_name: str = None, file_type: str = 'xlsx') -> Dict[str, Any]:
     """解析 Excel 文件"""
     errors = []
     
-    # 方法1: openpyxl
-    try:
-        from openpyxl import load_workbook
-        wb = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
-        sheet_names = wb.sheetnames
-        
-        if not sheet_names:
-            raise Exception("Excel 文件没有工作表")
-        
-        # 选择工作表
-        if sheet_name and sheet_name in sheet_names:
-            ws = wb[sheet_name]
-        else:
-            ws = wb.active
-        
-        # 读取数据
-        all_rows = []
-        for row in ws.iter_rows(values_only=True):
-            cells = [str(cell) if cell is not None else '' for cell in row]
-            if any(c.strip() for c in cells):
-                all_rows.append(cells)
-        
-        wb.close()
-        
-        if not all_rows:
-            raise Exception("Excel 文件数据为空")
-        
-        # 智能检测可能的表头行
-        potential_headers, detected_row = _detect_header_rows(all_rows)
-        
-        return {
-            'success': True,
-            'all_rows': all_rows,
-            'potential_headers': potential_headers,
-            'detected_header_row': detected_row,
-            'file_type': 'xlsx',
-            'sheet_names': sheet_names,
-            'current_sheet': sheet_name or wb.sheetnames[0] if hasattr(wb, 'sheetnames') else '',
-            'source': 'excel'
-        }
-    except Exception as e:
-        errors.append(f"openpyxl: {str(e)}")
+    # 方法1: openpyxl (仅支持 .xlsx)
+    if file_type == 'xlsx':
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+            sheet_names = wb.sheetnames
+            
+            if not sheet_names:
+                raise Exception("Excel 文件没有工作表")
+            
+            # 选择工作表
+            if sheet_name and sheet_name in sheet_names:
+                ws = wb[sheet_name]
+            else:
+                ws = wb.active
+            
+            # 读取数据
+            all_rows = []
+            for row in ws.iter_rows(values_only=True):
+                cells = [str(cell) if cell is not None else '' for cell in row]
+                if any(c.strip() for c in cells):
+                    all_rows.append(cells)
+            
+            wb.close()
+            
+            if not all_rows:
+                raise Exception("Excel 文件数据为空")
+            
+            # 智能检测可能的表头行
+            potential_headers, detected_row = _detect_header_rows(all_rows)
+            
+            return {
+                'success': True,
+                'all_rows': all_rows,
+                'potential_headers': potential_headers,
+                'detected_header_row': detected_row,
+                'file_type': 'xlsx',
+                'sheet_names': sheet_names,
+                'current_sheet': sheet_name or wb.sheetnames[0] if hasattr(wb, 'sheetnames') else '',
+                'source': 'excel'
+            }
+        except Exception as e:
+            errors.append(f"openpyxl: {str(e)}")
     
     # 方法2: pandas
     try:
-        df = pd.read_excel(io.BytesIO(file_bytes), header=None, dtype=str, engine='openpyxl')
+        # 根据文件类型选择合适的引擎
+        if file_type == 'xls' and XLRD_AVAILABLE:
+            # .xls 文件需要用 xlrd 引擎
+            df = pd.read_excel(io.BytesIO(file_bytes), header=None, dtype=str, engine='xlrd')
+        else:
+            # .xlsx 文件用 openpyxl 引擎，或者不指定引擎让 pandas 自动选择
+            try:
+                df = pd.read_excel(io.BytesIO(file_bytes), header=None, dtype=str, engine='openpyxl')
+            except Exception:
+                # 如果 openpyxl 失败，尝试不指定引擎
+                df = pd.read_excel(io.BytesIO(file_bytes), header=None, dtype=str)
+        
         df = df.fillna('')
         
         all_rows = []
@@ -437,7 +452,7 @@ def _parse_xlsx(file_bytes: bytes, sheet_name: str = None) -> Dict[str, Any]:
             'all_rows': all_rows,
             'potential_headers': potential_headers,
             'detected_header_row': detected_row,
-            'file_type': 'xlsx',
+            'file_type': file_type,
             'sheet_names': [],
             'source': 'excel'
         }

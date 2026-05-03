@@ -117,6 +117,17 @@ class OCRService:
                 pass
         if lang:
             self.default_lang = lang
+    
+    def reload(self):
+        """重新从数据库加载配置"""
+        self._load_from_db()
+        # 重新设置环境变量
+        if self.tesseract_path:
+            try:
+                import pytesseract
+                pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
+            except Exception:
+                pass
 
     def is_configured(self) -> bool:
         """检查 OCR 是否已正确配置"""

@@ -152,6 +152,15 @@ async def save_system_config(
     from app.core.ai_digital_base.gateway import ai_gateway
     ai_gateway._config_loaded = False  # 强制下次重新加载
     
+    # 刷新 OCR 服务配置
+    from app.core.ai_digital_base.local_services import ocr_service
+    ocr_service.reload()
+    
+    # 刷新 Embedding 服务配置
+    from app.core.ai_digital_base.local_services import get_embedding_service
+    embedding_svc = get_embedding_service()
+    embedding_svc._load_from_db()
+    
     return BaseResponse(message="配置已保存")
 
 
@@ -560,9 +569,13 @@ async def get_ai_config_status(
     
     # 4. OCR状态（使用ocr_service检查配置路径）
     ocr_available = False
+    ocr_tesseract_cmd = None
+    ocr_lang = None
     try:
         from app.core.ai_digital_base.local_services import ocr_service
         ocr_available = ocr_service.is_configured()
+        ocr_tesseract_cmd = ocr_service.tesseract_path
+        ocr_lang = ocr_service.default_lang
     except Exception:
         pass
     
@@ -605,6 +618,8 @@ async def get_ai_config_status(
         # OCR
         "ocr": {
             "available": ocr_available,
+            "tesseract_cmd": ocr_tesseract_cmd,
+            "lang": ocr_lang,
         },
         # 总体状态
         "ready": chat_available,  # 至少对话模型可用就算就绪

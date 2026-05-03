@@ -103,10 +103,11 @@ async def ocr_status(
     current_user: User = Depends(get_current_user)
 ):
     """获取 OCR 服务状态"""
+    is_available = ocr_service.is_configured()
     return JSONResponse({
         "success": True,
         "data": {
-            "available": ocr_service.tesseract_path,
+            "available": is_available,  # 返回布尔值
             "tesseract_cmd": ocr_service.tesseract_path,
             "default_lang": ocr_service.default_lang,
         }
@@ -120,11 +121,57 @@ async def ocr_configure(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """配置 OCR 服务"""
+    """配置 OCR 服务（同时保存到数据库）"""
+    # 1. 更新内存中的服务
     ocr_service.configure(tesseract_path, lang)
+    
+    # 2. 保存到数据库
+    from sqlalchemy import select
+    from app.models.ai import SystemConfig
+    
+    # 保存 tesseract_path
+    result = await db.execute(
+        select(SystemConfig).where(
+            SystemConfig.key == "ocr_tesseract_path",
+            SystemConfig.organization_id == None
+        )
+    )
+    config = result.scalar_one_or_none()
+    if config:
+        config.value = tesseract_path
+    else:
+        config = SystemConfig(
+            key="ocr_tesseract_path",
+            value=tesseract_path,
+            description="Tesseract OCR 安装路径",
+            organization_id=None
+        )
+        db.add(config)
+    
+    # 保存 lang
+    result = await db.execute(
+        select(SystemConfig).where(
+            SystemConfig.key == "ocr_lang",
+            SystemConfig.organization_id == None
+        )
+    )
+    config_lang = result.scalar_one_or_none()
+    if config_lang:
+        config_lang.value = lang
+    else:
+        config_lang = SystemConfig(
+            key="ocr_lang",
+            value=lang,
+            description="OCR 识别语言",
+            organization_id=None
+        )
+        db.add(config_lang)
+    
+    await db.commit()
+    
     return JSONResponse({
         "success": True,
-        "message": f"OCR 已配置: {tesseract_path}"
+        "message": f"OCR 已配置并保存到数据库: {tesseract_path}"
     })
 
 
