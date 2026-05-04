@@ -352,3 +352,95 @@ def generate_matrix_fields(
 
 *创建时间：2026-05-03*
 *状态：设计方案，待实现*
+
+---
+
+## 八、实际实现（与原始设计不同）
+
+### 8.1 字段生成（只生成3个字段）
+
+**实际实现**：矩阵表格转换为一维后，只生成**3个字段**：
+
+| 字段名 | 标签 | 类型 | 说明 |
+|---------|------|------|------|
+| `row_dimension` | 行维度 | text | 行维度值（如"产品A"） |
+| `col_dimension` | 列维度 | select | 列维度值（如"Q1"），选项来自 `col_headers` |
+| `value` | 数值 | number | 单元格数值 |
+
+**原始设计**（已废弃）：为每个行维度生成一个字段（如 `产品A_Q1`, `产品A_Q2`...），这是错误的。
+
+### 8.2 数据转换示例
+
+**输入矩阵表格**：
+```
+           Q1    Q2    Q3
+产品A      100   150   120
+产品B      200   180   220
+总计       300   330   340
+```
+
+**输出一维表格**：
+```
+行维度  列维度  数值
+产品A   Q1     100
+产品A   Q2     150
+产品A   Q3     120
+产品B   Q1     200
+产品B   Q2     180
+产品B   Q3     220
+总计    Q1     300
+总计    Q2     330
+总计    Q3     340
+```
+
+### 8.3 API 响应格式
+
+**`POST /api/v1/import/matrix/apply-header` 响应**：
+
+```json
+{
+  "success": true,
+  "data": {
+    "row_headers": ["产品A", "产品B", "总计"],
+    "col_headers": ["Q1", "Q2", "Q3"],
+    "headers": ["行维度", "列维度", "数值"],
+    "rows": [
+      ["产品A", "Q1", 100],
+      ["产品A", "Q2", 150],
+      ...
+    ],
+    "fields": [
+      {"name": "row_dimension", "label": "行维度", "type": "text", ...},
+      {"name": "col_dimension", "label": "列维度", "type": "select", "options": ["Q1","Q2","Q3"], ...},
+      {"name": "value", "label": "数值", "type": "number", ...}
+    ],
+    "total_rows": 9,
+    "total_columns": 3
+  }
+}
+```
+
+### 8.4 前端流程
+
+1. 上传文件 → 解析到 `importData.all_rows`
+2. 选择"矩阵表格"类型
+3. 选择行表头行（如第0行："产品/季度"）
+4. 选择列表头列（如第0列："产品A,产品B,总计"）
+5. 点击"应用矩阵表头"
+6. 后端转换数据，返回3个字段
+7. 前端显示字段调整界面（可修改字段标签、类型、必填等）
+8. 点击"创建模板并导入数据"
+9. 后端创建模板，并自动导入所有数据行
+
+### 8.5 文件清单
+
+| 文件 | 说明 |
+|------|------|
+| `kflower-backend/app/services/import_matrix_service.py` | 矩阵表格转换服务（核心算法） |
+| `kflower-backend/app/api/v1/endpoints/import_matrix.py` | 矩阵表格API端点（3个） |
+| `kflower-backend/app/api/v1/api.py` | 路由注册（已添加） |
+| `kflower-frontend/src/pc/views/Templates.vue` | 前端界面（类型选择、矩阵配置、字段调整） |
+
+---
+*最后更新：2026-05-04*
+*状态：已实现，待测试*

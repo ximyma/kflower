@@ -922,83 +922,197 @@
           </div>
         </div>
 
-        <!-- 步骤2: 预览数据 -->
+        <!-- 步骤2: 选择表格类型 + 预览数据 -->
         <div v-if="importStep === 1">
-          <el-alert :title="`已识别 ${importData.total_rows} 行 × ${importData.total_columns} 列`" type="success" show-icon />
-          <div class="preview-controls">
-            <div class="control-row">
-              <span>表头行：</span>
-              <el-select v-model="importHeaderRow" placeholder="选择表头行" style="width:200px" @change="reparseWithHeaderRow">
-                <el-option v-for="(_, idx) in (importData.all_rows || importData.rows)" :key="idx" :label="`第 ${idx + 1} 行` + (idx === 0 ? '（默认）' : '')" :value="idx" />
-              </el-select>
-              <el-checkbox v-model="enableMultiRowHeader" style="margin-left:16px">多行表头</el-checkbox>
-              <el-tooltip content="选中后可以选择多行作为表头并合并">
-                <el-icon><InfoFilled /></el-icon>
-              </el-tooltip>
-              <span v-if="importData.sheet_names && importData.sheet_names.length >= 1" style="margin-left:16px">
-                <template v-if="importData.sheet_names.length === 1">
-                  工作表：<el-tag size="small">{{ importData.sheet_names[0] }}</el-tag>
-                </template>
-                <template v-else>
-                  工作表：
-                  <el-select 
-                    v-model="importSheetName" 
-                    placeholder="选择工作表" 
-                    style="width:180px" 
-                    @change="reparseWithSheet"
-                  >
-                    <el-option v-for="sn in importData.sheet_names" :key="sn" :label="sn" :value="sn" />
-                  </el-select>
-                </template>
-              </span>
+          <!-- 表格类型选择 -->
+          <div class="table-type-select" style="margin-bottom: 20px; padding: 16px; background: #f5f7fa; border-radius: 4px;">
+            <el-alert :title="`已识别 ${importData.total_rows} 行 × ${importData.total_columns} 列`" type="success" show-icon :closable="false" style="margin-bottom:12px" />
+            <div class="type-options" style="display: flex; gap: 16px; margin-top: 12px;">
+              <el-card 
+                :class="{'type-card': true, 'active': tableType === 'onedim'}" 
+                shadow="hover" 
+                style="width: 48%; cursor: pointer; transition: all 0.3s;"
+                @click="tableType = 'onedim'"
+              >
+                <div style="text-align: center; padding: 12px;">
+                  <el-icon :size="32" color="#409EFF" v-if="tableType === 'onedim'"><Select /></el-icon>
+                  <el-icon :size="32" color="#909399" v-else><Document /></el-icon>
+                  <h3 style="margin: 8px 0;">一维表格</h3>
+                  <p style="color: #909399; font-size: 13px;">行列分明，第一行是表头，每列对应一个字段（默认）</p>
+                </div>
+              </el-card>
+              <el-card 
+                :class="{'type-card': true, 'active': tableType === 'matrix'}" 
+                shadow="hover" 
+                style="width: 48%; cursor: pointer; transition: all 0.3s;"
+                @click="tableType = 'matrix'"
+              >
+                <div style="text-align: center; padding: 12px;">
+                  <el-icon :size="32" color="#409EFF" v-if="tableType === 'matrix'"><Select /></el-icon>
+                  <el-icon :size="32" color="#909399" v-else><Grid /></el-icon>
+                  <h3 style="margin: 8px 0;">矩阵表格</h3>
+                  <p style="color: #909399; font-size: 13px;">行列都有维度，如报表、交叉表等（二维表格）</p>
+                </div>
+              </el-card>
             </div>
-            
-            <!-- 多行表头选择 -->
-            <div v-if="enableMultiRowHeader" class="control-row" style="margin-top:12px">
-              <span>选择表头行（可多选，共 {{ (importData.all_rows || importData.rows).length }} 行）：</span>
-              <div class="multi-header-checkboxes" style="margin-top:8px; max-height: 400px; overflow-y: auto; border: 1px solid #dcdfe6; padding: 16px; border-radius: 4px; background-color: #f5f7fa;">
-                <el-checkbox-group v-model="selectedHeaderRows" style="display: flex; flex-direction: column; gap: 8px;">
-                  <el-checkbox 
-                    v-for="(row, idx) in (importData.all_rows || importData.rows)" 
-                    :key="idx" 
-                    :label="idx"
-                    @change="mergeMultiRowHeaders"
-                    style="margin-right: 0; padding: 8px; border-bottom: 1px solid #ebeef5;"
-                  >
-                    <span style="font-size: 14px; font-weight: 500;">第 {{ idx + 1 }} 行：</span>
-                    <span style="color: #606266;">{{ row.slice(0, 8).join(' | ') }}{{ row.length > 8 ? '...' : '' }}</span>
-                  </el-checkbox>
-                </el-checkbox-group>
+          </div>
+
+          <!-- 一维表格：原有逻辑 -->
+          <div v-if="tableType === 'onedim'">
+            <div class="preview-controls">
+              <div class="control-row">
+                <span>表头行：</span>
+                <el-select v-model="importHeaderRow" placeholder="选择表头行" style="width:200px" @change="reparseWithHeaderRow">
+                  <el-option v-for="(_, idx) in (importData.all_rows || importData.rows)" :key="idx" :label="`第 ${idx + 1} 行` + (idx === 0 ? '（默认）' : '')" :value="idx" />
+                </el-select>
+                <el-checkbox v-model="enableMultiRowHeader" style="margin-left:16px">多行表头</el-checkbox>
+                <el-tooltip content="选中后可以选择多行作为表头并合并">
+                  <el-icon><InfoFilled /></el-icon>
+                </el-tooltip>
+                <span v-if="importData.sheet_names && importData.sheet_names.length >= 1" style="margin-left:16px">
+                  <template v-if="importData.sheet_names.length === 1">
+                    工作表：<el-tag size="small">{{ importData.sheet_names[0] }}</el-tag>
+                  </template>
+                  <template v-else>
+                    工作表：
+                    <el-select 
+                      v-model="importSheetName" 
+                      placeholder="选择工作表" 
+                      style="width:180px" 
+                      @change="reparseWithSheet"
+                    >
+                      <el-option v-for="sn in importData.sheet_names" :key="sn" :label="sn" :value="sn" />
+                    </el-select>
+                  </template>
+                </span>
               </div>
-              <div v-if="selectedHeaderRows.length > 0" class="control-row" style="margin-top:8px">
-                <span>合并方式：</span>
-                <el-radio-group v-model="multiHeaderMergeType" @change="mergeMultiRowHeaders">
-                  <el-radio label="vertical">垂直合并（用空格连接）</el-radio>
-                  <el-radio label="first">仅使用第一行</el-radio>
+              
+              <!-- 多行表头选择 -->
+              <div v-if="enableMultiRowHeader" class="control-row" style="margin-top:12px">
+                <span>选择表头行（可多选，共 {{ (importData.all_rows || importData.rows).length }} 行）：</span>
+                <div class="multi-header-checkboxes" style="margin-top:8px; max-height: 400px; overflow-y: auto; border: 1px solid #dcdfe6; padding: 16px; border-radius: 4px; background-color: #f5f7fa;">
+                  <el-checkbox-group v-model="selectedHeaderRows" style="display: flex; flex-direction: column; gap: 8px;">
+                    <el-checkbox 
+                      v-for="(row, idx) in (importData.all_rows || importData.rows)" 
+                      :key="idx" 
+                      :label="idx"
+                      @change="mergeMultiRowHeaders"
+                      style="margin-right: 0; padding: 8px; border-bottom: 1px solid #ebeef5;"
+                    >
+                      <span style="font-size: 14px; font-weight: 500;">第 {{ idx + 1 }} 行：</span>
+                      <span style="color: #606266;">{{ row.slice(0, 8).join(' | ') }}{{ row.length > 8 ? '...' : '' }}</span>
+                    </el-checkbox>
+                  </el-checkbox-group>
+                </div>
+                <div v-if="selectedHeaderRows.length > 0" class="control-row" style="margin-top:8px">
+                  <span>合并方式：</span>
+                  <el-radio-group v-model="multiHeaderMergeType" @change="mergeMultiRowHeaders">
+                    <el-radio label="vertical">垂直合并（用空格连接）</el-radio>
+                    <el-radio label="first">仅使用第一行</el-radio>
+                  </el-radio-group>
+                </div>
+                <div v-if="mergedHeaderPreview.length > 0" class="control-row" style="margin-top:8px">
+                  <span>合并预览：</span>
+                  <el-tag v-for="(h, idx) in mergedHeaderPreview.slice(0, 6)" :key="idx" size="small" style="margin-right:4px">{{ h }}</el-tag>
+                  <el-tag v-if="mergedHeaderPreview.length > 6" size="small">... 共 {{ mergedHeaderPreview.length }} 个</el-tag>
+                </div>
+              </div>
+              
+              <div class="control-row" style="margin-top:8px">
+                <span>选择导入字段：</span>
+                <el-checkbox v-model="importSelectAll" :indeterminate="importSelectIndeterminate" @change="onImportSelectAllChange">全选</el-checkbox>
+              </div>
+              <div class="field-checkboxes">
+                <el-checkbox v-for="(h, idx) in importData.headers" :key="idx" v-model="importSelectedFields[idx]" @change="onImportFieldSelectChange">{{ h }}</el-checkbox>
+              </div>
+            </div>
+            <div class="preview-actions">
+              <el-button @click="importStep = 0">重新上传</el-button>
+              <el-button type="primary" @click="goToFieldAdjust">下一步：调整字段</el-button>
+            </div>
+            <el-table :data="importData.rows" border size="small" max-height="450" style="margin-top:12px; width: 100%;">
+              <el-table-column v-for="(h, idx) in importData.headers" :key="idx" :prop="String(idx)" :label="h" min-width="120" show-overflow-tooltip />
+            </el-table>
+          </div>
+
+          <!-- 矩阵表格：行列维度选择 -->
+          <div v-if="tableType === 'matrix'">
+            <div class="matrix-config" style="margin-top: 16px;">
+              <el-alert type="info" :closable="false" style="margin-bottom: 16px;">
+                <div style="font-size: 13px;">请选择行表头和列表头的位置，系统将自动将矩阵表格转换为标准一维表格。</div>
+              </el-alert>
+              
+              <el-row :gutter="20">
+                <!-- 行表头选择 -->
+                <el-col :span="12">
+                  <el-card shadow="hover" style="height: 100%;">
+                    <template #header>
+                      <div style="font-weight: bold; color: #409EFF;">行表头（垂直维度）</div>
+                    </template>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                      <el-radio-group v-model="matrixRowHeaderRow" style="display: flex; flex-direction: column; gap: 8px;">
+                        <el-radio 
+                          v-for="(row, idx) in (importData.all_rows || importData.rows)" 
+                          :key="idx" 
+                          :label="idx"
+                          style="margin-right: 0; padding: 8px; border-bottom: 1px solid #ebeef5;"
+                        >
+                          <span style="font-size: 14px;">第 {{ idx + 1 }} 行：</span>
+                          <span style="color: #606266;">{{ row.slice(0, 8).join(' | ') }}{{ row.length > 8 ? '...' : '' }}</span>
+                        </el-radio>
+                      </el-radio-group>
+                    </div>
+                  </el-card>
+                </el-col>
+                
+                <!-- 列表头选择 -->
+                <el-col :span="12">
+                  <el-card shadow="hover" style="height: 100%;">
+                    <template #header>
+                      <div style="font-weight: bold; color: #409EFF;">列表头（水平维度）</div>
+                    </template>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                      <el-radio-group v-model="matrixColHeaderCol" style="display: flex; flex-direction: column; gap: 8px;">
+                        <el-radio 
+                          v-for="colIdx in getMatrixColIndices()" 
+                          :key="colIdx" 
+                          :label="colIdx"
+                          style="margin-right: 0; padding: 8px; border-bottom: 1px solid #ebeef5;"
+                        >
+                          <span style="font-size: 14px;">第 {{ colIdx + 1 }} 列：</span>
+                          <span style="color: #606266;">{{ getMatrixColPreview(colIdx) }}</span>
+                        </el-radio>
+                      </el-radio-group>
+                    </div>
+                  </el-card>
+                </el-col>
+              </el-row>
+
+              <!-- 字段组合方式 -->
+              <div style="margin-top: 16px;">
+                <span>字段组合方式：</span>
+                <el-radio-group v-model="matrixMergeType">
+                  <el-radio label="concat">拼接（行表头_列表头）</el-radio>
+                  <el-radio label="underline">下划线连接（行表头_列表头）</el-radio>
+                  <el-radio label="none">仅用列表头</el-radio>
                 </el-radio-group>
               </div>
-              <div v-if="mergedHeaderPreview.length > 0" class="control-row" style="margin-top:8px">
-                <span>合并预览：</span>
-                <el-tag v-for="(h, idx) in mergedHeaderPreview.slice(0, 6)" :key="idx" size="small" style="margin-right:4px">{{ h }}</el-tag>
-                <el-tag v-if="mergedHeaderPreview.length > 6" size="small">... 共 {{ mergedHeaderPreview.length }} 个</el-tag>
+
+              <!-- 操作按钮 -->
+              <div class="preview-actions" style="margin-top: 16px;">
+                <el-button @click="importStep = 0">重新上传</el-button>
+                <el-button type="primary" @click="applyMatrixHeader" :loading="matrixLoading">应用矩阵表头</el-button>
+              </div>
+
+              <!-- 矩阵预览 -->
+              <div v-if="matrixPreview.rows && matrixPreview.rows.length > 0" style="margin-top: 16px;">
+                <h4>转换预览（前10行）：</h4>
+                <el-table :data="matrixPreview.rows.slice(0, 10)" border size="small" style="margin-top: 8px;">
+                  <el-table-column v-for="(h, idx) in matrixPreview.headers" :key="idx" :prop="String(idx)" :label="h" min-width="120" show-overflow-tooltip />
+                </el-table>
               </div>
             </div>
-            
-            <div class="control-row" style="margin-top:8px">
-              <span>选择导入字段：</span>
-              <el-checkbox v-model="importSelectAll" :indeterminate="importSelectIndeterminate" @change="onImportSelectAllChange">全选</el-checkbox>
-            </div>
-            <div class="field-checkboxes">
-              <el-checkbox v-for="(h, idx) in importData.headers" :key="idx" v-model="importSelectedFields[idx]" @change="onImportFieldSelectChange">{{ h }}</el-checkbox>
-            </div>
           </div>
-          <div class="preview-actions">
-            <el-button @click="importStep = 0">重新上传</el-button>
-            <el-button type="primary" @click="goToFieldAdjust">下一步：调整字段</el-button>
-          </div>
-          <el-table :data="importData.rows" border size="small" max-height="450" style="margin-top:12px; width: 100%;">
-            <el-table-column v-for="(h, idx) in importData.headers" :key="idx" :prop="String(idx)" :label="h" min-width="120" show-overflow-tooltip />
-          </el-table>
         </div>
 
         <!-- 步骤3: 调整字段 -->
@@ -1025,6 +1139,34 @@
                 <el-select v-model="row.type" size="small" style="width:100%">
                   <el-option v-for="ft in allFieldTypes" :key="ft.type" :label="ft.label" :value="ft.type" />
                 </el-select>
+              </template>
+            </el-table-column>
+            <!-- 新增：选项编辑（用于select/radio/checkbox类型） -->
+            <el-table-column label="选项" min-width="200" v-if="importFields.some(f => ['select', 'radio', 'checkbox'].includes(f.type))">
+              <template #default="{ row }">
+                <div v-if="['select', 'radio', 'checkbox'].includes(row.type)">
+                  <el-tag
+                    v-for="(opt, idx) in (row.options || [])"
+                    :key="idx"
+                    closable
+                    @close="row.options.splice(idx, 1)"
+                    style="margin-right: 4px; margin-bottom: 4px;"
+                  >
+                    {{ opt }}
+                  </el-tag>
+                  <el-input
+                    v-if="row._addingOption"
+                    v-model="row._newOption"
+                    size="small"
+                    style="width: 100px;"
+                    @keyup.enter="addFieldOption(row)"
+                    @blur="addFieldOption(row)"
+                  />
+                  <el-button v-else size="small" @click="row._addingOption = true; row._newOption = ''">
+                    + 添加选项
+                  </el-button>
+                </div>
+                <span v-else style="color: #999;">-</span>
               </template>
             </el-table-column>
             <el-table-column label="必填" width="70">
@@ -1070,6 +1212,18 @@
               <el-descriptions-item label="智能识别">是</el-descriptions-item>
             </el-descriptions>
           </div>
+          
+          <!-- 添加数据预览 -->
+          <div v-if="importData.rows && importData.rows.length > 0" style="margin-top: 16px;">
+            <h4>数据预览（前10行）：</h4>
+            <el-table :data="importData.rows.slice(0, 10)" border size="small" style="margin-top: 8px;">
+              <el-table-column v-for="(h, idx) in (importData.headers || [])" :key="idx" :prop="String(idx)" :label="h" min-width="120" show-overflow-tooltip />
+            </el-table>
+            <div style="margin-top: 8px; color: #909399; font-size: 12px;">
+              共 {{ importData.total_rows }} 行，仅显示前10行
+            </div>
+          </div>
+          
           <div class="step-actions">
             <el-button @click="importStep = 2">上一步</el-button>
             <el-button type="primary" :loading="importLoading" @click="confirmCreateTemplate">
@@ -2425,6 +2579,14 @@ const importHeaderRow = ref(0)
 const importSheetName = ref('')
 const importDependenciesStatus = ref<any>(null)  // 依赖状态
 
+// 矩阵表格相关变量
+const tableType = ref('onedim')  // 表格类型：'onedim' | 'matrix'
+const matrixRowHeaderRow = ref(0)  // 行表头行索引
+const matrixColHeaderCol = ref(0)  // 列表头列索引
+const matrixMergeType = ref('concat')  // 字段组合方式
+const matrixPreview = reactive({ headers: [], rows: [] })  // 矩阵预览数据
+const matrixLoading = ref(false)  // 矩阵处理加载状态
+
 // 多行表头相关变量
 const enableMultiRowHeader = ref(false)
 const selectedHeaderRows = ref<number[]>([0])
@@ -2809,6 +2971,196 @@ async function loadSampleData(type: string) {
   ElMessage.success('已加载示例数据，请调整字段后继续')
 }
 
+// 矩阵表格相关方法
+function getMatrixColIndices() {
+  const allRows = importData.all_rows || importData.rows || []
+  if (allRows.length === 0) return []
+  const maxCols = Math.max(...allRows.map(r => r.length))
+  return Array.from({ length: maxCols }, (_, i) => i)
+}
+
+function getMatrixColPreview(colIdx: number) {
+  const allRows = importData.all_rows || importData.rows || []
+  const preview = allRows
+    .slice(0, 8)
+    .map(row => (colIdx < row.length ? String(row[colIdx] || '') : ''))
+    .filter(Boolean)
+    .join(' | ')
+  return preview || `第${colIdx + 1}列`
+}
+
+async function applyMatrixHeader() {
+  if (matrixRowHeaderRow.value < 0 || matrixColHeaderCol.value < 0) {
+    ElMessage.warning('请选择行表头和列表头')
+    return
+  }
+ 
+  matrixLoading.value = true
+  try {
+    const res = await (window as any).fetch('/api/v1/import/matrix/apply-header', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + (localStorage.getItem('access_token') || ''),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        all_rows: importData.all_rows,
+        row_header_row: matrixRowHeaderRow.value,
+        col_header_col: matrixColHeaderCol.value,
+        merge_type: matrixMergeType.value
+      })
+    })
+    const json = await res.json()
+    if (json.success) {
+      const data = json.data || {}
+      // 更新预览数据
+      matrixPreview.headers = data.headers || []
+      matrixPreview.rows = data.rows || []
+      // 同时更新 importData，为下一步做准备
+      importData.headers = data.headers || []
+      importData.rows = data.rows || []
+      importData.total_rows = data.total_rows ?? 0
+      importData.total_columns = data.total_columns ?? 0
+      importFields.value = data.fields || []
+      
+      // 改进：正确设置字段的显示名称和选项
+      if (importFields.value.length === 3) {
+        const rowDim = importFields.value[0]
+        const colDim = importFields.value[1]
+        const valueField = importFields.value[2]
+        
+        // 从后端返回的数据中获取正确的标签和选项
+        // 注意：后端应该在 data.fields 中正确设置 label 和 options
+        // 但如果没有，我们尝试从数据中推断
+        
+        // 改进1：确保 rowDim 有正确的 label 和 options
+        if (rowDim && rowDim.name === 'row_dimension') {
+          // 如果 label 是默认的"行维度"或空，尝试从 options 推断
+          if (!rowDim.label || rowDim.label === '行维度') {
+            // 从 options 中推断合适的 label
+            const options = rowDim.options || []
+            if (options.length > 0) {
+              // 检查第一个选项是否包含常见关键词
+              const firstOpt = String(options[0]).toLowerCase()
+              if (firstOpt.includes('部门') || firstOpt.includes('dept')) {
+                rowDim.label = '部门'
+              } else if (firstOpt.includes('产品') || firstOpt.includes('product')) {
+                rowDim.label = '产品'
+              } else if (firstOpt.includes('项目') || firstOpt.includes('project')) {
+                rowDim.label = '项目'
+              } else {
+                rowDim.label = '行维度'
+              }
+            }
+          }
+        }
+        
+        // 改进2：确保 colDim 有正确的 label 和 options
+        if (colDim && colDim.name === 'col_dimension') {
+          // 如果 label 是默认的"列维度"或空，尝试从 options 推断
+          if (!colDim.label || colDim.label === '列维度') {
+            // 从 options 中推断合适的 label
+            const options = colDim.options || []
+            if (options.length > 0) {
+              // 检查选项是否包含常见关键词
+              const hasQuarter = options.some((o: string) => 
+                o.includes('Q') || o.includes('季度') || o.includes('quarter')
+              )
+              const hasMonth = options.some((o: string) => 
+                o.includes('月') || o.includes('month') || 
+                ['1','2','3','4','5','6','7','8','9','10','11','12'].some(m => o.includes(m))
+              )
+              const hasYear = options.some((o: string) => 
+                o.includes('年') || o.includes('year') || o.length === 4
+              )
+              
+              if (hasQuarter) {
+                colDim.label = '季度'
+              } else if (hasMonth) {
+                colDim.label = '月份'
+              } else if (hasYear) {
+                colDim.label = '年份'
+              } else {
+                colDim.label = '列维度'
+              }
+            }
+          }
+          
+          // 重要：确保 options 正确，如果从后端获取的 options 不正确，尝试重新提取
+          if (!colDim.options || colDim.options.length === 0) {
+            // 从 importData.all_rows 中重新提取列维度选项
+            const allRows = importData.all_rows || []
+            const colIdx = matrixColHeaderCol.value
+            const rowHeaderIdx = matrixRowHeaderRow.value
+            
+            const optionsSet = new Set<string>()
+            for (let i = rowHeaderIdx + 1; i < allRows.length; i++) {
+              if (allRows[i] && allRows[i][colIdx]) {
+                const val = String(allRows[i][colIdx]).trim()
+                if (val && !val.startsWith('列')) {  // 排除默认的"列1"、"列2"
+                  optionsSet.add(val)
+                }
+              }
+            }
+            
+            if (optionsSet.size > 0) {
+              colDim.options = Array.from(optionsSet)
+              console.log('重新提取列维度选项:', colDim.options)
+            }
+          }
+        }
+        
+        // 改进3：确保 valueField 有正确的 label
+        if (valueField && valueField.name === 'value') {
+          if (!valueField.label || valueField.label === '数值') {
+            // 尝试从数据中推断数值字段的含义
+            const rows = data.rows || []
+            if (rows.length > 0) {
+              const firstRow = rows[0]
+              if (firstRow && firstRow.length >= 3) {
+                const val = Number(firstRow[2])
+                if (!isNaN(val)) {
+                  // 根据数值大小推断
+                  if (val > 1000000) {
+                    valueField.label = '金额（万元）'
+                  } else if (val > 10000) {
+                    valueField.label = '金额（元）'
+                  } else {
+                    valueField.label = '数值'
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // 初始化字段全选
+      importSelectedFields.value = {}
+      ;(data.headers || []).forEach((_: any, idx: number) => { importSelectedFields.value[idx] = true })
+      importSelectAll.value = true
+      importSelectIndeterminate.value = false
+      
+      // 添加日志，方便调试
+      console.log('applyMatrixHeader: importFields =', importFields.value)
+      console.log('rowDim =', importFields.value[0])
+      console.log('colDim =', importFields.value[1])
+      console.log('valueField =', importFields.value[2])
+      
+      ElMessage.success(json.message || '应用成功')
+      
+      // 跳转到字段调整步骤
+      importStep.value = 2
+    } else {
+      ElMessage.error(json.message || '应用失败')
+    }
+  } catch (e: any) {
+    ElMessage.error('应用矩阵表头失败: ' + (e.message || '请检查输入'))
+  } finally {
+    matrixLoading.value = false
+  }
+}
+
 function inferType(header: string): string {
   const h = header.toLowerCase()
   if (h.includes('金额') || h.includes('工资') || h.includes('价格') || h.includes('销售额')) return 'money'
@@ -2825,6 +3177,15 @@ function detectFieldTypes() {
   importFields.value.forEach(f => {
     f.type = inferType(f.label)
   })
+}
+
+function addFieldOption(row: any) {
+  if (row._newOption && row._newOption.trim()) {
+    if (!row.options) row.options = []
+    row.options.push(row._newOption.trim())
+    row._newOption = ''
+  }
+  row._addingOption = false
 }
 
 async function confirmCreateTemplate() {
@@ -2853,7 +3214,43 @@ async function confirmCreateTemplate() {
     })
     const json = await res.json()
     if (json.success) {
-      ElMessage.success('模板创建成功！')
+      const templateId = json.data.id
+      ElMessage.success('模板创建成功！正在导入数据...')
+
+      // 导入数据到新创建的模板
+      try {
+        const rows = importData.rows || []
+        const fields = importFields.value || []
+        
+        // 构建导入数据格式：将二维数组转换为对象数组
+        const dataForImport = rows.map((row: any[]) => {
+          const obj: any = {}
+          fields.forEach((field: any, idx: number) => {
+            // 使用字段的 name 作为键，label 仅用于显示
+            const fieldName = field.name || `field_${idx}`
+            obj[fieldName] = row[idx] || null
+          })
+          return obj
+        })
+
+        const importRes = await (window as any).fetch(`/api/v1/templates/${templateId}/data/import`, {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + (localStorage.getItem('access_token') || ''),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ data: dataForImport })
+        })
+        const importJson = await importRes.json()
+        if (importJson.success) {
+          ElMessage.success(`数据导入成功！共导入 ${importJson.data?.imported_count || dataForImport.length} 条数据`)
+        } else {
+          ElMessage.warning('模板已创建，但数据导入失败：' + (importJson.detail || importJson.message || '未知错误'))
+        }
+      } catch (importErr: any) {
+        ElMessage.warning('模板已创建，但数据导入失败：' + (importErr.message || '请稍后手动导入'))
+      }
+
       showImport.value = false
       importStep.value = 0
       importFields.value = []
@@ -2868,7 +3265,7 @@ async function confirmCreateTemplate() {
     } else {
       ElMessage.error(json.detail || '创建失败')
     }
-  } catch { ElMessage.error('创建失败') }
+  } catch (e: any) { ElMessage.error('创建失败：' + (e.message || '未知错误')) }
   finally { importLoading.value = false }
 }
 

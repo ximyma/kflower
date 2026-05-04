@@ -2,7 +2,7 @@
 API v1 路由汇总
 """
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, ai, templates, workflows, analytics, knowledge, dashboard, system, organizations, users, permissions, agent, import_, local_ai, ai_capability, ai_digital_base, ai_agent_engine, doc_converter, notifications, data_model, plugins
+from app.api.v1.endpoints import auth, ai, templates, workflows, analytics, knowledge, dashboard, system, organizations, users, permissions, agent, import_, import_matrix, local_ai, ai_capability, ai_digital_base, ai_agent_engine, doc_converter, notifications, data_model, plugins
 from app.api.v1 import migration
 from app.modules.my_apps import router as apps_router
 
@@ -25,6 +25,7 @@ api_router.include_router(users.router)
 api_router.include_router(permissions.router)
 api_router.include_router(agent.router)
 api_router.include_router(import_.router)
+api_router.include_router(import_matrix.router)  # 矩阵表格导入
 api_router.include_router(local_ai.router)
 api_router.include_router(doc_converter.router)  # 文档转换工具
 api_router.include_router(notifications.router)  # 通知发送工具
