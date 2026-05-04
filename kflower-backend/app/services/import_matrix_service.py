@@ -48,12 +48,12 @@ def parse_matrix_table(
             continue  # 跳过行维度列
         cell_value = _get_cell_value(cell)
         
-        if cell_value:
+        if cell_value and not _is_likely_title(cell_value):  # 改进：过滤标题
             col_headers.append(cell_value)
         else:
             # 尝试从其他行获取表头（处理合并单元格或空单元格）
             header_val = _infer_header_from_context(all_rows, i, row_header_row)
-            if header_val:
+            if header_val and not _is_likely_title(header_val):  # 改进：过滤标题
                 col_headers.append(header_val)
             else:
                 col_headers.append(f"列{i+1}")
@@ -317,11 +317,38 @@ def _get_cell_value(cell: any) -> str:
         return ""
     return str(cell).strip()
 
+def _is_likely_title(text: str) -> bool:
+    """
+    检查文本是否可能是标题（而不是列维度值）
+    标题通常包含：附件、表、分析、报告等关键词
+    """
+    if not text:
+        return False
+    
+    title_keywords = [
+        '附件', '附表', '附录',
+        '表', '分析表', '对比表', '明细表', '汇总表',
+        '报告', '汇报', '说明', '通知',
+        '202', '2026', '2027',  # 年份可能是标题的一部分
+    ]
+    
+    for keyword in title_keywords:
+        if keyword in text:
+            return True
+    
+    # 如果文本很长（>20字符），可能是标题
+    if len(text) > 20:
+        return True
+    
+    return False
+
+
 def _infer_header_from_context(all_rows: List[List[str]], col_idx: int, header_row_idx: int) -> str:
     """
     从上下文推断表头（处理合并单元格或空单元格）
     尝试从相邻行或列获取表头值
     改进：迭代搜索左边单元格，正确处理多列合并
+    重要：过滤掉明显的标题文本
     """
     if not all_rows or header_row_idx >= len(all_rows):
         return ""
@@ -331,21 +358,24 @@ def _infer_header_from_context(all_rows: List[List[str]], col_idx: int, header_r
     for j in range(col_idx - 1, -1, -1):  # 从当前列向左搜索
         if j < len(all_rows[header_row_idx]):
             val = _get_cell_value(all_rows[header_row_idx][j])
-            if val:
+            # 改进：不返回明显的标题文本
+            if val and not _is_likely_title(val):
                 return val  # 找到非空值，直接返回（处理水平合并）
     
     # 尝试从上方行获取（垂直合并）
     for i in range(header_row_idx - 1, -1, -1):  # 从当前行向上搜索
         if i < len(all_rows) and col_idx < len(all_rows[i]):
             val = _get_cell_value(all_rows[i][col_idx])
-            if val:
+            # 改进：不返回明显的标题文本
+            if val and not _is_likely_title(val):
                 return val  # 找到非空值，直接返回（处理垂直合并）
     
     # 尝试从下方行获取（垂直合并，反向）
     for i in range(header_row_idx + 1, len(all_rows)):  # 从当前行向下搜索
         if i < len(all_rows) and col_idx < len(all_rows[i]):
             val = _get_cell_value(all_rows[i][col_idx])
-            if val:
+            # 改进：不返回明显的标题文本
+            if val and not _is_likely_title(val):
                 return val  # 找到非空值，直接返回（处理垂直合并，反向）
     
     return ""

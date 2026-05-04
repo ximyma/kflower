@@ -3029,12 +3029,24 @@ async function applyMatrixHeader() {
         const colDim = importFields.value[1]
         const valueField = importFields.value[2]
         
+        // 改进0：过滤掉明显的标题选项
+        const isLikelyTitle = (text: string): boolean => {
+          if (!text) return false
+          const titleKeywords = ['附件', '附表', '附录', '表', '分析表', '对比表', '报告', '2025', '2026']
+          return titleKeywords.some(kw => text.includes(kw)) || text.length > 20
+        }
+        
         // 从后端返回的数据中获取正确的标签和选项
         // 注意：后端应该在 data.fields 中正确设置 label 和 options
         // 但如果没有，我们尝试从数据中推断
         
         // 改进1：确保 rowDim 有正确的 label 和 options
         if (rowDim && rowDim.name === 'row_dimension') {
+          // 过滤选项，去掉标题
+          if (rowDim.options && rowDim.options.length > 0) {
+            rowDim.options = rowDim.options.filter((opt: string) => !isLikelyTitle(opt))
+          }
+          
           // 如果 label 是默认的"行维度"或空，尝试从 options 推断
           if (!rowDim.label || rowDim.label === '行维度') {
             // 从 options 中推断合适的 label
@@ -3057,6 +3069,16 @@ async function applyMatrixHeader() {
         
         // 改进2：确保 colDim 有正确的 label 和 options
         if (colDim && colDim.name === 'col_dimension') {
+          // 重要：过滤选项，去掉明显的标题（如"附件3-1"）
+          if (colDim.options && colDim.options.length > 0) {
+            const originalOptions = colDim.options
+            colDim.options = colDim.options.filter((opt: string) => !isLikelyTitle(opt))
+            if (colDim.options.length !== originalOptions.length) {
+              console.log('过滤掉标题选项:', originalOptions.filter((opt: string) => isLikelyTitle(opt)))
+              console.log('保留的选项:', colDim.options)
+            }
+          }
+          
           // 如果 label 是默认的"列维度"或空，尝试从 options 推断
           if (!colDim.label || colDim.label === '列维度') {
             // 从 options 中推断合适的 label
@@ -3086,18 +3108,21 @@ async function applyMatrixHeader() {
             }
           }
           
-          // 重要：确保 options 正确，如果从后端获取的 options 不正确，尝试重新提取
+          // 重要：如果过滤后 options 为空，尝试重新提取
           if (!colDim.options || colDim.options.length === 0) {
+            console.warn('列维度选项为空，尝试重新提取')
             // 从 importData.all_rows 中重新提取列维度选项
             const allRows = importData.all_rows || []
             const colIdx = matrixColHeaderCol.value
             const rowHeaderIdx = matrixRowHeaderRow.value
             
             const optionsSet = new Set<string>()
-            for (let i = rowHeaderIdx + 1; i < allRows.length; i++) {
-              if (allRows[i] && allRows[i][colIdx]) {
-                const val = String(allRows[i][colIdx]).trim()
-                if (val && !val.startsWith('列')) {  // 排除默认的"列1"、"列2"
+            // 从 row_header_row 行提取，跳过 col_header_col 列
+            if (rowHeaderIdx < allRows.length) {
+              const headerRow = allRows[rowHeaderIdx]
+              for (let j = colIdx + 1; j < headerRow.length; j++) {
+                const val = String(headerRow[j]).trim()
+                if (val && !isLikelyTitle(val)) {
                   optionsSet.add(val)
                 }
               }
