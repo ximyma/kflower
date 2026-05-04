@@ -18,6 +18,7 @@
           <tr>
             <th class="corner-header">{{ rowDimensionLabel }}</th>
             <th v-for="col in colHeaders" :key="col">{{ col }}</th>
+            <th v-if="showRowTotals" class="total-column-header">行合计</th>
             <th v-if="showActions" class="action-header">操作</th>
           </tr>
         </thead>
@@ -26,6 +27,9 @@
             <td class="row-header">{{ row }}</td>
             <td v-for="col in colHeaders" :key="col" class="data-cell">
               {{ getCellValue(row, col) }}
+            </td>
+            <td v-if="showRowTotals" class="row-total-cell">
+              {{ getRowTotal(row) }}
             </td>
             <td v-if="showActions" class="action-cell">
               <el-button type="danger" size="small" @click="deleteRow(row)">删除</el-button>
@@ -37,6 +41,9 @@
             <td class="total-label">总计</td>
             <td v-for="col in colHeaders" :key="col" class="total-cell">
               {{ getColumnTotal(col) }}
+            </td>
+            <td v-if="showRowTotals" class="total-cell grand-total">
+              {{ getGrandTotal() }}
             </td>
             <td v-if="showActions"></td>
           </tr>
@@ -115,29 +122,42 @@ const props = defineProps({
   showAddCol: {
     type: Boolean,
     default: false
+  },
+  // 是否显示行合计列
+  showRowTotals: {
+    type: Boolean,
+    default: false
   }
 })
 
 const emit = defineEmits(['add-row', 'add-column', 'delete-row'])
 
-// 提取行表头
+// 提取行表头 - 使用有序数组去重，保持原始顺序
 const rowHeaders = computed(() => {
-  const set = new Set<string>()
-  props.data.forEach(item => {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const item of props.data) {
     const val = item[props.rowDimensionField]
-    if (val) set.add(val)
-  })
-  return Array.from(set)
+    if (val && !seen.has(val)) {
+      seen.add(val)
+      result.push(val)
+    }
+  }
+  return result
 })
 
-// 提取列表头
+// 提取列表头 - 使用有序数组去重，保持原始顺序
 const colHeaders = computed(() => {
-  const set = new Set<string>()
-  props.data.forEach(item => {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const item of props.data) {
     const val = item[props.colDimensionField]
-    if (val) set.add(val)
-  })
-  return Array.from(set)
+    if (val && !seen.has(val)) {
+      seen.add(val)
+      result.push(val)
+    }
+  }
+  return result
 })
 
 // 获取数据单元格的值
@@ -155,7 +175,30 @@ function getColumnTotal(col: string) {
     .filter(d => d[props.colDimensionField] === col)
     .map(d => parseFloat(d[props.valueField]))
     .filter(v => !isNaN(v))
-  
+
+  if (values.length === 0) return '-'
+  const sum = values.reduce((a, b) => a + b, 0)
+  return sum.toFixed(2)
+}
+
+// 计算行总计
+function getRowTotal(row: string) {
+  const values = props.data
+    .filter(d => d[props.rowDimensionField] === row)
+    .map(d => parseFloat(d[props.valueField]))
+    .filter(v => !isNaN(v))
+
+  if (values.length === 0) return '-'
+  const sum = values.reduce((a, b) => a + b, 0)
+  return sum.toFixed(2)
+}
+
+// 计算总计
+function getGrandTotal() {
+  const values = props.data
+    .map(d => parseFloat(d[props.valueField]))
+    .filter(v => !isNaN(v))
+
   if (values.length === 0) return '-'
   const sum = values.reduce((a, b) => a + b, 0)
   return sum.toFixed(2)
@@ -181,24 +224,37 @@ async function exportToExcel() {
   try {
     const XLSX = await import('xlsx')
     const wsData = []
-    
+
     // 表头
-    wsData.push([props.rowDimensionLabel, ...colHeaders.value])
-    
+    const headerRow = [props.rowDimensionLabel, ...colHeaders.value]
+    if (props.showRowTotals) headerRow.push('行合计')
+    wsData.push(headerRow)
+
     // 数据行
     rowHeaders.value.forEach(row => {
       const rowData = [row]
       colHeaders.value.forEach(col => {
         rowData.push(getCellValue(row, col))
       })
+      if (props.showRowTotals) rowData.push(getRowTotal(row))
       wsData.push(rowData)
     })
-    
+
+    // 汇总行
+    if (props.showTotals) {
+      const totalRow = ['总计']
+      colHeaders.value.forEach(col => {
+        totalRow.push(getColumnTotal(col))
+      })
+      if (props.showRowTotals) totalRow.push(getGrandTotal())
+      wsData.push(totalRow)
+    }
+
     const ws = XLSX.utils.aoa_to_sheet(wsData)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
     XLSX.writeFile(wb, `${props.title}.xlsx`)
-    
+
     ElMessage.success('导出成功')
   } catch (e: any) {
     ElMessage.error('导出失败：' + e.message)
@@ -293,6 +349,20 @@ const matrixTableRef = ref<HTMLElement>()
 .total-cell {
   font-weight: 600;
   background-color: #f8f9fa;
+}
+
+.total-column-header {
+  background-color: #e8eaf0;
+}
+
+.row-total-cell {
+  font-weight: 600;
+  background-color: #f8f9fa;
+  color: #409eff;
+}
+
+.grand-total {
+  color: #67c23a;
 }
 
 .matrix-controls {

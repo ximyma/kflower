@@ -89,8 +89,11 @@ import { templateAPI } from '@/common/api/index'
 const route = useRoute()
 const router = useRouter()
 
-const appId = ref(Number(route.params.appId))
-const templateId = ref(Number(route.params.templateId))
+// 兼容两种路由格式：
+// 1. /form/:id/edit （独立路由 FormEdit）
+// 2. /app/:appId/form/:templateId/edit （应用内路由 AppFormEdit）
+const appId = ref<number | null>(route.params.appId ? Number(route.params.appId) : null)
+const templateId = ref(Number(route.params.templateId || route.params.id))
 const dataId = computed(() => route.params.dataId ? Number(route.params.dataId) : null)
 
 const isEdit = computed(() => !!dataId.value)
@@ -162,11 +165,15 @@ async function saveForm() {
 
 // 返回
 function goBack() {
-  router.push(`/app/${appId.value}/form/${templateId.value}`)
+  if (appId.value) {
+    router.push(`/app/${appId.value}/form/${templateId.value}`)
+  } else {
+    router.push(`/form/${templateId.value}`)
+  }
 }
 
 // 监听路由变化，重新加载数据
-watch(() => [route.params.templateId, route.params.dataId], ([newTemplateId, newDataId]) => {
+watch(() => [route.params.templateId || route.params.id, route.params.dataId], ([newTemplateId, newDataId]) => {
   if (newTemplateId) {
     templateId.value = Number(newTemplateId)
     formData.value = {}

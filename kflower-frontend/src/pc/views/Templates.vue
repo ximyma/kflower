@@ -36,6 +36,9 @@
           <el-button type="primary" @click="openCreateDialog">
             <el-icon><Plus /></el-icon> 新建模板
           </el-button>
+          <el-button type="success" @click="openMatrixTemplateDialog">
+            <el-icon><Grid /></el-icon> 创建矩阵表格
+          </el-button>
         </div>
       </div>
 
@@ -99,6 +102,11 @@
               <el-tag size="small" :type="getCategoryTagType(row.category)">
                 {{ getCategoryLabel(row.category) }}
               </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" width="80" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.config?.matrix_template" type="warning" size="small">矩阵</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="字段数" width="80" align="center" sortable sort-by="fieldCount">
@@ -180,6 +188,7 @@
           <p class="card-desc">{{ t.description || '暂无描述' }}</p>
           <div class="card-meta">
             <el-tag size="small" :type="getCategoryTagType(t.category)">{{ getCategoryLabel(t.category) }}</el-tag>
+            <el-tag v-if="t.config?.matrix_template" type="warning" size="small">矩阵</el-tag>
             <span class="field-count"><el-icon><List /></el-icon> {{ countFields(t) }} 字段</span>
             <span class="create-time">{{ formatDateShort(t.created_at) }}</span>
           </div>
@@ -833,6 +842,52 @@
       </template>
     </el-dialog>
 
+
+    <!-- 创建矩阵表格模板弹窗 -->
+    <el-dialog v-model="showMatrixDialog" title="创建矩阵表格模板" width="600px" destroy-on-close>
+      <el-form :model="matrixForm" :rules="matrixRules" label-width="120px" ref="matrixFormRef">
+        <el-form-item label="模板名称" prop="name">
+          <el-input v-model="matrixForm.name" placeholder="请输入模板名称" />
+        </el-form-item>
+        <el-form-item label="模板编码" prop="code">
+          <el-input v-model="matrixForm.code" placeholder="请输入模板编码" />
+        </el-form-item>
+        <el-form-item label="模板分类">
+          <el-select v-model="matrixForm.category" style="width:100%">
+            <el-option v-for="c in categories" :key="c.value" :label="c.label" :value="c.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="模板描述">
+          <el-input v-model="matrixForm.description" type="textarea" :rows="2" />
+        </el-form-item>
+        <el-divider content-position="left">矩阵维度设置</el-divider>
+        <el-form-item label="行维度名称" prop="row_dimension_label">
+          <el-input v-model="matrixForm.row_dimension_label" placeholder="如：产品、部门、项目" />
+          <div class="form-tip">行维度的显示名称（第一列）</div>
+        </el-form-item>
+        <el-form-item label="列维度名称" prop="col_dimension_label">
+          <el-input v-model="matrixForm.col_dimension_label" placeholder="如：季度、月份、年份" />
+          <div class="form-tip">列维度的显示名称（第一行）</div>
+        </el-form-item>
+        <el-form-item label="数值字段名称" prop="value_label">
+          <el-input v-model="matrixForm.value_label" placeholder="如：销售额、数量、金额" />
+          <div class="form-tip">矩阵单元格的数值字段名称</div>
+        </el-form-item>
+        <el-divider content-position="left">初始大小</el-divider>
+        <el-form-item label="初始行数">
+          <el-input-number v-model="matrixForm.initial_rows" :min="1" :max="50" />
+          <div class="form-tip">创建后可在输入界面动态添加/删除行</div>
+        </el-form-item>
+        <el-form-item label="初始列数">
+          <el-input-number v-model="matrixForm.initial_cols" :min="1" :max="50" />
+          <div class="form-tip">创建后可在输入界面动态添加/删除列</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showMatrixDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmCreateMatrixTemplate">创建模板</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 导入Excel/图片弹窗 -->
     <el-dialog 
@@ -1648,10 +1703,22 @@ async function loadTemplates() {
     const res: any = await templateAPI.list({ limit: 100 })
     console.log('[loadTemplates] API 返回原始数据:', JSON.stringify(res)?.slice(0, 200))
     if (Array.isArray(res)) {
-      templates.value = res
+      templates.value = res.map(t => {
+        // 解析 config（可能是 JSON 字符串）
+        if (typeof t.config === 'string') {
+          try { t.config = JSON.parse(t.config) } catch {}
+        }
+        return t
+      })
     } else if (res && typeof res === 'object') {
       // 支持 {items: []} 或 {data: []} 或 {templates: []} 格式
-      templates.value = res.items || res.data || res.templates || []
+      const raw = res.items || res.data || res.templates || []
+      templates.value = raw.map((t: any) => {
+        if (typeof t.config === 'string') {
+          try { t.config = JSON.parse(t.config) } catch {}
+        }
+        return t
+      })
     } else {
       templates.value = []
     }
@@ -2081,6 +2148,28 @@ const editFormRef = ref()
 const editForm = reactive({ name:'', code:'', description:'', category:'general', is_active:true })
 const editRules = { name: [{ required:true, message:'请输入模板名称', trigger:'blur' }], code: [{ required:true, message:'请输入模板编码', trigger:'blur' }] }
 
+// 矩阵表格模板
+const showMatrixDialog = ref(false)
+const matrixFormRef = ref()
+const matrixForm = reactive({
+  name: '',
+  code: '',
+  description: '',
+  category: 'general',
+  row_dimension_label: '行维度',
+  col_dimension_label: '列维度',
+  value_label: '数值',
+  initial_rows: 5,
+  initial_cols: 5
+})
+const matrixRules = {
+  name: [{ required:true, message:'请输入模板名称', trigger:'blur' }],
+  code: [{ required:true, message:'请输入模板编码', trigger:'blur' }],
+  row_dimension_label: [{ required:true, message:'请输入行维度名称', trigger:'blur' }],
+  col_dimension_label: [{ required:true, message:'请输入列维度名称', trigger:'blur' }],
+  value_label: [{ required:true, message:'请输入数值字段名称', trigger:'blur' }]
+}
+
 function openCreateDialog() {
   editingTemplate.value = null
   editForm.name = ''; editForm.code = ''; editForm.description = ''; editForm.category = 'general'; editForm.is_active = true
@@ -2091,6 +2180,100 @@ function openEditDialog(t: any) {
   editForm.name = t.name; editForm.code = t.code||''; editForm.description = t.description||''; editForm.category = t.category||'general'; editForm.is_active = t.is_active!==false
   showEditDialog.value = true
 }
+
+// 打开矩阵表格创建对话框
+function openMatrixTemplateDialog() {
+  matrixForm.name = ''
+  matrixForm.code = ''
+  matrixForm.description = ''
+  matrixForm.category = 'general'
+  matrixForm.row_dimension_label = '行维度'
+  matrixForm.col_dimension_label = '列维度'
+  matrixForm.value_label = '数值'
+  matrixForm.initial_rows = 5
+  matrixForm.initial_cols = 5
+  showMatrixDialog.value = true
+}
+
+// 确认创建矩阵表格模板
+async function confirmCreateMatrixTemplate() {
+  if (!matrixForm.name.trim()) { ElMessage.warning('请输入模板名称'); return }
+  if (!matrixForm.code.trim()) { ElMessage.warning('请输入模板编码'); return }
+
+  try {
+    // 构建矩阵模板的3个字段
+    const rowDimLabel = matrixForm.row_dimension_label || '行维度'
+    const colDimLabel = matrixForm.col_dimension_label || '列维度'
+    const valueLabel = matrixForm.value_label || '数值'
+
+    const fields = [
+      {
+        name: 'row_dimension',
+        label: rowDimLabel,
+        type: 'select',
+        options: Array.from({length: matrixForm.initial_rows}, (_, i) => `${rowDimLabel}${i+1}`),
+        required: true,
+        width: '50%'
+      },
+      {
+        name: 'col_dimension',
+        label: colDimLabel,
+        type: 'select',
+        options: Array.from({length: matrixForm.initial_cols}, (_, i) => `${colDimLabel}${i+1}`),
+        required: true,
+        width: '50%'
+      },
+      {
+        name: 'value',
+        label: valueLabel,
+        type: 'number',
+        required: false,
+        width: '50%'
+      }
+    ]
+
+    // 调用 API 创建模板 (字段名必须与后端 TemplateCreate Schema 匹配)
+    // 添加 config.matrix_template = true 标记，区分一维模板和矩阵模板
+    const res = await templateAPI.create({
+      name: matrixForm.name,
+      code: matrixForm.code,
+      description: matrixForm.description,
+      category: matrixForm.category,
+      config: {
+        matrix_template: true  // 矩阵模板标记
+      },
+      modules: [
+        {
+          name: 'main',  // 后端期望 name 字段
+          label: '矩阵数据录入',
+          fields: fields
+        }
+      ],
+      is_published: true  // 自动发布，方便用户立即使用
+    })
+
+    if (res.id) {
+      ElMessage.success('矩阵表格模板创建成功')
+      showMatrixDialog.value = false
+
+      // 刷新模板列表
+      await loadTemplates()
+
+      // 自动打开表单列表页，进入矩阵输入界面
+      // 判断当前是否在应用路由下（有 appId）
+      const appId = route.params.appId ? String(route.params.appId) : null
+      if (appId) {
+        router.push({ name: 'AppFormList', params: { appId, templateId: String(res.id) } })
+      } else {
+        // 不在应用下，使用独立路由
+        router.push({ name: 'FormList', params: { id: String(res.id) } })
+      }
+    }
+  } catch (e: any) {
+    ElMessage.error('创建失败：' + (e.message || e))
+  }
+}
+
 // 从编辑框进入发布预览的入口（保存后继续发布）
 function continuePublishPreview() {
   // 从 editingTemplate（原始数据）或 currentTemplate 读取 ID
@@ -2160,7 +2343,7 @@ async function confirmCreateOrUpdate() {
       const res: any = await templateAPI.create({
         name: editForm.name, code: editForm.code,
         description: editForm.description, category: editForm.category,
-        is_active: editForm.is_active, modules: []
+        modules: []  // 新建模板无需 modules，后续在设计器中添加
       })
       console.log('[confirmCreateOrUpdate] 创建返回:', res)
       templates.value.unshift(res)  // 新模板加入工作区列表
@@ -2461,7 +2644,20 @@ async function savePermission() {
 
 async function duplicateTemplate(t: any) {
   try {
-    const res: any = await templateAPI.create({ name:t.name+' (副本)', code:t.code+'_copy', description:t.description, category:t.category, fields:t.fields })
+    // 构建 modules 结构（兼容 fields 和 modules 格式）
+    let modules = []
+    if (t.modules && Array.isArray(t.modules)) {
+      modules = t.modules
+    } else if (t.fields) {
+      modules = [{ name: 'main', label: '主表单', fields: t.fields }]
+    }
+    const res: any = await templateAPI.create({
+      name: t.name + ' (副本)',
+      code: (t.code || t.name) + '_copy',
+      description: t.description,
+      category: t.category,
+      modules: modules
+    })
     templates.value.unshift(res); ElMessage.success('复制成功')
   } catch { ElMessage.error('复制失败') }
 }
@@ -3818,7 +4014,40 @@ function onDataFormFieldChange(_fieldName: string) {
 
 // 打开表单填写页（从列表操作列点击"填表"）
 function openFormSubmit(t: any) {
-  openDataForm(t)
+  // 检查是否为矩阵模板
+  const config = t.config
+  let isMatrix = false
+  if (typeof config === 'string') {
+    try {
+      const parsed = JSON.parse(config)
+      isMatrix = parsed.matrix_template === true
+    } catch {}
+  } else if (config && typeof config === 'object') {
+    isMatrix = config.matrix_template === true
+  }
+  
+  // 兼容旧逻辑：检查字段名
+  if (!isMatrix && t.modules) {
+    const fieldNames: string[] = []
+    for (const mod of t.modules) {
+      if (mod.fields) {
+        for (const f of mod.fields) {
+          if (f.name) fieldNames.push(f.name)
+        }
+      }
+    }
+    isMatrix = fieldNames.includes('row_dimension') && 
+               fieldNames.includes('col_dimension') && 
+               fieldNames.includes('value')
+  }
+  
+  if (isMatrix) {
+    // 矩阵模板：跳转到数据列表页
+    router.push(`/form/${t.id}`)
+  } else {
+    // 普通模板：打开填表弹窗
+    openDataForm(t)
+  }
 }
 
 function openDataForm(t: any) {

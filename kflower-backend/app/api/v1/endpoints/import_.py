@@ -243,6 +243,10 @@ async def create_template_from_import(
         
         code = f"imp_{uuid.uuid4().hex[:8]}"
         
+        # 检测是否为矩阵模板（包含 row_dimension, col_dimension, value 三个字段）
+        field_names = [f.get('name') for f in fields_list if isinstance(f, dict)]
+        is_matrix = 'row_dimension' in field_names and 'col_dimension' in field_names and 'value' in field_names
+        
         modules = [
             {
                 "name": "main",
@@ -256,11 +260,12 @@ async def create_template_from_import(
             code=code,
             description=description or f"从 {filename} 导入生成",
             category=category,
+            config={"matrix_template": True} if is_matrix else {},
             modules=modules,
             ai_generated=False,
             organization_id=current_user.organization_id,
             created_by=current_user.id,
-            is_published=False,  # 默认草稿状态
+            is_published=True if is_matrix else False,  # 矩阵模板自动发布
             is_public=False
         )
         

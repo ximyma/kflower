@@ -70,6 +70,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '模板设计' }
       },
       {
+        path: 'form/:id',
+        name: 'FormList',
+        component: () => import('../../pc/views/FormListPage.vue'),
+        meta: { title: '数据列表' }
+      },
+      {
+        path: 'form/:id/edit',
+        name: 'FormEdit',
+        component: () => import('../../pc/views/FormEditPage.vue'),
+        meta: { title: '编辑数据', hideInMenu: true }
+      },
+      {
         path: 'workflows',
         name: 'Workflows',
         component: () => import('../../pc/views/Workflows.vue'),
@@ -231,6 +243,12 @@ const routes: RouteRecordRaw[] = [
         name: 'FormData',
         component: () => import('../../pc/views/FormData.vue'),
         meta: { title: '数据管理' }
+      },
+      {
+        path: 'form/:id/edit',
+        name: 'FormEdit',
+        component: () => import('../../pc/views/FormEditPage.vue'),
+        meta: { title: '编辑数据', hideInMenu: true }
       }
     ]
   },

@@ -6,7 +6,10 @@
         <el-button type="success" @click="openImportDialog">
           <el-icon><Upload /></el-icon> 导入Excel
         </el-button>
-        <el-button type="primary" @click="createNew">
+        <el-button v-if="isMatrixTemplate" type="primary" @click="createNewMatrix">
+          <el-icon><Plus /></el-icon> 新增矩阵数据
+        </el-button>
+        <el-button v-else type="primary" @click="createNew">
           <el-icon><Plus /></el-icon> 新增
         </el-button>
       </div>
@@ -28,7 +31,8 @@
 
     <!-- 数据表格 -->
     <el-card>
-      <el-table :data="tableData" border stripe>
+      <!-- 普通模板数据表格 -->
+      <el-table v-if="!isMatrixTemplate" :data="tableData" border stripe>
         <el-table-column type="index" label="序号" width="60" />
         <el-table-column
           v-for="field in displayFields"
@@ -63,22 +67,53 @@
             </el-button>
           </template>
         </el-table-column>
-  </el-table>
-  
-  <!-- 矩阵视图（用于矩阵表格模板） -->
-  <MatrixView
-    v-if="isMatrixTemplate && showMatrixView"
-    :data="tableData"
-    :row-dimension-field="getFieldByName('row_dimension')?.name || 'row_dimension'"
-    :col-dimension-field="getFieldByName('col_dimension')?.name || 'col_dimension'"
-    :value-field="getFieldByName('value')?.name || 'value'"
-    :title="templateData?.name || '矩阵视图'"
-    :row-dimension-label="getFieldByName('row_dimension')?.label || '行维度'"
-    :col-dimension-label="getFieldByName('col_dimension')?.label || '列维度'"
-    :show-actions="false"
-    :show-totals="true"
-    style="margin-top: 16px;"
-  />
+      </el-table>
+      
+      <!-- 矩阵模板数据列表 - 每行是一个完整的矩阵数据实例 -->
+      <div v-if="isMatrixTemplate" class="matrix-list-container">
+        <el-table :data="matrixTableData" border stripe>
+          <el-table-column type="index" label="序号" width="60" align="center" />
+          <el-table-column label="矩阵数据" min-width="200" align="center">
+            <template #default="{ row }">
+              <span class="matrix-info">{{ getMatrixInfo(row) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="提交时间" width="160" align="center">
+            <template #default="{ row }">
+              {{ formatDateTime(row.created_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="200" fixed="right" align="center">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" text @click="viewMatrixData(row)" title="查看">
+                <el-icon><View /></el-icon>查看
+              </el-button>
+              <el-button size="small" type="warning" text @click="editMatrixData(row)" title="编辑">
+                <el-icon><Edit /></el-icon>编辑
+              </el-button>
+              <el-button size="small" type="danger" text @click="deleteDataItem(row)" title="删除">
+                <el-icon><Delete /></el-icon>删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        
+        <!-- 矩阵视图预览（可选显示） -->
+        <div v-if="selectedMatrixData && showMatrixPreview" class="matrix-preview">
+          <h4>数据预览</h4>
+          <MatrixView
+            :data="selectedMatrixData.__matrix_data || []"
+            :row-dimension-field="'row_dimension'"
+            :col-dimension-field="'col_dimension'"
+            :value-field="'value'"
+            :title="'矩阵数据预览'"
+            :row-dimension-label="getFieldByName('row_dimension')?.label || '行维度'"
+            :col-dimension-label="getFieldByName('col_dimension')?.label || '列维度'"
+            :show-actions="false"
+            :show-totals="true"
+          />
+        </div>
+      </div>
   
   <!-- 分页 -->
       <div class="pagination">
@@ -95,24 +130,116 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="showFormDialog" :title="isEditMode ? '编辑数据' : '新增数据'" width="900px" destroy-on-close>
-      <!-- 矩阵表格录入（矩阵模板） -->
-      <MatrixInput
-        v-if="isMatrixTemplate"
-        v-model="matrixInputData"
-        :row-options="getFieldByName('row_dimension')?.options || []"
-        :col-options="getFieldByName('col_dimension')?.options || []"
-        :title="isEditMode ? '编辑矩阵数据' : '录入矩阵数据'"
-        :show-add-row="true"
-        :show-add-col="true"
-        :show-edit-row="true"
-        :show-edit-col="true"
-        @add-row="addMatrixRow"
-        @add-column="addMatrixColumn"
-        @remove-row="removeMatrixRow"
-        @remove-column="removeMatrixColumn"
-        style="margin: 16px 0;"
-      />
+    <el-dialog v-model="showFormDialog" :title="isEditMode ? '编辑数据' : '新增数据'" width="1200px" destroy-on-close>
+      <!-- 矩阵模板：根据是否有普通字段，显示不同布局 -->
+      <div v-if="isMatrixTemplate">
+        <!-- 有普通字段：左侧表单 + 右侧矩阵输入 -->
+        <div v-if="hasRegularFields" style="display: flex; gap: 20px;">
+          <!-- 左侧：普通字段表单 -->
+          <div style="flex: 1; min-width: 300px;">
+            <h4 style="margin: 0 0 16px 0;">基本信息</h4>
+            <el-form :model="formData" label-width="100px">
+              <el-form-item
+                v-for="field in regularFields"
+                :key="field.name"
+                :label="field.label"
+                :required="field.required"
+              >
+                <el-input
+                  v-if="field.type === 'text' || field.type === 'phone' || field.type === 'email'"
+                  v-model="formData[field.name]"
+                  :placeholder="field.placeholder || `请输入${field.label}`"
+                />
+                <el-input-number
+                  v-else-if="field.type === 'number' || field.type === 'money' || field.type === 'percent'"
+                  v-model="formData[field.name]"
+                  :placeholder="field.placeholder || `请输入${field.label}`"
+                  :precision="field.type === 'percent' ? 2 : 0"
+                  style="width: 100%;"
+                />
+                <el-date-picker
+                  v-else-if="field.type === 'date'"
+                  v-model="formData[field.name]"
+                  type="date"
+                  :placeholder="field.placeholder || `请选择${field.label}`"
+                  value-format="YYYY-MM-DD"
+                  style="width: 100%;"
+                />
+                <el-select
+                  v-else-if="field.type === 'select'"
+                  v-model="formData[field.name]"
+                  :placeholder="field.placeholder || `请选择${field.label}`"
+                  style="width: 100%;"
+                  clearable
+                >
+                  <el-option
+                    v-for="opt in (field.options || [])"
+                    :key="opt.value || opt"
+                    :label="opt.label || opt"
+                    :value="opt.value || opt"
+                  />
+                </el-select>
+                <el-input
+                  v-else-if="field.type === 'textarea'"
+                  v-model="formData[field.name]"
+                  type="textarea"
+                  :rows="3"
+                  :placeholder="field.placeholder || `请输入${field.label}`"
+                />
+                <el-input
+                  v-else
+                  v-model="formData[field.name]"
+                  :placeholder="field.placeholder || `请输入${field.label}`"
+                />
+              </el-form-item>
+            </el-form>
+          </div>
+          
+          <!-- 右侧：矩阵输入组件 -->
+          <div style="flex: 2;">
+            <MatrixInput
+              ref="matrixInputRef"
+              :row-options="getFieldByName('row_dimension')?.options || []"
+              :col-options="getFieldByName('col_dimension')?.options || []"
+              :title="isEditMode ? '编辑矩阵数据' : '录入矩阵数据'"
+              :value-field-type="getFieldByName('value')?.type || 'number'"
+              :value-options="getFieldByName('value')?.options || []"
+              :show-add-row="true"
+              :show-add-col="true"
+              :show-edit-row="true"
+              :show-edit-col="true"
+              :show-totals="true"
+              :show-row-totals="true"
+              @add-row="addMatrixRow"
+              @add-column="addMatrixColumn"
+              @remove-row="removeMatrixRow"
+              @remove-column="removeMatrixColumn"
+            />
+          </div>
+        </div>
+        
+        <!-- 无普通字段：只显示矩阵输入 -->
+        <MatrixInput
+          v-else
+          ref="matrixInputRef"
+          :row-options="getFieldByName('row_dimension')?.options || []"
+          :col-options="getFieldByName('col_dimension')?.options || []"
+          :title="isEditMode ? '编辑矩阵数据' : '录入矩阵数据'"
+          :value-field-type="getFieldByName('value')?.type || 'number'"
+          :value-options="getFieldByName('value')?.options || []"
+          :show-add-row="true"
+          :show-add-col="true"
+          :show-edit-row="true"
+          :show-edit-col="true"
+          :show-totals="true"
+          :show-row-totals="true"
+          @add-row="addMatrixRow"
+          @add-column="addMatrixColumn"
+          @remove-row="removeMatrixRow"
+          @remove-column="removeMatrixColumn"
+          style="margin: 16px 0;"
+        />
+      </div>
       
       <!-- 普通表单录入（非矩阵模板） -->
       <el-form v-else :model="formData" label-width="120px">
@@ -214,19 +341,23 @@
       </template>
     </el-dialog>
 
-  <!-- 填写数据弹窗（矩阵模板使用矩阵录入，普通模板使用普通表单） -->
+    <!-- 填写数据弹窗（矩阵模板使用矩阵录入，普通模板使用普通表单） -->
     <el-dialog v-model="showDataForm" :title="'填写数据 - ' + (templateData?.name || '')" width="900px" destroy-on-close>
       <!-- 矩阵表格录入（矩阵模板） -->
       <MatrixInput
         v-if="isMatrixTemplate"
-        v-model="matrixInputData"
+        ref="matrixInputRef2"
         :row-options="getFieldByName('row_dimension')?.options || []"
         :col-options="getFieldByName('col_dimension')?.options || []"
         :title="'填写矩阵数据'"
+        :value-field-type="getFieldByName('value')?.type || 'number'"
+        :value-options="getFieldByName('value')?.options || []"
         :show-add-row="true"
         :show-add-col="true"
         :show-edit-row="true"
         :show-edit-col="true"
+        :show-totals="true"
+        :show-row-totals="true"
         style="margin: 16px 0;"
       />
       
@@ -255,6 +386,31 @@
       <template #footer>
         <el-button @click="showDataForm = false">取消</el-button>
         <el-button type="primary" :loading="dataFormLoading" @click="submitDataForm">提交数据</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 矩阵查看弹窗 -->
+    <el-dialog v-model="showMatrixViewDialog" :title="'查看矩阵数据 - ' + (templateData?.name || '')" width="90%" destroy-on-close>
+      <MatrixView
+        v-if="selectedMatrixData"
+        :data="selectedMatrixData.__matrix_data || []"
+        :row-dimension-field="'row_dimension'"
+        :col-dimension-field="'col_dimension'"
+        :value-field="'value'"
+        :title="templateData?.name || '矩阵数据'"
+        :row-dimension-label="getFieldByName('row_dimension')?.label || '行维度'"
+        :col-dimension-label="getFieldByName('col_dimension')?.label || '列维度'"
+        :show-actions="false"
+        :show-totals="true"
+      />
+      <div v-else class="empty-matrix">
+        <el-empty description="暂无数据" />
+      </div>
+      <template #footer>
+        <el-button @click="showMatrixViewDialog = false">关闭</el-button>
+        <el-button type="primary" @click="() => { showMatrixViewDialog = false; editMatrixData(selectedMatrixData) }">
+          编辑
+        </el-button>
       </template>
     </el-dialog>
 
@@ -386,11 +542,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, reactive, computed } from 'vue'
+import { ref, onMounted, watch, reactive, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Plus, Search, View, Edit, EditPen, List, Key, Delete, Upload
+  Plus, Search, View, Edit, EditPen, List, Key, Delete, Upload, InfoFilled
 } from '@element-plus/icons-vue'
 import * as XLSX from 'xlsx'
 import { templateAPI } from '@/common/api/index'
@@ -402,8 +558,12 @@ import MatrixInput from '@/pc/components/MatrixInput.vue'
 const route = useRoute()
 const router = useRouter()
 
-const appId = ref(Number(route.params.appId))
-const templateId = ref(Number(route.params.templateId))
+// 兼容两种路由格式：
+// 1. /form/:id （独立路由 FormList）
+// 2. /app/:appId/form/:templateId （应用内路由 AppFormList）
+const appId = ref<number | null>(route.params.appId ? Number(route.params.appId) : null)
+const templateId = ref(Number(route.params.templateId || route.params.id))
+
 
 const templateData = ref<any>(null)
 const tableData = ref<any[]>([])
@@ -412,6 +572,10 @@ const searchKeyword = ref('')
 const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+
+// 矩阵输入组件引用
+const matrixInputRef = ref<any>(null)  // 用于 showFormDialog 弹窗
+const matrixInputRef2 = ref<any>(null)  // 用于 showDataForm 弹窗
 
 // 表单弹窗
 const showFormDialog = ref(false)
@@ -431,57 +595,138 @@ const dataFormData = reactive<Record<string, any>>({})
 const dataFormLoading = ref(false)
 
 // 矩阵表格相关
+// 判断是否为矩阵模板：优先检查 config.matrix_template 标记，其次检查字段名
 const isMatrixTemplate = computed(() => {
+  // 1. 优先使用 config 标记判断（创建矩阵模板时设置的标记）
+  if (templateData.value?.config?.matrix_template === true) {
+    return true
+  }
+  // 2. 兼容旧逻辑：检查是否包含矩阵特征字段
   if (!formFields.value || formFields.value.length === 0) return false
   const fieldNames = formFields.value.map(f => f.name)
-  // 检测是否是矩阵模板：包含行维度、列维度、数值三个字段
-  return fieldNames.includes('row_dimension') && 
-         fieldNames.includes('col_dimension') && 
+  return fieldNames.includes('row_dimension') &&
+         fieldNames.includes('col_dimension') &&
          fieldNames.includes('value')
 })
+
+// 判断是否有普通字段（非矩阵字段）
+const hasRegularFields = computed(() => {
+  if (!isMatrixTemplate.value) return true
+  const matrixFieldNames = ['row_dimension', 'col_dimension', 'value']
+  return formFields.value.some(f => !matrixFieldNames.includes(f.name))
+})
+
+// 获取普通字段（非矩阵字段）
+const regularFields = computed(() => {
+  if (!isMatrixTemplate.value) return formFields.value
+  const matrixFieldNames = ['row_dimension', 'col_dimension', 'value']
+  return formFields.value.filter(f => !matrixFieldNames.includes(f.name))
+})
+
+// 矩阵表格相关属性
 const showMatrixView = ref(true)  // 控制矩阵视图显示
 const showMatrixInput = ref(false)  // 控制矩阵录入显示
-const matrixInputData = ref<any[]>([])
+const showMatrixViewDialog = ref(false)  // 查看矩阵数据弹窗
+const selectedMatrixData = ref<any>(null)  // 选中的矩阵数据
+const showMatrixPreview = ref(false)  // 显示矩阵预览
 
-// 初始化矩阵输入数据
-function initMatrixInputData() {
-  if (!isMatrixTemplate.value) return
+// 矩阵数据列表 - 解析每行数据中的矩阵信息
+const matrixTableData = computed(() => {
+  if (!isMatrixTemplate.value) return []
   
-  const rowField = formFields.value.find(f => f.name === 'row_dimension')
-  const colField = formFields.value.find(f => f.name === 'col_dimension')
-  
-  if (rowField && colField) {
-    const rows = (rowField.options || []).length
-    const cols = (colField.options || []).length
-    matrixInputData.value = Array(rows).fill(0).map(() => Array(cols).fill(''))
-  }
-}
-
-// 处理矩阵输入数据更新
-function handleMatrixInputUpdate(data: any[]) {
-  // 将一维格式转换为对象数组
-  const rowField = formFields.value.find(f => f.name === 'row_dimension')
-  const colField = formFields.value.find(f => f.name === 'col_dimension')
-  
-  if (rowField && colField) {
-    const rowOptions = rowField.options || []
-    const colOptions = colField.options || []
-    const result = []
-    
-    for (let i = 0; i < rowOptions.length; i++) {
-      for (let j = 0; j < colOptions.length; j++) {
-        if (data[i] && data[i][j] !== '' && data[i][j] !== null && data[i][j] !== undefined) {
-          result.push({
-            row_dimension: rowOptions[i].value || rowOptions[i],
-            col_dimension: colOptions[j].value || colOptions[j],
-            value: data[i][j]
-          })
+  return tableData.value.map(row => {
+    // 解析 __matrix_data 字段（可能存储为 JSON 字符串或数组）
+    let matrixData = []
+    if (row.__matrix_data) {
+      if (typeof row.__matrix_data === 'string') {
+        try {
+          matrixData = JSON.parse(row.__matrix_data)
+        } catch {
+          matrixData = []
         }
+      } else {
+        matrixData = row.__matrix_data
       }
     }
     
-    // 保存到表单数据
-    formData.value['__matrix_data'] = result
+    return {
+      ...row,
+      __matrix_data: matrixData
+    }
+  })
+})
+
+// 获取矩阵数据的简要信息
+function getMatrixInfo(row: any) {
+  const data = row.__matrix_data || []
+  if (data.length === 0) return '（空数据）'
+  
+  const rowField = getFieldByName('row_dimension')
+  const colField = getFieldByName('col_dimension')
+  
+  const rowCount = new Set(data.map((d: any) => d.row_dimension)).size
+  const colCount = new Set(data.map((d: any) => d.col_dimension)).size
+  
+  return `${rowCount}行 × ${colCount}列，共 ${data.length} 个数据点`
+}
+
+// ========== 矩阵模板操作函数 ==========
+
+// 查看矩阵数据
+function viewMatrixData(row: any) {
+  selectedMatrixData.value = row
+  showMatrixViewDialog.value = true
+}
+
+// 编辑矩阵数据
+function editMatrixData(row: any) {
+  isEditMode.value = true
+  editDataId.value = row.id
+  selectedMatrixData.value = row
+  
+  // 初始化表单数据
+  initFormData()
+  
+  // 填充普通字段数据（排除矩阵字段）
+  const matrixFieldNames = ['row_dimension', 'col_dimension', 'value', '__matrix_data']
+  formFields.value.forEach((field: any) => {
+    if (!matrixFieldNames.includes(field.name) && row[field.name] !== undefined) {
+      formData.value[field.name] = row[field.name]
+    }
+  })
+  
+  // 显示弹窗
+  showFormDialog.value = true
+  
+  // 在下一个 tick 设置矩阵数据
+  nextTick(() => {
+    matrixInputRef.value?.setData(row.__matrix_data || [])
+  })
+}
+
+// 新增矩阵数据
+function createNewMatrix() {
+  console.log('createNewMatrix called')
+  try {
+    isEditMode.value = false
+    editDataId.value = null
+    selectedMatrixData.value = null
+    
+    // 初始化表单数据
+    initFormData()
+    
+    // 显示弹窗
+    showFormDialog.value = true
+    
+    // 在下一个 tick 初始化空矩阵
+    nextTick(() => {
+      matrixInputRef.value?.setData([])
+    })
+    
+    console.log('showFormDialog set to true')
+  } catch (e) {
+    console.error('Error in createNewMatrix:', e)
+    ElMessage.error('打开矩阵编辑失败：' + (e.message || e))
   }
 }
 
@@ -510,6 +755,10 @@ const hasMapping = computed(() => {
 async function loadTemplate() {
   try {
     const res: any = await templateAPI.get(templateId.value)
+    // 解析 config（可能是 JSON 字符串）
+    if (typeof res.config === 'string') {
+      try { res.config = JSON.parse(res.config) } catch {}
+    }
     templateData.value = res
     
     // 提取字段（从 modules 中）
@@ -619,30 +868,18 @@ async function saveFormData() {
   try {
     let submitData = { ...formData.value }
     
-    // 如果是矩阵表格，从 matrixInputData 中提取数据
+    // 如果是矩阵表格，从 MatrixInput 组件获取数据
     if (isMatrixTemplate.value) {
-      const matrixData = []
-      const rowField = formFields.value.find(f => f.name === 'row_dimension')
-      const colField = formFields.value.find(f => f.name === 'col_dimension')
-      
-      if (rowField && colField && matrixInputData.value) {
-        const rowOptions = rowField.options || []
-        const colOptions = colField.options || []
-        
-        for (let i = 0; i < rowOptions.length; i++) {
-          for (let j = 0; j < colOptions.length; j++) {
-            if (matrixInputData.value[i] && matrixInputData.value[i][j] !== '' && matrixInputData.value[i][j] !== null) {
-              matrixData.push({
-                row_dimension: rowOptions[i].value || rowOptions[i],
-                col_dimension: colOptions[j].value || colOptions[j],
-                value: matrixInputData.value[i][j]
-              })
-            }
-          }
-        }
-        
-        // 将矩阵数据放到一个特殊字段中
-        submitData = { __matrix_data: matrixData }
+      const matrixData = matrixInputRef.value?.getData() || []
+      if (matrixData.length === 0) {
+        ElMessage.warning('没有矩阵数据')
+        saving.value = false
+        return
+      }
+      // 合并普通字段数据和矩阵数据
+      submitData = { 
+        ...formData.value,
+        __matrix_data: matrixData 
       }
     }
     
@@ -667,7 +904,7 @@ async function addMatrixRow() {
   try {
     const rowField = formFields.value.find(f => f.name === 'row_dimension')
     if (rowField) {
-      const newLabel = `新行${rowField.options?.length || 0 + 1}`
+      const newLabel = `新行${(rowField.options?.length || 0) + 1}`
       if (!rowField.options) rowField.options = []
       rowField.options.push({ label: newLabel, value: newLabel })
       ElMessage.success(`已添加行：${newLabel}`)
@@ -682,7 +919,7 @@ async function addMatrixColumn() {
   try {
     const colField = formFields.value.find(f => f.name === 'col_dimension')
     if (colField) {
-      const newLabel = `新列${colField.options?.length || 0 + 1}`
+      const newLabel = `新列${(colField.options?.length || 0) + 1}`
       if (!colField.options) colField.options = []
       colField.options.push({ label: newLabel, value: newLabel })
       ElMessage.success(`已添加列：${newLabel}`)
@@ -745,7 +982,9 @@ function openFormSubmit(row: any) {
   
   // 如果是矩阵模板，初始化矩阵录入数据
   if (isMatrixTemplate.value) {
-    initMatrixInputData()
+    nextTick(() => {
+      matrixInputRef2.value?.setData([])
+    })
   }
   
   showDataForm.value = true
@@ -757,30 +996,15 @@ async function submitDataForm() {
   try {
     let submitData = { ...dataFormData }
     
-    // 如果是矩阵模板，从 matrixInputData 提取数据
+    // 如果是矩阵模板，从 MatrixInput 组件获取数据
     if (isMatrixTemplate.value) {
-      const matrixData = []
-      const rowField = formFields.value.find(f => f.name === 'row_dimension')
-      const colField = formFields.value.find(f => f.name === 'col_dimension')
-      
-      if (rowField && colField && matrixInputData.value) {
-        const rowOptions = rowField.options || []
-        const colOptions = colField.options || []
-        
-        for (let i = 0; i < rowOptions.length; i++) {
-          for (let j = 0; j < colOptions.length; j++) {
-            if (matrixInputData.value[i] && matrixInputData.value[i][j] !== '' && matrixInputData.value[i][j] !== null) {
-              matrixData.push({
-                row_dimension: rowOptions[i].value || rowOptions[i],
-                col_dimension: colOptions[j].value || colOptions[j],
-                value: matrixInputData.value[i][j]
-              })
-            }
-          }
-        }
-        
-        submitData = { __matrix_data: matrixData }
+      const matrixData = matrixInputRef2.value?.getData() || []
+      if (matrixData.length === 0) {
+        ElMessage.warning('没有矩阵数据')
+        dataFormLoading.value = false
+        return
       }
+      submitData = { __matrix_data: matrixData }
     }
     
     await templateAPI.submitData(templateId.value, submitData)
@@ -1080,5 +1304,49 @@ onMounted(() => {
   text-align: center;
   color: var(--el-color-primary);
   font-weight: bold;
+}
+
+// 矩阵相关样式
+.matrix-container {
+  width: 100%;
+}
+
+.matrix-list-container {
+  width: 100%;
+  
+  .matrix-info {
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+  }
+}
+
+.matrix-preview {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--el-fill-color-lighter);
+  border-radius: 8px;
+  
+  h4 {
+    margin: 0 0 12px 0;
+    color: var(--el-text-color-primary);
+  }
+}
+
+.matrix-edit-container {
+  .matrix-tip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: var(--el-color-primary-light-9);
+    border-radius: 4px;
+    color: var(--el-color-primary);
+    font-size: 14px;
+  }
+}
+
+.empty-matrix {
+  padding: 40px 0;
 }
 </style>

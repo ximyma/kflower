@@ -287,7 +287,22 @@ async def submit_template_data(
         modules_list = _json.loads(modules_raw) if modules_raw else []
     else:
         modules_list = modules_raw or []
-    
+
+    # 获取配置（用于检测矩阵模板）
+    config_raw = template.config
+    if isinstance(config_raw, str):
+        config = _json.loads(config_raw) if config_raw else {}
+    else:
+        config = config_raw or {}
+    is_matrix_template = config.get('matrix_template', False)
+
+    # 如果不是矩阵模板，也检查是否包含矩阵特征字段
+    if not is_matrix_template:
+        field_names = [f.get('name') for f_list in [mod.get('fields', []) for mod in modules_list] for f in f_list]
+        is_matrix_template = ('row_dimension' in field_names and
+                              'col_dimension' in field_names and
+                              'value' in field_names)
+
     all_fields = []
     field_map = {}  # name -> field
     for mod in modules_list:
@@ -296,15 +311,21 @@ async def submit_template_data(
                 if isinstance(f, dict):
                     all_fields.append(f)
                     field_map[f.get('name', '')] = f
-    
+
+    # 矩阵模板的系统字段（无需验证）
+    matrix_system_fields = {'row_dimension', 'col_dimension', 'value', '__matrix_data'}
+
     # 验证必填字段
     data = request.data
     for field in all_fields:
         if isinstance(field, dict) and field.get('required'):
             field_name = field.get('name', '')
+            # 矩阵模板的系统字段跳过必填验证
+            if is_matrix_template and field_name in matrix_system_fields:
+                continue
             if field_name and not data.get(field_name):
                 raise HTTPException(
-                    status_code=400, 
+                    status_code=400,
                     detail=f"必填字段「{field.get('label', field_name)}」不能为空"
                 )
     
@@ -755,6 +776,9 @@ async def get_template_data_list(
                     if safe_name and safe_name[0].isdigit():
                         safe_name = 'f_' + safe_name
                     row_data[field_name] = mapping.get(safe_name, '')
+            # 矩阵数据：包含 __matrix_data 字段
+            if '__matrix_data' in mapping:
+                row_data['__matrix_data'] = mapping.get('__matrix_data')
             export_rows.append(row_data)
 
         return export_rows
@@ -1592,6 +1616,21 @@ async def publish_template(
             col_type = 'TEXT'
         
         columns.append(f'"{safe_name}" {col_type}')
+    
+    # 检测是否为矩阵模板，如果是则添加 __matrix_data 字段
+    is_matrix_template = False
+    field_names = [f.get('name', '') for f in all_fields]
+    if 'row_dimension' in field_names and 'col_dimension' in field_names and 'value' in field_names:
+        is_matrix_template = True
+    # 也可以通过配置中的 matrix_template 标志判断
+    config = template.config
+    if isinstance(config, str):
+        config = json.loads(config) if config else {}
+    if config.get('matrix_template'):
+        is_matrix_template = True
+    
+    if is_matrix_template:
+        columns.append('"__matrix_data" TEXT')
     
     # 执行创建表
     create_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(columns)})"

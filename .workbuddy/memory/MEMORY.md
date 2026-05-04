@@ -60,6 +60,50 @@ D:\kkflower\
 - API 接口统一在 `kflower-frontend/src/common/api/index.ts` 中定义
 - 使用 Element Plus 作为 UI 组件库
 
+### ⚠️ Vue 3 组件初始化避坑指南（必读！）
+
+**错误类型**：`Cannot read properties of undefined (reading 'xxx')`
+
+**典型场景**：组件有 `ref([])` 或 `ref({})` 初始化的响应式数据，在模板中直接访问 `.property`
+
+**根本原因**：
+1. 模板在组件挂载时**同步渲染**
+2. `watch` 回调是**异步执行**
+3. 初始化逻辑放在 `watch` 中 → 模板渲染时数据还没准备好
+
+**错误示例**：
+```javascript
+const cellData = ref([])  // 空数组
+
+watch(() => props.options, () => {
+  initData()  // ❌ watch 是异步的，模板已经渲染了
+})
+
+// 模板中：<div>{{ cellData[0].name }}</div>  // ❌ cellData[0] 是 undefined
+```
+
+**正确做法**（三选一）：
+```javascript
+// 方案1：watch 添加 immediate: true
+watch(() => props.options, () => { initData() }, { immediate: true })
+
+// 方案2：使用 onMounted + nextTick
+onMounted(() => { nextTick(() => initData()) })
+
+// 方案3：使用 v-if 控制渲染时机
+// <MatrixInput v-if="props.options.length > 0" ... />
+```
+
+**防御性编程原则**：
+1. 模板中访问数组元素前，检查长度
+2. 访问对象属性前，检查对象是否存在
+3. 使用可选链 `?.` 和空值合并 `??`
+
+**检查清单**（每次创建新组件时）：
+- [ ] 响应式数据有合理的初始值
+- [ ] 初始化函数在 `onMounted` 或 `immediate: true` 的 watch 中调用
+- [ ] 模板中没有直接访问可能为空的数组索引或对象属性
+
 ### 后端开发规范
 - API 端点放在 `kflower-backend/app/api/v1/endpoints/`
 - 数据模型放在 `kflower-backend/app/models/`
@@ -67,6 +111,22 @@ D:\kkflower\
 - 业务逻辑放在 `kflower-backend/app/services/`
 
 ## 近期重要修改
+
+### 2026-05-04 - 矩阵模板操作流程优化
+- **问题**：矩阵模板数据列表的操作按钮和普通模板混淆，"填表"按钮没有反应
+- **修改**：
+  - `FormListPage.vue`：重构矩阵模板的操作流程
+    - 矩阵模板显示独立的矩阵数据列表（包含查看、编辑、删除按钮）
+    - 添加"新增矩阵数据"按钮，打开类似 Excel 的 MatrixInput 编辑界面
+    - 添加"查看矩阵数据"弹窗，使用 MatrixView 组件展示
+    - 添加"编辑矩阵数据"弹窗，使用 MatrixInput 组件编辑
+  - `Templates.vue`：`openFormSubmit` 函数添加矩阵模板检测
+    - 矩阵模板点击"填表"跳转到数据列表页
+    - 普通模板点击"填表"打开填表弹窗
+- **核心逻辑**：
+  - 矩阵数据存储在 `__matrix_data` 字段中（一维数组格式）
+  - `getMatrixInfo()` 函数解析并显示矩阵数据概要（行×列、数据点数量）
+  - MatrixView 用于查看，MatrixInput 用于编辑
 
 ### 2026-05-03 - Excel 导入功能
 - **前端**：`FormListPage.vue` 添加 Excel 导入对话框（3 步向导）
@@ -99,6 +159,6 @@ D:\kkflower\
 - 必要时手动执行 SQL 修复
 
 ---
-**最后更新**：2026-05-03
+**最后更新**：2026-05-04
 **更新人**：AI Assistant
-**更新原因**：整理记忆文件，添加数据库变更原则
+**更新原因**：矩阵模板操作流程优化
