@@ -122,7 +122,15 @@ export const useAIStore = defineStore('ai', () => {
 
   // 检查AI是否已配置（新增便捷方法）
   function isAIConfigured(): boolean {
-    return configStatus.value?.ready ?? false
+    // 如果有 configStatus，优先使用
+    if (configStatus.value) {
+      return configStatus.value.ready
+    }
+    // 没有 configStatus，尝试通过模型列表检查
+    if (models.value.length > 0) {
+      return models.value.some(m => m.configured)
+    }
+    return false
   }
 
   // 获取当前使用的模型描述（新增）
@@ -179,7 +187,17 @@ export const useAIStore = defineStore('ai', () => {
   // 发送消息 - 使用用户配置的超时时间
   async function sendMessage(content: string, modelId?: string) {
     if (!content.trim() || loading.value) return
-
+    
+    // 确保配置状态已加载
+    if (!configStatus.value) {
+      try {
+        await loadConfigStatus()
+        await loadModels()
+      } catch (e) {
+        console.error('加载配置失败', e)
+      }
+    }
+    
     // 检查AI是否已配置
     if (!isAIConfigured()) {
       messages.value.push({

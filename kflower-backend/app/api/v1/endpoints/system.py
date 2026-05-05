@@ -211,17 +211,27 @@ async def list_ai_providers(
     
     providers = ai_model_manager.get_all_providers()
     
-    # 添加动态 Ollama 连接作为独立提供商
-    ollama_connections = ai_gateway.list_ollama_connections()
-    for conn in ollama_connections:
-        providers.append({
-            "id": conn["id"],
-            "name": f"Ollama - {conn['name']}",
-            "description": f"本地 Ollama ({conn['url']})",
-            "default_base_url": conn["url"],
-            "no_api_key": True,
-            "is_dynamic_connection": True,
-        })
+    # 检查当前已配置的 providers 是否在列表中，不在的话添加
+    for p_name, p_cfg in ai_gateway.providers.items():
+        if not any(p["id"] == p_name for p in providers):
+            # 检查是否是 Ollama 连接
+            if p_cfg.get("_is_ollama_connection"):
+                providers.append({
+                    "id": p_name,
+                    "name": p_cfg.get("description", f"Ollama - {p_name}"),
+                    "description": p_cfg.get("description", "本地 Ollama"),
+                    "default_base_url": p_cfg.get("_original_url", p_cfg.get("base_url")),
+                    "no_api_key": True,
+                    "is_dynamic_connection": True,
+                })
+            elif p_name == "ollama":
+                providers.append({
+                    "id": p_name,
+                    "name": "Ollama (本地)",
+                    "description": "本地 Ollama 服务",
+                    "default_base_url": p_cfg.get("base_url"),
+                    "no_api_key": True,
+                })
     
     return BaseResponse(data={
         "providers": providers
@@ -403,16 +413,18 @@ async def list_ai_models(
     api_key = provider_config.get("api_key")
     base_url = provider_config.get("base_url")
     
-    # 如果是 Ollama，检查是否有动态连接的 Ollama
-    if provider == "ollama":
-        ollama_connections = ai_gateway.list_ollama_connections()
-        if ollama_connections:
-            # 返回第一个连接的配置作为默认
-            first_conn = ollama_connections[0]
-            api_key = "ollama"
-            base_url = first_conn.get("url", "http://localhost:11434")
+    # 检查是否是 Ollama 或动态连接
+    is_ollama = (
+        provider == "ollama" or 
+        provider_config.get("_is_ollama_connection") or
+        provider.startswith("ollama_")
+    )
     
-    # 如果没有配置，返回默认模型列表
+    # Ollama 不需要 API Key，使用占位值
+    if is_ollama and not api_key:
+        api_key = "ollama"
+    
+    # 如果没有配置（且不是 Ollama），返回默认模型列表
     if not api_key:
         default_models = ai_model_manager.get_default_models(provider)
         return BaseResponse(data={
@@ -452,14 +464,32 @@ async def fetch_ai_models_with_key(
 ):
     """使用指定的 API Key 获取模型列表（用于测试连接）"""
     from app.core.ai_digital_base.model_manager import ai_model_manager
+    from app.core.ai_digital_base.gateway import ai_gateway
+    
+    # 确保配置已加载
+    await ai_gateway.load_config_from_db(db)
     
     api_key = request.get("api_key") or ""
     base_url = request.get("base_url")
     
+    # 检查是否是 Ollama 或动态连接
+    is_ollama = (
+        provider == "ollama" or
+        provider.startswith("ollama_")
+    )
+    provider_config = ai_gateway.providers.get(provider, {})
+    if provider_config.get("_is_ollama_connection"):
+        is_ollama = True
+    
     # Ollama 等本地服务不需要 API Key
-    is_local = provider in ("ollama",)
-    if not api_key and not is_local:
+    if not api_key and not is_ollama:
         return BaseResponse(success=False, message="请提供 API Key")
+    
+    # 对于 Ollama，使用占位值
+    if is_ollama and not api_key:
+        api_key = "ollama"
+        if not base_url and provider_config.get("base_url"):
+            base_url = provider_config.get("base_url")
     
     result = await ai_model_manager.list_models_from_api(provider, api_key, base_url)
     
@@ -498,6 +528,7 @@ async def list_embedding_models(
 
 @router.get("/ai-config-status", response_model=BaseResponse)
 async def get_ai_config_status(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -506,6 +537,9 @@ async def get_ai_config_status(
     """
     from app.core.ai_digital_base.local_services import get_embedding_service, ST_AVAILABLE
     from app.core.ai_digital_base.gateway import ai_gateway
+    
+    # 确保配置已加载
+    await ai_gateway.load_config_from_db(db)
     
     # 1. 对话模型状态
     chat_models = []
@@ -525,14 +559,21 @@ async def get_ai_config_status(
     # 如果没有配置模型，尝试从gateway获取
     if not chat_models:
         for p_name, p_cfg in ai_gateway.providers.items():
-            if p_cfg.get("api_key") and p_cfg.get("model"):
-                chat_models.append({
-                    "id": p_cfg.get("model"),
-                    "name": p_cfg.get("model"),
-                    "provider": p_name,
-                    "configured": True,
-                    "isDefault": p_name == ai_gateway.current_provider,
-                })
+            if p_cfg.get("model"):
+                # Ollama 不需要 api_key，其他需要检查
+                is_configured = (
+                    (p_name == "ollama") or 
+                    bool(p_cfg.get("api_key")) or
+                    bool(p_cfg.get("_is_ollama_connection"))
+                )
+                if is_configured:
+                    chat_models.append({
+                        "id": p_cfg.get("model"),
+                        "name": p_cfg.get("model"),
+                        "provider": p_name,
+                        "configured": True,
+                        "isDefault": p_name == ai_gateway.current_provider,
+                    })
     
     chat_available = any(m["configured"] for m in chat_models)
     
@@ -633,16 +674,16 @@ async def get_ai_config_status(
 
 
 async def _get_ai_models_config():
-    """从数据库获取AI模型配置 - 从SystemConfigModel表读取（与get_system_config一致）"""
+    """从数据库获取AI模型配置 - 从SystemConfig表读取（与get_system_config一致）"""
     from sqlalchemy import select as sql_select
-    from app.models.system import SystemConfig as SystemConfigModel
+    from app.models.ai import SystemConfig
     from app.core.database import AsyncSessionLocal
     
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            sql_select(SystemConfigModel).where(
-                SystemConfigModel.key == "ai_models",
-                SystemConfigModel.organization_id == None
+            sql_select(SystemConfig).where(
+                SystemConfig.key == "ai_models",
+                SystemConfig.organization_id == None
             )
         )
         cfg = result.scalar_one_or_none()
