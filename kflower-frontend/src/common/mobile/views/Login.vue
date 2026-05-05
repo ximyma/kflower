@@ -74,33 +74,13 @@ const handleLogin = async () => {
   loading.value = true
 
   try {
-    const res = await fetch('/api/v1/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
-    })
-
-    if (res.ok) {
-      const data = await res.json()
-      // 保存 token
-      localStorage.setItem('access_token', data.access_token)
-      // 更新 userStore 状态
-      userStore.token = data.access_token
-      // 获取用户信息
-      try {
-        await userStore.autoLogin()
-      } catch (e) {
-        console.warn('获取用户信息失败，将继续跳转')
-      }
+    const success = await userStore.login(form.username, form.password)
+    if (success) {
       ElMessage.success('登录成功')
+      // 等待 DOM 更新和响应式数据同步
+      await new Promise(resolve => setTimeout(resolve, 200))
       // 使用 replace 而不是 push，避免后退回到登录页
-      // 添加延迟确保响应式数据更新
-      setTimeout(() => {
-        router.replace('/app/home')
-      }, 100)
-    } else {
-      const err = await res.json()
-      ElMessage.error(err.detail || '登录失败')
+      router.replace('/app/home')
     }
   } catch (e) {
     ElMessage.error('网络错误，请重试')

@@ -12,21 +12,15 @@
         background-color="#304156"
         text-color="#bfcbd9"
         active-text-color="#409eff"
+        :unique-opened="true"
       >
         <!-- 首页入口 -->
         <el-menu-item :index="`/app/${appId}`">
           <el-icon><HomeFilled /></el-icon>
           <template #title>首页</template>
         </el-menu-item>
-        <!-- 表单菜单项 -->
-        <el-menu-item
-          v-for="menu in menuTree"
-          :key="menu.id"
-          :index="`/app/${appId}/form/${menu.template_id}`"
-        >
-          <el-icon><component :is="menu.icon || 'Document'" /></el-icon>
-          <template #title>{{ menu.label }}</template>
-        </el-menu-item>
+        <!-- 递归渲染菜单（支持子菜单） -->
+        <sidebar-menu :menus="menuTree" :app-id="appId" />
       </el-menu>
     </el-aside>
 
@@ -43,6 +37,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { HomeFilled } from '@element-plus/icons-vue'
 import appAPI from '@/common/api/myApps'
+import SidebarMenu from '@/pc/views/my-apps/components/SidebarMenu.vue'
 
 const route = useRoute()
 const router = useRouter()

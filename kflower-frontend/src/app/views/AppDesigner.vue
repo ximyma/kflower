@@ -91,8 +91,15 @@
       <el-button @click="previewApp">
         <el-icon><View /></el-icon> 预览
       </el-button>
+      <el-button 
+        v-if="appData?.is_published" 
+        type="warning" 
+        @click="viewPublishedApp"
+      >
+        <el-icon><Position /></el-icon> 查看应用
+      </el-button>
       <el-button type="success" @click="publishApp" :loading="publishing">
-        <el-icon><Promotion /></el-icon> {{ appData?.is_published ? '已发布' : '发布' }}
+        <el-icon><Promotion /></el-icon> {{ appData?.is_published ? '重新发布' : '发布' }}
       </el-button>
     </div>
 
@@ -164,17 +171,42 @@
     </el-dialog>
 
     <!-- 预览对话框 -->
-    <el-dialog v-model="showPreview" title="应用预览" width="95%" fullscreen>
+    <el-dialog v-model="showPreview" :title="`${appName || '未命名应用'} - 预览`" width="95%" fullscreen>
       <div class="app-preview">
+        <!-- 应用头部 -->
         <div class="preview-header">
-          <h3>{{ appName || '未命名应用' }}</h3>
-          <p>{{ appDescription || '暂无描述' }}</p>
-        </div>
-        <div class="preview-menus">
-          <div v-for="(menu, index) in menus" :key="index" class="preview-menu-item">
-            <el-icon><component :is="menu.icon || 'Document'" /></el-icon>
-            <span>{{ menu.name }}</span>
+          <div class="preview-app-icon" :style="{ background: getAppGradient() }">
+            <el-icon :size="32"><component :is="appData?.icon || 'Grid'" /></el-icon>
           </div>
+          <h3>{{ appName || '未命名应用' }}</h3>
+          <p class="preview-desc">{{ appDescription || '暂无描述' }}</p>
+        </div>
+
+        <!-- 菜单网格 -->
+        <div class="preview-menu-grid">
+          <div 
+            v-for="(menu, index) in menus" 
+            :key="menu._dbId || index" 
+            class="preview-menu-card"
+            @click="previewMenuClick(menu)"
+          >
+            <div class="menu-card-icon" :style="{ background: getMenuColor(index) }">
+              <el-icon :size="24"><component :is="menu.icon || 'Document'" /></el-icon>
+            </div>
+            <div class="menu-card-label">{{ menu.name || '未命名菜单' }}</div>
+            <div class="menu-card-type">
+              <el-tag size="small" :type="menu.templateId ? '' : 'warning'">
+                {{ menu.templateId ? '页面' : '功能' }}
+              </el-tag>
+            </div>
+          </div>
+        </div>
+
+        <!-- 空状态 -->
+        <div v-if="menus.length === 0" class="preview-empty">
+          <el-icon :size="64" color="#c0c4cc"><Menu /></el-icon>
+          <p>暂无菜单</p>
+          <p class="tip">添加菜单后在这里预览效果</p>
         </div>
       </div>
     </el-dialog>
@@ -186,7 +218,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Plus, Edit, Delete, Menu, View, Promotion, Document, DataLine, Folder, User, Setting, List } from '@element-plus/icons-vue'
+import { ArrowLeft, Plus, Edit, Delete, Menu, View, Promotion, Position, Document, DataLine, Folder, User, Setting, List } from '@element-plus/icons-vue'
 import appAPI from '../../common/api/myApps'
 import { templateAPI } from '../../common/api'
 
@@ -197,7 +229,8 @@ const appId = computed(() => route.params.appId ? Number(route.params.appId) : n
 const appName = ref('')
 const appDescription = ref('')
 const appData = ref<any>(null)
-const menus = ref<any[]>([])
+const menus = ref<any[]>([])  // 前端菜单数组，每个菜单可能有 _dbId 字段（数据库中的ID）
+const originalMenuIds = ref<number[]>([])  // 存储原始菜单的数据库ID列表，用于判断哪些菜单被删除了
 const linkedTemplates = ref<any[]>([])
 const availableTemplates = ref<any[]>([])
 const saving = ref(false)
@@ -205,6 +238,7 @@ const publishing = ref(false)
 const showMenuDialog = ref(false)
 const showTemplateDialog = ref(false)
 const showPreview = ref(false)
+const showViewAppDialog = ref(false)  // 发布后显示查看应用对话框
 const editingMenuIndex = ref(-1)
 const selectedTemplateIds = ref<number[]>([])
 
@@ -231,9 +265,22 @@ async function loadApp() {
     appName.value = res.name || ''
     appDescription.value = res.description || ''
 
-    // 解析菜单
-    if (res.menus) {
-      menus.value = typeof res.menus === 'string' ? JSON.parse(res.menus) : res.menus
+    // 解析菜单 - 从后端加载，正确映射字段
+    if (res.menus && res.menus.length > 0) {
+      menus.value = res.menus.map((m: any) => ({
+        ...m,
+        _dbId: m.id,  // 保存数据库ID，用于后续更新/删除
+        name: m.menu_label || '未命名菜单',  // 映射 menu_label 到 name
+        icon: m.menu_icon || 'Document',  // 映射 menu_icon 到 icon
+        templateId: m.template_id || null,  // 映射 template_id 到 templateId
+        type: m.template_id ? 'page' : 'action'  // 根据是否有template_id判断类型
+      }))
+      
+      // 记录原始菜单的数据库ID列表
+      originalMenuIds.value = res.menus.map((m: any) => m.id)
+    } else {
+      menus.value = []
+      originalMenuIds.value = []
     }
 
     // 解析关联模板
@@ -267,22 +314,103 @@ async function saveApp() {
     const data = {
       name: appName.value,
       description: appDescription.value,
-      menus: menus.value,
-      templates: linkedTemplates.value
     }
 
+    let currentAppId = appId.value
+    
     if (appId.value) {
+      // 更新现有应用
       await appAPI.update(appId.value, data)
       ElMessage.success('保存成功')
     } else {
+      // 创建新应用
       const res = await appAPI.create(data)
+      appData.value = res
+      currentAppId = res.id
       ElMessage.success('创建成功')
       router.replace(`/app/app-designer/${res.id}`)
+    }
+
+    // 保存菜单到后端
+    if (currentAppId) {
+      await saveMenus(currentAppId)
     }
   } catch (error: any) {
     ElMessage.error(error.message || '保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+// 保存菜单到后端
+async function saveMenus(appId: number) {
+  try {
+    // 1. 获取数据库中的原始菜单ID列表
+    const currentMenuDbIds = menus.value
+      .map((m: any) => m._dbId)
+      .filter((id: any) => id !== undefined)
+    
+    // 2. 删除已不存在的菜单
+    for (const oldId of originalMenuIds.value) {
+      if (!currentMenuDbIds.includes(oldId)) {
+        // 这个菜单已被删除，从后端删除
+        try {
+          await appAPI.deleteMenu(oldId)
+        } catch (e: any) {
+          console.warn('删除菜单失败:', oldId, e)
+        }
+      }
+    }
+
+    // 3. 更新或添加菜单
+    for (let i = 0; i < menus.value.length; i++) {
+      const menu = menus.value[i]
+      const menuData = {
+        menu_label: menu.name || menu.menu_label || '未命名菜单',
+        menu_icon: menu.icon || menu.menu_icon || 'Document',
+        template_id: menu.templateId || menu.template_id || null,
+        menu_order: i, // 使用数组索引作为排序
+        parent_id: menu.parent_id || menu._dbId ? null : null, // 暂时不支持子菜单
+      }
+
+      if (menu._dbId) {
+        // 已存在的菜单，更新
+        try {
+          await appAPI.updateMenu(menu._dbId, menuData)
+        } catch (e: any) {
+          console.warn('更新菜单失败:', menu._dbId, e)
+        }
+      } else {
+        // 新菜单，添加
+        try {
+          const res = await appAPI.addMenu(appId, menuData)
+          // 更新本地菜单的 _dbId
+          menu._dbId = res.id
+          menu.id = res.id // 也更新 id 字段
+        } catch (e: any) {
+          console.warn('添加菜单失败:', menu, e)
+        }
+      }
+    }
+
+    // 4. 重新加载菜单数据，更新 originalMenuIds
+    const appRes = await appAPI.get(appId)
+    const menusFromBackend = appRes.menus || []
+    
+    menus.value = menusFromBackend.map((m: any) => ({
+      ...m,
+      _dbId: m.id,
+      name: m.menu_label,
+      icon: m.menu_icon,
+      templateId: m.template_id,
+      type: m.template_id ? 'page' : 'action', // 根据是否有template_id判断类型
+    }))
+    originalMenuIds.value = menusFromBackend.map((m: any) => m.id)
+
+    ElMessage.success('菜单保存成功')
+  } catch (error: any) {
+    console.error('保存菜单失败:', error)
+    ElMessage.warning('应用已保存，但菜单保存可能不完整')
   }
 }
 
@@ -292,11 +420,20 @@ async function publishApp() {
     return
   }
 
+  if (menus.value.length === 0) {
+    ElMessage.warning('请先添加至少一个菜单再发布')
+    return
+  }
+
   publishing.value = true
   try {
     await appAPI.publish(appId.value)
-    appData.value.is_published = true
-    ElMessage.success('发布成功')
+    // 重新加载应用数据以获取最新状态
+    await loadApp()
+    ElMessage.success('发布成功！现在可以访问应用了')
+    
+    // 显示查看应用的选项
+    showViewAppOption.value = true
   } catch (error: any) {
     ElMessage.error(error.message || '发布失败')
   } finally {
@@ -304,8 +441,47 @@ async function publishApp() {
   }
 }
 
+// 查看已发布的应用
+function viewPublishedApp() {
+  if (!appId.value) return
+  // 跳转到应用的主界面（PC版路径，手机版可能需要调整）
+  router.push(`/app/${appId.value}`)
+}
+
 function previewApp() {
+  if (menus.value.length === 0) {
+    ElMessage.warning('请先添加菜单再预览')
+    return
+  }
   showPreview.value = true
+}
+
+// 预览中点击菜单
+function previewMenuClick(menu: any) {
+  if (menu.templateId) {
+    ElMessage.info(`即将打开页面：${menu.name}`)
+    // 实际应该跳转：router.push(`/app/${appId.value}/form/${menu.templateId}`)
+  } else {
+    ElMessage.info(`即将执行功能：${menu.name}`)
+  }
+}
+
+// 获取应用渐变色
+function getAppGradient() {
+  const gradients = [
+    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
+  ]
+  return gradients[(appId.value || 0) % gradients.length]
+}
+
+// 获取菜单卡片颜色
+function getMenuColor(index: number) {
+  const colors = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#FF6B6B', '#4ECDC4', '#45B7D1']
+  return colors[index % colors.length]
 }
 
 function showAddMenuDialog() {
@@ -332,6 +508,8 @@ function editMenu(index: number) {
 }
 
 function deleteMenu(index: number) {
+  const menu = menus.value[index]
+  // 如果菜单已经在后端保存过，需要标记待删除（这里我们先从前端删除，保存时统一处理）
   menus.value.splice(index, 1)
   ElMessage.success('已删除菜单')
 }
@@ -605,24 +783,84 @@ onMounted(() => {
   font-size: 13px;
 }
 
-.preview-menus {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+.preview-app-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  margin: 0 auto 12px;
 }
 
-.preview-menu-item {
+.preview-desc {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+.preview-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.preview-menu-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 16px;
+  padding: 20px 12px;
   background: #f9fafb;
   border-radius: 12px;
-  color: #606266;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid #eee;
 }
 
-.preview-menu-item span {
+.preview-menu-card:active {
+  transform: scale(0.95);
+  background: #f0f5ff;
+}
+
+.menu-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.menu-card-label {
+  font-size: 13px;
+  color: #303133;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.menu-card-type {
+  margin-top: 4px;
+}
+
+.preview-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #909399;
+}
+
+.preview-empty p {
+  margin: 16px 0 0;
+}
+
+.tip {
   font-size: 12px;
+  color: #c0c4cc;
 }
 </style>

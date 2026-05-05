@@ -21,6 +21,13 @@
             <th v-if="showRowTotals" class="total-column-header">行合计</th>
             <th v-if="showActions" class="action-header">操作</th>
           </tr>
+          <!-- 数值标签行（当 valueLabel 存在时显示） -->
+          <tr v-if="valueLabel && valueLabel !== '数值'">
+            <th class="value-label-cell">{{ valueLabel }}</th>
+            <td v-for="col in colHeaders" :key="'vl-'+col" class="value-label-data"></td>
+            <td v-if="showRowTotals"></td>
+            <td v-if="showActions"></td>
+          </tr>
         </thead>
         <tbody>
           <tr v-for="row in rowHeaders" :key="row">
@@ -93,15 +100,20 @@ const props = defineProps({
     type: String,
     default: '矩阵视图'
   },
-  // 行维度标签
+  // 行维度标签（左上角 corner + 第一列的语义名称）
   rowDimensionLabel: {
     type: String,
     default: '行维度'
   },
-  // 列维度标签
+  // 列维度标签（第一行的语义名称）
   colDimensionLabel: {
     type: String,
     default: '列维度'
+  },
+  // 数值字段标签（用于标识数据含义）
+  valueLabel: {
+    type: String,
+    default: '数值'
   },
   // 是否显示操作列
   showActions: {
@@ -329,6 +341,16 @@ const matrixTableRef = ref<HTMLElement>()
 
 .corner-header {
   background-color: #e8eaf0;
+}
+
+.value-label-cell {
+  background-color: #f0f7ff;
+  color: #409eff;
+  font-size: 12px;
+}
+
+.value-label-data {
+  background-color: #fafbfc;
 }
 
 .row-header {

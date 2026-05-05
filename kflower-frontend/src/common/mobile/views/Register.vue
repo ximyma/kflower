@@ -70,8 +70,10 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { useUserStore } from '../../store/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 const loading = ref(false)
 const form = ref({
   username: '',
@@ -96,18 +98,9 @@ const handleRegister = async () => {
   loading.value = true
 
   try {
-    const res = await fetch('/api/v1/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form.value)
-    })
-
-    if (res.ok) {
-      ElMessage.success('注册成功，请登录')
+    const success = await userStore.register(form.value)
+    if (success) {
       router.push('/app/login')
-    } else {
-      const err = await res.json()
-      ElMessage.error(err.detail || '注册失败')
     }
   } catch (e) {
     ElMessage.error('网络错误，请重试')

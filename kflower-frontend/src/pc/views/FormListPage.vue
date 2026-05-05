@@ -109,6 +109,7 @@
             :title="'矩阵数据预览'"
             :row-dimension-label="getFieldByName('row_dimension')?.label || '行维度'"
             :col-dimension-label="getFieldByName('col_dimension')?.label || '列维度'"
+            :value-label="getFieldByName('value')?.label || '数值'"
             :show-actions="false"
             :show-totals="true"
           />
@@ -400,6 +401,7 @@
         :title="templateData?.name || '矩阵数据'"
         :row-dimension-label="getFieldByName('row_dimension')?.label || '行维度'"
         :col-dimension-label="getFieldByName('col_dimension')?.label || '列维度'"
+        :value-label="getFieldByName('value')?.label || '数值'"
         :show-actions="false"
         :show-totals="true"
       />

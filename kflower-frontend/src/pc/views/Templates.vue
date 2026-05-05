@@ -882,6 +882,27 @@
           <el-input-number v-model="matrixForm.initial_cols" :min="1" :max="50" />
           <div class="form-tip">创建后可在输入界面动态添加/删除列</div>
         </el-form-item>
+        <el-divider content-position="left">自定义行列名称（可选）</el-divider>
+        <el-form-item label="行维度各项名称">
+          <div class="row-col-names-editor">
+            <div v-for="(_, idx) in matrixForm.initial_rows" :key="'r'+idx" class="name-edit-item">
+              <span class="name-edit-label">行{{ idx + 1 }}:</span>
+              <el-input v-model="matrixForm.row_names[idx]" :placeholder="`${matrixForm.row_dimension_label || '行维度'}${idx + 1}`" size="small" style="width:140px" />
+            </div>
+            <el-button type="primary" text size="small" @click="matrixForm.initial_rows++; matrixForm.row_names.push('')">+ 增加行</el-button>
+          </div>
+          <div class="form-tip">留空则自动使用「{{ matrixForm.row_dimension_label || '行维度' }}1、{{ matrixForm.row_dimension_label || '行维度' }}2...」</div>
+        </el-form-item>
+        <el-form-item label="列维度各项名称">
+          <div class="row-col-names-editor">
+            <div v-for="(_, idx) in matrixForm.initial_cols" :key="'c'+idx" class="name-edit-item">
+              <span class="name-edit-label">列{{ idx + 1 }}:</span>
+              <el-input v-model="matrixForm.col_names[idx]" :placeholder="`${matrixForm.col_dimension_label || '列维度'}${idx + 1}`" size="small" style="width:140px" />
+            </div>
+            <el-button type="primary" text size="small" @click="matrixForm.initial_cols++; matrixForm.col_names.push('')">+ 增加列</el-button>
+          </div>
+          <div class="form-tip">留空则自动使用「{{ matrixForm.col_dimension_label || '列维度' }}1、{{ matrixForm.col_dimension_label || '列维度' }}2...」</div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showMatrixDialog = false">取消</el-button>
@@ -2160,7 +2181,9 @@ const matrixForm = reactive({
   col_dimension_label: '列维度',
   value_label: '数值',
   initial_rows: 5,
-  initial_cols: 5
+  initial_cols: 5,
+  row_names: [] as string[],
+  col_names: [] as string[]
 })
 const matrixRules = {
   name: [{ required:true, message:'请输入模板名称', trigger:'blur' }],
@@ -2206,12 +2229,22 @@ async function confirmCreateMatrixTemplate() {
     const colDimLabel = matrixForm.col_dimension_label || '列维度'
     const valueLabel = matrixForm.value_label || '数值'
 
+    // 构建行/列 options，优先使用用户自定义名称
+    const rowOptions = Array.from({length: matrixForm.initial_rows}, (_, i) => {
+      const custom = matrixForm.row_names[i]?.trim()
+      return custom || `${rowDimLabel}${i+1}`
+    })
+    const colOptions = Array.from({length: matrixForm.initial_cols}, (_, i) => {
+      const custom = matrixForm.col_names[i]?.trim()
+      return custom || `${colDimLabel}${i+1}`
+    })
+
     const fields = [
       {
         name: 'row_dimension',
         label: rowDimLabel,
         type: 'select',
-        options: Array.from({length: matrixForm.initial_rows}, (_, i) => `${rowDimLabel}${i+1}`),
+        options: rowOptions,
         required: true,
         width: '50%'
       },
@@ -2219,7 +2252,7 @@ async function confirmCreateMatrixTemplate() {
         name: 'col_dimension',
         label: colDimLabel,
         type: 'select',
-        options: Array.from({length: matrixForm.initial_cols}, (_, i) => `${colDimLabel}${i+1}`),
+        options: colOptions,
         required: true,
         width: '50%'
       },
@@ -4501,5 +4534,28 @@ async function handleRouteParams() {
       }
     }
   }
+}
+
+/* 矩阵创建对话框 - 自定义行列名称编辑器 */
+.row-col-names-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 8px;
+  background: #fafbfc;
+  border-radius: 4px;
+}
+.name-edit-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.name-edit-label {
+  font-size: 12px;
+  color: #909399;
+  min-width: 36px;
+  text-align: right;
 }
 </style>

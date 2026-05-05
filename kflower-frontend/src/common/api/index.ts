@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 /**
  * API 请求封装
  */
@@ -43,14 +43,17 @@ api.interceptors.response.use(
   },
   async (error: AxiosError) => {
     const status = error.response?.status
-    
+
     if (status === 401) {
       // Token过期或无效
       localStorage.removeItem('access_token')
       ElMessage.error('登录已过期，请重新登录')
       // 避免在登录页重复跳转
+      // 根据当前路径判断是移动端还是PC端
+      const isMobilePath = window.location.pathname.startsWith('/app')
+      const loginPath = isMobilePath ? '/app/login' : '/login'
       if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login'
+        window.location.href = loginPath
       }
     } else if (status === 403) {
       ElMessage.error('没有权限访问')
@@ -60,7 +63,7 @@ api.interceptors.response.use(
       ElMessage.error('服务器错误，请稍后重试')
       // 500错误不清除token，不跳转登录页
     }
-    
+
     return Promise.reject(error)
   }
 )

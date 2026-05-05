@@ -727,6 +727,14 @@ async def get_template_data_list(
             all_fields.extend(mod['fields'])
 
     # 构建查询
+    
+    # 先检查数据表是否存在，不存在则返回空结果（新模板尚未提交数据）
+    table_exists = await db.execute(text(
+        f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
+    ))
+    if not table_exists.scalar_one_or_none():
+        return {"items": [], "total": 0}
+    
     count_sql = f"SELECT COUNT(*) FROM {table_name}"
     if search:
         count_sql += f" WHERE template_id = {template_id}"

@@ -345,10 +345,35 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '我的应用' }
       },
       {
+        path: 'app-home/:appId',
+        name: 'AppHomePage',
+        component: () => import('../../app/views/AppHome.vue'),
+        meta: { title: '应用首页', hideInTabbar: true }
+      },
+      {
         path: 'app-designer/:appId?',
         name: 'AppAppDesigner',
         component: () => import('../../app/views/AppDesigner.vue'),
         meta: { title: '应用设计', hideInTabbar: true }
+      },
+      // 应用下的表单数据页面
+      {
+        path: 'app-home/:appId/form/:templateId',
+        name: 'AppFormListPage',
+        component: () => import('../../app/views/AppFormList.vue'),
+        meta: { title: '数据列表', hideInTabbar: true }
+      },
+      {
+        path: 'app-home/:appId/form/:templateId/new',
+        name: 'AppFormNew',
+        component: () => import('../../app/views/AppFormEdit.vue'),
+        meta: { title: '新增数据', hideInTabbar: true }
+      },
+      {
+        path: 'app-home/:appId/form/:templateId/edit/:dataId',
+        name: 'AppFormEditPage',
+        component: () => import('../../app/views/AppFormEdit.vue'),
+        meta: { title: '编辑数据', hideInTabbar: true }
       },
       {
         path: 'agents',
