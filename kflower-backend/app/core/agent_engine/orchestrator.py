@@ -9,13 +9,8 @@ import json
 
 
 class AgentType(Enum):
-    """智能体类型"""
-    TEMPLATE_AGENT = "template_agent"      # 模板设计智能体
-    WORKFLOW_AGENT = "workflow_agent"      # 流程审批智能体
-    ANALYTICS_AGENT = "analytics_agent"   # 决策分析智能体
-    QUERY_AGENT = "query_agent"           # 数据查询智能体
-    PERMISSION_AGENT = "permission_agent" # 权限管理智能体
-    GENERAL_AGENT = "general_agent"       # 通用智能体
+    """智能体类型（Phase 2 精简：移除 4 个伪 Agent，保留核心类型）"""
+    GENERAL_AGENT = "general_agent"       # 通用 ReAct 智能体（统一入口）
 
 
 class Task:
@@ -85,6 +80,58 @@ class BaseAgent:
         return self.memory[-count:]
 
 
+class UnifiedReactAgent(BaseAgent):
+    """
+    统一 ReAct 智能体（Phase 2 重构）
+    接管原 4 个伪 Agent 的所有功能，基于 agent_service 的 ReAct 循环实现真正的自主决策
+    """
+    
+    def __init__(self):
+        super().__init__(
+            agent_type=AgentType.GENERAL_AGENT,
+            name="统一智能体",
+            description="基于 ReAct 循环的通用智能体，支持工具调用和自主决策"
+        )
+    
+    async def execute(self, task: Task) -> Dict[str, Any]:
+        """执行任务：委托给 agent_service 的 ReAct 循环"""
+        try:
+            from app.core.agent_engine.agent_service import agent_service
+            
+            action = task.input_data.get("action", "chat")
+            message = task.input_data.get("message", task.description)
+            model = task.input_data.get("model")
+            
+            if action == "chat" or action == "query":
+                result = await agent_service.chat(
+                    message=message,
+                    model=model,
+                    history=task.input_data.get("history", []),
+                    use_tools=task.input_data.get("use_tools", True)
+                )
+                return {"success": True, "response": result.get("response", ""), "data": result}
+            
+            elif action == "generate_template":
+                result = await agent_service.generate_template(message)
+                return {"success": True, "data": result}
+            
+            elif action == "analyze":
+                result = await agent_service.analyze_intent(message)
+                return {"success": True, "data": result}
+            
+            else:
+                # 默认走 ReAct 对话
+                result = await agent_service.chat(
+                    message=message,
+                    model=model,
+                    use_tools=True
+                )
+                return {"success": True, "response": result.get("response", "")}
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+
 class AgentOrchestrator:
     """
     智能体编排器
@@ -98,17 +145,9 @@ class AgentOrchestrator:
         self._init_default_agents()
     
     def _init_default_agents(self):
-        """初始化默认智能体"""
-        from app.core.agent_engine.template_agent import TemplateAgent
-        from app.core.agent_engine.workflow_agent import WorkflowAgent
-        from app.core.agent_engine.analytics_agent import AnalyticsAgent
-        from app.core.agent_engine.query_agent import QueryAgent
-        
-        # 注册默认智能体
-        self.register_agent(TemplateAgent())
-        self.register_agent(WorkflowAgent())
-        self.register_agent(AnalyticsAgent())
-        self.register_agent(QueryAgent())
+        """初始化默认智能体（Phase 2：统一 ReAct Agent）"""
+        # 注册统一 ReAct 智能体，接管所有任务类型
+        self.register_agent(UnifiedReactAgent())
     
     def register_agent(self, agent: BaseAgent) -> None:
         """注册智能体"""
@@ -212,6 +251,32 @@ class AgentOrchestrator:
         all_tasks = self.completed_tasks + [t for t in self.task_queue if t.status == "pending"]
         all_tasks.sort(key=lambda x: x.created_at, reverse=True)
         return [task.to_dict() for task in all_tasks[:count]]
+    
+    def is_running(self) -> bool:
+        """判断编排器是否有正在执行的任务"""
+        return any(t.status == "running" for t in self.task_queue)
+    
+    def get_task_statistics(self) -> Dict[str, Any]:
+        """获取任务执行统计信息"""
+        all_tasks = self.task_queue + self.completed_tasks
+        status_count = {}
+        for t in all_tasks:
+            status_count[t.status] = status_count.get(t.status, 0) + 1
+        return {
+            "total": len(all_tasks),
+            "pending": status_count.get("pending", 0),
+            "running": status_count.get("running", 0),
+            "completed": status_count.get("completed", 0),
+            "failed": status_count.get("failed", 0)
+        }
+    
+    def get_tasks(self, status_filter: str = None, limit: int = 20) -> List[Dict[str, Any]]:
+        """按状态过滤获取任务列表"""
+        all_tasks = self.task_queue + self.completed_tasks
+        if status_filter:
+            all_tasks = [t for t in all_tasks if t.status == status_filter]
+        all_tasks.sort(key=lambda x: x.created_at, reverse=True)
+        return [t.to_dict() for t in all_tasks[:limit]]
 
 
 # 全局智能体编排器实例

@@ -712,3 +712,29 @@ async def health_check():
         "disk_percent": disk.percent,
         "platform": platform.system(),
     })
+
+
+# ============ 审计日志端点（参考 NocoBase 审计日志） ============
+
+@router.get("/audit-logs", response_model=BaseResponse)
+async def get_audit_logs(
+    collection_name: str = None,
+    record_id: int = None,
+    operation_type: str = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取审计日志列表"""
+    from app.core.audit_logger import audit_service
+    result = await audit_service.get_logs(
+        db=db,
+        collection_name=collection_name,
+        record_id=record_id,
+        user_id=current_user.id,
+        operation_type=operation_type,
+        limit=limit,
+        offset=offset
+    )
+    return BaseResponse(data=result)

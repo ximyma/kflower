@@ -351,7 +351,7 @@ class WorkflowTaskActionRequest(BaseModel):
     action: str  # approve, reject, transfer
     opinion: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
-    transfer_to_user_id: Optional[int] = None
+    transfer_to: Optional[int] = None  # 转交目标用户ID
 
 
 # ============ AI对话 ============
@@ -363,9 +363,14 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
-    ai_type: str = "general"  # general/template/workflow/analytics
+    ai_type: Optional[str] = "general"  # general/template/workflow/analytics
     related_type: Optional[str] = None
     related_id: Optional[int] = None
+    use_rag: Optional[bool] = True      # 是否启用RAG检索增强
+    enable_tools: Optional[bool] = True  # 是否启用工具调用
+    model: Optional[str] = None          # 可选：指定模型
+    provider: Optional[str] = None       # 可选：指定提供商
+    app_id: Optional[int] = None         # 可选：应用ID，用于应用上下文感知
 
 
 class ChatResponse(BaseModel):

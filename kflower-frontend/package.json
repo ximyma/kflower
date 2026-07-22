@@ -10,6 +10,9 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/cli": "^8.3.1",
+    "@capacitor/core": "^8.3.1",
     "@element-plus/icons-vue": "^2.3.0",
     "@vueuse/core": "^10.7.0",
     "axios": "^1.6.0",

@@ -23,7 +23,13 @@ class AgentService:
     
     def __init__(self):
         self.conversation_history: Dict[str, List[Dict]] = {}
+        self._config_loaded = False
     
+    async def _ensure_config(self):
+        """确保配置已加载（仅首次加载，避免每轮对话都查DB）"""
+        if not self._config_loaded:
+            await ai_gateway.load_config_from_db(force=True)
+            self._config_loaded = True
     async def chat(
         self,
         message: str,
@@ -96,8 +102,8 @@ class AgentService:
                 ])
                 messages[-1]["content"] += rag_context
         
-        # 调用大模型前加载配置（强制重新加载以确保最新）
-        await ai_gateway.load_config_from_db(force=True)
+        # 确保 AI 配置已加载
+        await self._ensure_config()
         
         # 调用大模型
         if enable_tools:
@@ -133,67 +139,103 @@ class AgentService:
         messages: List[Dict],
         context: Dict[str, Any],
         model: Optional[str] = None,
-        provider: Optional[str] = None
+        provider: Optional[str] = None,
+        max_iterations: int = 10
     ) -> Dict[str, Any]:
-        """带工具调用的对话"""
-        # 获取工具定义
+        """带工具调用的多轮ReAct对话循环
+        
+        类似SoWork2的Agent循环：LLM→工具→LLM→工具→...直到无工具调用或达到最大轮数
+        """
         tools = tool_registry.get_tools_as_openai_format()
+        all_tool_calls = []
+        iteration = 0
+        last_response = None
         
-        # 第一次调用：可能触发工具调用
-        response = await ai_gateway.chat(
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-            model=model,
-            provider=provider
-        )
-        
-        if "error" in response:
-            return response
-        
-        # 检查是否有工具调用
-        tool_calls = response.get("tool_calls", [])
-        if not tool_calls:
-            return response
-        
-        # 执行工具调用
-        tool_results = []
-        for tool_call in tool_calls:
-            tool_name = tool_call.get("function", {}).get("name")
-            arguments = json.loads(tool_call.get("function", {}).get("arguments", "{}"))
+        while iteration < max_iterations:
+            iteration += 1
             
-            # 执行工具
-            result = await tool_executor.execute(tool_name, arguments, context)
-            tool_results.append({
-                "tool_call_id": tool_call.get("id"),
-                "name": tool_name,
-                "result": result
-            })
+            # 调用 LLM
+            response = await ai_gateway.chat(
+                messages=messages,
+                tools=tools,
+                tool_choice="auto" if iteration <= max_iterations - 1 else "none",
+                model=model,
+                provider=provider
+            )
             
-            logger.info(f"Tool executed: {tool_name} -> {result}")
-        
-        # 将工具结果添加到消息
-        messages.append({
-            "role": "assistant",
-            "content": response.get("content", ""),
-            "tool_calls": tool_calls
-        })
-        
-        for tr in tool_results:
+            if "error" in response:
+                return response
+            
+            # 检查是否有工具调用
+            tool_calls = response.get("tool_calls", [])
+            if not tool_calls:
+                last_response = response
+                break  # 无工具调用，返回结果
+            
+            # 死循环检测
+            if iteration > 1 and all_tool_calls and tool_calls:
+                prev_call = all_tool_calls[-1]["function"]["name"]
+                curr_call = tool_calls[0].get("function", {}).get("name", "")
+                if prev_call == curr_call and iteration >= 3:
+                    logger.warning(f"检测到重复工具调用 {curr_call}，已终止")
+                    break
+            
+            # 执行工具调用
+            tool_results = []
+            for tool_call in tool_calls:
+                func = tool_call.get("function", {})
+                tool_name = func.get("name", "")
+                
+                try:
+                    arguments = json.loads(func.get("arguments", "{}"))
+                except json.JSONDecodeError:
+                    arguments = {}
+                
+                logger.info(f"[Agent Loop #{iteration}] 调用工具: {tool_name}")
+                result = await tool_executor.execute(tool_name, arguments, context)
+                
+                tool_results.append({
+                    "tool_call_id": tool_call.get("id", f"call_{iteration}"),
+                    "name": tool_name,
+                    "result": result
+                })
+                all_tool_calls.append(tool_call)
+            
+            # 将工具调用和结果注入消息
             messages.append({
-                "role": "tool",
-                "tool_call_id": tr["tool_call_id"],
-                "name": tr["name"],
-                "content": json.dumps(tr["result"])
+                "role": "assistant",
+                "content": response.get("content") or "",
+                "tool_calls": tool_calls
             })
+            
+            for tr in tool_results:
+                result_content = json.dumps(tr["result"], ensure_ascii=False)
+                # 截断过长的结果
+                if len(result_content) > 4000:
+                    result_content = result_content[:4000] + "...[truncated]"
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tr["tool_call_id"],
+                    "name": tr["name"],
+                    "content": result_content
+                })
         
-        # 第二次调用：基于工具结果生成最终回复
-        final_response = await ai_gateway.chat(messages, model=model, provider=provider)
+        # 如果没有收到最终回复，再调用一次获取总结
+        if last_response is None:
+            last_response = await ai_gateway.chat(
+                messages=messages, 
+                model=model, 
+                provider=provider
+            )
         
         return {
-            "content": final_response.get("content", ""),
-            "tool_calls": tool_results,
-            "usage": final_response.get("usage", {})
+            "content": last_response.get("content", ""),
+            "tool_calls": [{
+                "name": tc.get("function", {}).get("name", ""),
+                "arguments": tc.get("function", {}).get("arguments", "{}")
+            } for tc in all_tool_calls],
+            "usage": last_response.get("usage", {}),
+            "iterations": iteration
         }
     
     def _build_system_prompt(self, context: Dict[str, Any]) -> str:
@@ -201,19 +243,28 @@ class AgentService:
         user_name = context.get("user_name", "用户")
         tenant_name = context.get("tenant_name", "企业")
         
-        return f"""你是 Kflower 企业智能管理平台的 AI 智能助手。
+        return f"""你是 Kflower 企业智能管理平台的 AI Agent 智能助手。
 
-你具备以下能力：
-1. 模板设计：帮助企业用户创建业务表单、数据模板
-2. 数据查询：查询企业数据，生成统计报表
-3. 流程管理：创建和管理工作流程
+你具备以下核心能力：
+1. 模板设计：创建、查询、修改业务模板和表单
+2. 数据查询：查询企业数据（templates/workflows/instances/tasks等表），生成统计分析
+3. 流程管理：创建、执行、查询工作流程和审批实例
 4. 知识问答：基于企业知识库回答问题
+5. 系统操作：读取/写入文件、搜索内容、执行安全命令、查看环境信息
+6. 文档处理：文档格式转换、Excel数据提取
+
+工具使用原则：
+- 当用户需要具体操作时（创建/查询/修改/执行），优先使用工具
+- 查询数据前先确认表名和条件
+- 执行命令前确保安全性
+- 使用工具后基于结果给出清晰的总结
+- 如果工具返回错误，向用户解释并尝试替代方案
 
 当前用户：{user_name}
 所属企业：{tenant_name}
+当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-请用专业、友好的语气回答用户问题。如果需要执行操作，请使用提供的工具。
-"""
+请用专业、友好的语气回答用户问题。对于复杂任务，你可以多次调用工具来完成。"""
     
     async def analyze_intent(
         self,
@@ -392,6 +443,11 @@ class AgentService:
             "success": False,
             "error": "查询失败"
         }
+    
+    def list_agents(self) -> List[Dict[str, Any]]:
+        """列出所有可用智能体（从编排器获取注册的智能体列表）"""
+        from app.core.agent_engine.orchestrator import agent_orchestrator
+        return agent_orchestrator.list_agents()
 
 
 # 全局智能体服务实例

@@ -728,7 +728,7 @@ function createNewMatrix() {
     console.log('showFormDialog set to true')
   } catch (e) {
     console.error('Error in createNewMatrix:', e)
-    ElMessage.error('打开矩阵编辑失败：' + (e.message || e))
+    ElMessage.error('打开矩阵编辑失败：' + ((e as any).message || e))
   }
 }
 
@@ -1030,7 +1030,7 @@ function openImportDialog() {
   importColumns.value = []
   importPreviewData.value = []
   importAllData.value = []
-  Object.keys(fieldMapping).forEach(k => delete fieldMapping[k])
+  Object.keys(fieldMapping).forEach((k: any) => delete fieldMapping[k])
   importResult.success = false
   importResult.message = ''
   importResult.errors = []
@@ -1158,7 +1158,7 @@ async function confirmImport() {
     })
     
     // 调用导入API
-    const res = await templateAPI.importData(templateId.value, dataToImport)
+    const res: any = await templateAPI.importData(templateId.value, dataToImport)
     
     importResult.success = res.success || true
     importResult.message = res.message || `成功导入 ${res.imported || 0} 条数据`

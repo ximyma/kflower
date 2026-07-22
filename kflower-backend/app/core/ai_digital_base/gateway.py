@@ -206,19 +206,9 @@ class AIGateway:
             del self._clients[provider]
     
     def _get_default_base_url(self, provider: str) -> str:
-        """获取默认 API Base URL"""
-        urls = {
-            "deepseek": "https://api.deepseek.com/v1",
-            "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "siliconflow": "https://api.siliconflow.cn/v1",
-            "openai": "https://api.openai.com/v1",
-            "moonshot": "https://api.moonshot.cn/v1",
-            "zhipu": "https://open.bigmodel.cn/api/paas/v4",
-            "baidu": "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop",
-            "minimax": "https://api.minimax.chat/v1",
-            "ollama": "http://localhost:11434/v1",
-        }
-        return urls.get(provider, "")
+        """获取默认 API Base URL（统一配置源：model_manager.PROVIDER_BASE_URLS）"""
+        from app.core.ai_digital_base.model_manager import AIModelManager
+        return AIModelManager.PROVIDER_BASE_URLS.get(provider, "")
     
     def set_current_provider(self, provider: str):
         """设置当前使用的提供商"""

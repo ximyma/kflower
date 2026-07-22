@@ -17,6 +17,7 @@ from app.modules.my_apps.plugin_executor import plugin_executor, PluginContext
 from app.core.workflow.node_types import NodeType
 from app.core.workflow.condition_evaluator import ConditionEvaluator
 from app.core.workflow.assignee_resolver import AssigneeResolver
+from app.core.workflow.sla_manager import SLAManager
 
 
 class WorkflowEngine:
@@ -104,6 +105,57 @@ class WorkflowEngine:
             instance.completed_at = datetime.now()
         
         await self.db.commit()
+    
+    async def transfer_task(self, task_id: int, from_user_id: int, to_user_id: int,
+                            opinion: str = "") -> Dict[str, Any]:
+        """转交任务"""
+        result = await self.db.execute(select(WorkflowTask).where(WorkflowTask.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task or task.status != "pending":
+            raise ValueError("任务不存在或已完成")
+        
+        # 记录操作日志
+        inst_result = await self.db.execute(
+            select(WorkflowInstance).where(WorkflowInstance.id == task.instance_id)
+        )
+        instance = inst_result.scalar_one()
+        
+        log = WorkflowLog(
+            instance_id=instance.id,
+            action="transfer",
+            operator_id=from_user_id,
+            node_id=task.node_id,
+            comment=f"转交至用户 {to_user_id}: {opinion}"
+        )
+        self.db.add(log)
+        
+        # 更新原任务为已转交
+        task.status = "transferred"
+        task.opinion = task.opinion or "" + f"\n[转交] {opinion}"
+        task.completed_at = datetime.now()
+        
+        # 创建新任务给新处理人
+        new_task = WorkflowTask(
+            instance_id=task.instance_id,
+            node_id=task.node_id,
+            node_name=task.node_name,
+            node_type=task.node_type or "approval",
+            node_config=task.node_config,
+            assignee_id=to_user_id,
+            status="pending",
+            priority=task.priority,
+            sla_config=task.sla_config,
+            due_date=task.due_date
+        )
+        self.db.add(new_task)
+        await self.db.flush()
+        
+        # 发送通知
+        await self._send_notification(to_user_id, task.node_name, instance.id)
+        
+        await self.db.commit()
+        
+        return {"task_id": new_task.id, "message": "任务已转交"}
     
     async def _enter_node(self, instance_id: int, node: Dict, variables: Dict):
         """进入节点"""
@@ -231,17 +283,25 @@ class WorkflowEngine:
         logger = logging.getLogger(__name__)
         logger.info(f"并行网关 {node['id']} 分叉为 {len(outgoing_edges)} 条路径")
         
-        # 对于并行网关，所有出边都应该执行
-        # 这里简化：直接进入第一个出边对应的节点，其他分支需要特殊处理
-        # 实际实现需要创建并行分支实例，跟踪每个分支的状态
-        # 暂时使用第一个出口继续执行
-        if outgoing_edges:
-            first_edge = outgoing_edges[0]
-            target_id = first_edge.get("target")
+        if not outgoing_edges:
+            return
+        
+        # 并行网关：并发执行所有出边分支
+        import asyncio
+        
+        async def execute_branch(edge: Dict):
+            """执行单个并行分支"""
+            target_id = edge.get("target")
             for workflow_node in workflow.nodes:
                 if workflow_node.get("id") == target_id:
-                    await self._enter_node(instance_id, workflow_node, variables)
-                    break
+                    try:
+                        await self._enter_node(instance_id, workflow_node, variables)
+                    except Exception as e:
+                        logger.error(f"并行分支 {target_id} 执行失败: {e}")
+                    return
+        
+        # 并发执行所有分支
+        await asyncio.gather(*[execute_branch(e) for e in outgoing_edges], return_exceptions=True)
     
     async def _handle_data_change_node(self, instance_id: int, node: Dict, variables: Dict):
         """数据变化节点：增/改/删数据"""
@@ -346,8 +406,20 @@ class WorkflowEngine:
     
     async def _send_notification(self, user_id: int, node_name: str, instance_id: int):
         """发送通知（站内信/邮件）"""
-        # 复用现有通知服务
-        pass
+        try:
+            from app.models.notification import Notification
+            notification = Notification(
+                user_id=user_id,
+                title=f"新的待办任务",
+                content=f"您有一个新的待办任务：「{node_name}」，请及时处理。",
+                type="workflow",
+                channel="system",
+                source_type="workflow",
+                source_id=instance_id
+            )
+            self.db.add(notification)
+        except Exception as e:
+            logger.warning(f"通知发送失败: {e}")
     
     async def _log_variables(self, instance_id: int, variables: Dict, user_id: int):
         for name, value in variables.items():
@@ -360,16 +432,70 @@ class WorkflowEngine:
             self.db.add(log)
     
     async def _handle_task_node(self, instance_id: int, node: Dict, variables: Dict):
-        """处理办理节点"""
-        await self._auto_goto_next(instance_id, node)
+        """处理办理节点 - 分配任务给执行人"""
+        config = node.get("config", {})
+        assignees = config.get("assignees", [])
+        
+        if not assignees:
+            # 没有指定执行人，自动跳过
+            await self._auto_goto_next(instance_id, node)
+            return
+        
+        for assignee in assignees:
+            user_id = assignee.get("user_id") if isinstance(assignee, dict) else assignee
+            if not user_id:
+                continue
+            task = WorkflowTask(
+                instance_id=instance_id,
+                node_id=node["id"],
+                node_name=node.get("name", "未命名"),
+                node_type=node.get("type", "task"),
+                status="pending",
+                assignee_id=user_id,
+                node_config=node
+            )
+            self.db.add(task)
+            await self.db.flush()
+            await self._send_notification(user_id, node.get("name", ""), instance_id)
     
     async def _handle_cc_node(self, instance_id: int, node: Dict, variables: Dict):
-        """处理抄送节点"""
+        """处理抄送节点 - 发送通知，不阻塞流程"""
+        config = node.get("config", {})
+        cc_users = config.get("cc_users", [])
+        
+        for user_id in cc_users:
+            uid = user_id.get("user_id") if isinstance(user_id, dict) else user_id
+            if uid:
+                await self._send_notification(uid, f"抄送：{node.get('name', '')}", instance_id)
+        
+        # 抄送不阻塞，立即流转
         await self._auto_goto_next(instance_id, node)
     
     async def _handle_data_fill_node(self, instance_id: int, node: Dict, variables: Dict):
-        """处理数据填报节点"""
-        await self._auto_goto_next(instance_id, node)
+        """处理数据填报节点 - 创建待填报任务"""
+        config = node.get("config", {})
+        assignees = config.get("assignees", [])
+        
+        if not assignees:
+            await self._auto_goto_next(instance_id, node)
+            return
+        
+        for assignee in assignees:
+            user_id = assignee.get("user_id") if isinstance(assignee, dict) else assignee
+            if not user_id:
+                continue
+            task = WorkflowTask(
+                instance_id=instance_id,
+                node_id=node["id"],
+                node_name=node.get("name", "未命名"),
+                node_type="data_fill",
+                status="pending",
+                assignee_id=user_id,
+                node_config=node
+            )
+            self.db.add(task)
+            await self.db.flush()
+            await self._send_notification(user_id, f"数据填报：{node.get('name', '')}", instance_id)
     
     async def _handle_sub_process_node(self, instance_id: int, node: Dict, variables: Dict):
         """处理子流程节点"""

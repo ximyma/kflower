@@ -2267,7 +2267,7 @@ async function confirmCreateMatrixTemplate() {
 
     // 调用 API 创建模板 (字段名必须与后端 TemplateCreate Schema 匹配)
     // 添加 config.matrix_template = true 标记，区分一维模板和矩阵模板
-    const res = await templateAPI.create({
+    const res: any = await templateAPI.create({
       name: matrixForm.name,
       code: matrixForm.code,
       description: matrixForm.description,
@@ -2845,7 +2845,7 @@ function mergeMultiRowHeaders() {
   
   if (selectedRows.length === 1) {
     // 只有一行，直接使用
-    mergedHeaderPreview.value = selectedRows[0].map(c => String(c || '').trim())
+    mergedHeaderPreview.value = selectedRows[0].map((c: any) => String(c || '').trim())
     return
   }
   
@@ -2871,7 +2871,7 @@ function mergeMultiRowHeaders() {
     mergedHeaderPreview.value = merged
   } else {
     // 仅使用第一行
-    mergedHeaderPreview.value = selectedRows[0].map(c => String(c || '').trim())
+    mergedHeaderPreview.value = selectedRows[0].map((c: any) => String(c || '').trim())
   }
 }
 

@@ -476,6 +476,22 @@ async def submit_template_data(
         # 获取刚插入的主记录 ID
         result = await db.execute(text("SELECT last_insert_rowid()"))
         row_id = result.scalar()
+        
+        # ===== 审计日志记录（参考 NocoBase 审计日志） =====
+        try:
+            from app.core.audit_logger import audit_service
+            await audit_service.log_operation(
+                db=db,
+                operation_type="create",
+                collection_name=f"form_data_{template_id}",
+                record_id=row_id,
+                record_title=f"{template.name}_数据_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                user_id=current_user.id,
+                changes=[{"field": {"name": k, "label": k}, "before": None, "after": v}
+                         for k, v in list(main_data.items())[:50]]
+            )
+        except Exception:
+            pass  # 审计日志失败不影响主流程
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存数据失败: {str(e)}")
     
@@ -601,81 +617,77 @@ async def submit_template_data(
         except Exception as e:
             logger.warning(f"RAG 自动索引失败: {e}")
     
-    # ===== 流程审批触发（升级方案 4.1） =====
+    # ===== 流程审批触发（升级方案 4.1 + 模板直接绑定） =====
     workflow_instance = None
+    trigger_workflow_id = None
+    
     try:
-        # 查找关联此模板的 AppMenu，检查是否配置了自动触发工作流
-        from app.modules.my_apps.models import AppMenu
         from app.models.workflow import Workflow
         
-        menu_result = await db.execute(
-            select(AppMenu).where(AppMenu.template_id == template_id)
-        )
-        menu = menu_result.scalar_one_or_none()
-        
-        if menu and menu.workflow_id:
-            # 检查触发条件：submit 或 auto_approve
-            should_trigger = (
-                menu.workflow_trigger == 'submit' or 
-                menu.workflow_auto_approve == True
+        # 方式1：通过 MyApps -> AppMenu 绑定
+        try:
+            from app.modules.my_apps.models import AppMenu
+            menu_result = await db.execute(
+                select(AppMenu).where(AppMenu.template_id == template_id)
             )
-            
-            if should_trigger:
-                # 获取工作流定义
-                wf_result = await db.execute(
-                    select(Workflow).where(Workflow.id == menu.workflow_id)
+            menu = menu_result.scalar_one_or_none()
+            if menu and menu.workflow_id:
+                should_trigger = (
+                    menu.workflow_trigger == 'submit' or 
+                    menu.workflow_auto_approve == True
                 )
-                workflow = wf_result.scalar_one_or_none()
+                if should_trigger:
+                    trigger_workflow_id = menu.workflow_id
+        except Exception:
+            pass  # MyApps 模块未安装或不可用
+        
+        # 方式2：通过 Template.workflows 直接绑定 OR Workflow.form_template_id
+        if not trigger_workflow_id:
+            # 检查是否有直接绑定到该模板的工作流
+            wf_bind_result = await db.execute(
+                select(Workflow).where(
+                    Workflow.form_template_id == template_id,
+                    Workflow.is_active == True
+                )
+            )
+            bound_workflows = wf_bind_result.scalars().all()
+            if bound_workflows:
+                trigger_workflow_id = bound_workflows[0].id
+        
+        if trigger_workflow_id:
+            # 获取工作流定义
+            wf_result = await db.execute(
+                select(Workflow).where(Workflow.id == trigger_workflow_id)
+            )
+            workflow = wf_result.scalar_one_or_none()
+            
+            if workflow and workflow.is_active:
+                from app.core.workflow.engine import WorkflowEngine
                 
-                if workflow and workflow.is_published:
-                    from app.core.workflow.engine import WorkflowEngine
-                    
-                    # ===== 应用级插件触发：workflow.start =====
-                    if app_id:
-                        try:
-                            from app.core.plugin_dispatcher import dispatch_workflow_start
-                            await dispatch_workflow_start(
-                                app_id=app_id,
-                                workflow_id=menu.workflow_id,
-                                form_data_id=row_id,
-                                variables=dict(variables),
-                                user_id=current_user.id,
-                                db=db
-                            )
-                        except Exception as e:
-                            logger.warning(f"工作流启动前插件调度失败: {e}")
-                    
-                    # 构建流程变量
-                    variables = dict(data)
-                    # 应用字段映射
-                    if menu.workflow_node_mapping:
-                        for mapping in menu.workflow_node_mapping:
-                            if isinstance(mapping, dict):
-                                form_field = mapping.get('form_field')
-                                workflow_var = mapping.get('workflow_var')
-                                if form_field and workflow_var and form_field in data:
-                                    variables[workflow_var] = data[form_field]
-                    
-                    # 添加元数据
-                    variables['_template_id'] = template_id
-                    variables['_form_data_id'] = row_id
-                    variables['_app_id'] = app_id
-                    variables['_applicant_id'] = current_user.id
-                    variables['_applicant_name'] = getattr(current_user, 'name', current_user.username)
-                    
-                    # 启动工作流实例
-                    engine = WorkflowEngine(db)
-                    workflow_instance = await engine.start_instance(
-                        workflow_id=menu.workflow_id,
-                        title=f"{template.name} - {datetime.now().strftime('%Y%m%d%H%M%S')}",
-                        starter_id=current_user.id,
-                        variables=variables,
-                        form_data_id=row_id
-                    )
+                # 构建流程变量（带字段映射）
+                variables = dict(data)
+                
+                # 添加元数据
+                variables['_template_id'] = template_id
+                variables['_form_data_id'] = row_id
+                variables['_applicant_id'] = current_user.id
+                variables['_applicant_name'] = getattr(current_user, 'full_name', current_user.username)
+                variables['starter_id'] = current_user.id
+                
+                # 启动工作流实例
+                engine = WorkflowEngine(db)
+                workflow_instance = await engine.start_instance(
+                    workflow_id=trigger_workflow_id,
+                    title=f"{template.name} - {current_user.full_name or current_user.username} - {datetime.now().strftime('%Y%m%d%H%M%S')}",
+                    starter_id=current_user.id,
+                    variables=variables,
+                    form_data_id=row_id
+                )
     except Exception as e:
-        # 工作流触发失败不影响主流程
         import logging
-        logging.error(f"工作流触发失败: {e}")
+        logger = logging.getLogger(__name__)
+        logger.warning(f"工作流自动触发失败: {e}")
+        # 工作流触发失败不影响表单提交主流程
     
     return TemplateDataResponse(
         id=row_id,
@@ -750,6 +762,28 @@ async def get_template_data_list(
                             OR CAST(created_by AS TEXT) LIKE :search)"""
     
     data_sql += " ORDER BY created_at DESC LIMIT :limit OFFSET :skip"
+    
+    # ===== 行级数据权限过滤（参考 NocoBase 数据范围） =====
+    try:
+        from app.core.scope_filter import scope_filter_engine
+        user_ctx = {
+            "id": getattr(current_user, 'id', None),
+            "username": getattr(current_user, 'username', ''),
+            "organization_id": getattr(current_user, 'organization_id', None),
+            "role_id": getattr(current_user, 'role_id', None),
+        }
+        scope = await scope_filter_engine.get_user_data_scope(user_ctx, db, table_name)
+        if scope:
+            for field, value in scope.items():
+                safe_field = field.replace("'", "").replace('"', "").replace(";", "")
+                if value is not None:
+                    scope_condition = f" AND {safe_field} = :scope_{safe_field}"
+                    # 在 ORDER BY 之前插入
+                    data_sql = data_sql.replace(" ORDER BY", scope_condition + " ORDER BY")
+                    count_sql = count_sql.replace(" ORDER BY", scope_condition + " ORDER BY") if "ORDER BY" in count_sql else count_sql + scope_condition
+                    params[f"scope_{safe_field}"] = value
+    except Exception:
+        pass  # 范围过滤失败不阻止查询
     
     try:
         # 获取总数

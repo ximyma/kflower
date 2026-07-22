@@ -22,6 +22,7 @@ class ToolType(Enum):
     ANALYTICS = "analytics"
     FILE = "file"
     NOTIFICATION = "notification"
+    SYSTEM = "system"
     CUSTOM = "custom"
 
 
@@ -161,6 +162,67 @@ _DEFAULT_TOOL_DEFS: List[Dict[str, Any]] = [
             {"name": "output_dir", "type": "string", "required": False},
         ]
     },
+    # ===== 系统工具（参考 SoWork2） =====
+    {
+        "name": "read_file",
+        "description": "读取文件内容。支持指定起始行和行数限制",
+        "tool_type": ToolType.SYSTEM,
+        "parameters": [
+            {"name": "path", "type": "string", "required": True, "description": "文件路径"},
+            {"name": "offset", "type": "integer", "required": False, "description": "起始行号"},
+            {"name": "limit", "type": "integer", "required": False, "description": "最大读取行数"},
+        ]
+    },
+    {
+        "name": "write_file",
+        "description": "写入文件内容。会覆盖已有文件",
+        "tool_type": ToolType.SYSTEM,
+        "parameters": [
+            {"name": "path", "type": "string", "required": True, "description": "文件路径"},
+            {"name": "content", "type": "string", "required": True, "description": "要写入的内容"},
+        ]
+    },
+    {
+        "name": "list_files",
+        "description": "列出目录中的文件和子目录",
+        "tool_type": ToolType.SYSTEM,
+        "parameters": [
+            {"name": "path", "type": "string", "required": True, "description": "目录路径"},
+            {"name": "pattern", "type": "string", "required": False, "description": "文件通配模式，如 *.py"},
+        ]
+    },
+    {
+        "name": "search_content",
+        "description": "在文件中搜索匹配的文本内容（grep）",
+        "tool_type": ToolType.SYSTEM,
+        "parameters": [
+            {"name": "pattern", "type": "string", "required": True, "description": "搜索的正则表达式"},
+            {"name": "path", "type": "string", "required": True, "description": "搜索路径（文件或目录）"},
+        ]
+    },
+    {
+        "name": "bash",
+        "description": "执行 Shell 命令（仅限安全命令）",
+        "tool_type": ToolType.SYSTEM,
+        "parameters": [
+            {"name": "command", "type": "string", "required": True, "description": "要执行的命令"},
+            {"name": "timeout", "type": "integer", "required": False, "description": "超时秒数，默认30"},
+        ]
+    },
+    {
+        "name": "get_env_info",
+        "description": "获取系统环境信息，包括项目路径、Python版本、数据库状态等",
+        "tool_type": ToolType.SYSTEM,
+        "parameters": []
+    },
+    {
+        "name": "read_workflow_logs",
+        "description": "读取工作流实例的审批日志",
+        "tool_type": ToolType.WORKFLOW,
+        "parameters": [
+            {"name": "instance_id", "type": "integer", "required": True, "description": "工作流实例ID"},
+        ]
+    },
 ]
 
 
@@ -269,28 +331,35 @@ class ToolRegistry:
 
     def get_tools_as_openai_format(self, enabled_only: bool = True) -> List[Dict[str, Any]]:
         """获取 OpenAI function calling 格式的工具定义，默认只返回已启用工具"""
-        return [
-            {
+        result = []
+        for tool in self.tools.values():
+            if enabled_only and not tool.is_enabled:
+                continue
+            properties = {}
+            required = []
+            for p in tool.parameters:
+                prop = {"type": p["type"]}
+                if "description" in p:
+                    prop["description"] = p["description"]
+                if "enum" in p:
+                    prop["enum"] = p["enum"]
+                properties[p["name"]] = prop
+                if p.get("required", False):
+                    required.append(p["name"])
+            
+            result.append({
                 "type": "function",
                 "function": {
                     "name": tool.name,
                     "description": tool.description,
                     "parameters": {
                         "type": "object",
-                        "properties": {
-                            p["name"]: {"type": p["type"]}
-                            for p in tool.parameters
-                        },
-                        "required": [
-                            p["name"] for p in tool.parameters
-                            if p.get("required", False)
-                        ]
+                        "properties": properties,
+                        "required": required
                     }
                 }
-            }
-            for tool in self.tools.values()
-            if (not enabled_only) or tool.is_enabled
-        ]
+            })
+        return result
 
 
 # 全局工具注册表实例

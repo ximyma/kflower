@@ -92,7 +92,8 @@ export const aiAPI = {
   getDigitalBaseStatus: () => api.get('/ai/digital-base/status'),
   getDigitalBaseProviders: () => api.get('/ai/digital-base/providers/detailed'),
   getDigitalBaseModels: (provider?: string) => api.get('/ai/digital-base/models/available', { params: { provider } }),
-  getDigitalBaseUsageStats: (days?: number) => api.get('/ai/digital-base/usage/stats', { params: { days } }),
+  // Phase 1: 以下 mock 端点已从后端移除（getDigitalBaseUsageStats, getGatewayStats, getMemoryStats, listMemories, getDataIntegration*, getMigrationStats）
+  // 后续 Phase 2/3 将基于数据库真实查询重新实现
   // AI智能体引擎API
   getAgentEngineStatus: () => api.get('/ai/agent-engine/status'),
   getAgentEngineAgents: () => api.get('/ai/agent-engine/agents'),
@@ -104,17 +105,6 @@ export const aiAPI = {
   // AI能力API
   executeCapability: (capability: string, input_data: any) => api.post('/ai/capability/execute', { capability, input_data }),
   listCapabilities: () => api.get('/ai/capability/list'),
-  // AI网关API
-  getGatewayStats: () => api.get('/ai/digital-base/gateway-stats'),
-  // 记忆管理API
-  getMemoryStats: () => api.get('/ai/agent-engine/memory/stats'),
-  listMemories: (limit?: number) => api.get('/ai/agent-engine/memory/list', { params: { limit } }),
-  // 数据集成API
-  getDataIntegrationStats: () => api.get('/ai/digital-base/data-integration/stats'),
-  getDataIntegrationConnections: () => api.get('/ai/digital-base/data-integration/connections'),
-  getDataIntegrationSyncTasks: () => api.get('/ai/digital-base/data-integration/sync-tasks'),
-  // 数据库迁移API
-  getMigrationStats: () => api.get('/ai/digital-base/migration/stats')
 }
 
 export const agentAPI = {
@@ -178,6 +168,25 @@ export const workflowAPI = {
     api.post(`/workflows/${id}/execute`, { title, data }),
   executeStart: (id: number, data: any) =>
     api.post(`/workflows/${id}/start`, data),
+  enable: (id: number) => api.put(`/workflows/${id}`, { is_active: true }),
+  disable: (id: number) => api.put(`/workflows/${id}`, { is_active: false }),
+  // 流程实例相关
+  getPendingInstances: (params?: { skip?: number; limit?: number }) =>
+    api.get('/workflows/instances/pending', { params }),
+  approveTask: (taskId: number, data: { opinion?: string; variables?: any }) =>
+    api.post(`/workflows/instances/${taskId}/approve`, data),
+  rejectTask: (taskId: number, data: { opinion?: string }) =>
+    api.post(`/workflows/instances/${taskId}/reject`, data),
+  getInstanceDetail: (instanceId: number) =>
+    api.get(`/workflows/instances/${instanceId}`),
+  getMyInstances: (params?: { skip?: number; limit?: number }) =>
+    api.get('/workflows/instances/my', { params }),
+  getAllInstances: (params?: { skip?: number; limit?: number }) =>
+    api.get('/workflows/instances/', { params }),
+  submitTaskAction: (taskId: number, data: { action: string; opinion?: string; transfer_to?: number; data?: any }) =>
+    api.post(`/workflows/tasks/${taskId}/action`, data),
+  withdrawInstance: (instanceId: number) =>
+    api.post(`/workflows/instances/${instanceId}/withdraw`, {}),
 }
 
 export const notificationAPI = {

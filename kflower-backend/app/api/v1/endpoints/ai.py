@@ -14,7 +14,7 @@ from app.core.security import get_current_user
 from app.core.ai_digital_base import (
     ai_gateway, conversation_manager, rag_retriever, inference_service
 )
-from app.core.agent_engine import agent_orchestrator, task_planner, AgentType
+from app.core.agent_engine import agent_orchestrator, task_planner
 from app.models.user import User
 from app.models.ai import AIConversation, AuditLog
 from app.schemas.schemas import ChatRequest, ChatResponse, BaseResponse

@@ -182,6 +182,44 @@
         <el-button type="primary" @click="handleDesign(currentWorkflow)">编辑流程</el-button>
       </template>
     </el-dialog>
+    <!-- 实例时间线对话框 -->
+    <el-dialog v-model="timelineDialogVisible" :title="`审批详情 - ${timelineData.title || ''}`" width="700px" @close="timelineData = {}">
+      <div v-if="!timelineData.id" class="empty-container">
+        <el-empty description="加载中..." />
+      </div>
+      <div v-else>
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="流程">{{ timelineData.workflow_name }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="getStatusType(timelineData.status)">{{ getStatusText(timelineData.status) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="发起时间">{{ formatDate(timelineData.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="完成时间">{{ formatDate(timelineData.completed_at) }}</el-descriptions-item>
+        </el-descriptions>
+        <el-divider />
+        <h4>审批时间线</h4>
+        <el-timeline v-if="timelineData.logs && timelineData.logs.length">
+          <el-timeline-item
+            v-for="log in timelineData.logs"
+            :key="log.id"
+            :timestamp="formatDate(log.created_at)"
+            :type="log.action === 'approved' || log.action === 'approve' ? 'success' : log.action === 'rejected' ? 'danger' : 'primary'"
+          >
+            <strong>{{ log.operator_name || '系统' }}</strong>
+            <span v-if="log.action === 'created'"> 发起审批</span>
+            <span v-else-if="log.action === 'approved' || log.action === 'approve'"> 审批通过</span>
+            <span v-else-if="log.action === 'rejected'"> 审批拒绝</span>
+            <span v-else-if="log.action === 'withdraw'"> 撤回审批</span>
+            <span v-else> {{ log.action }}</span>
+            <div v-if="log.comment" style="color:#909399;font-size:12px;margin-top:4px">"{{ log.comment }}"</div>
+          </el-timeline-item>
+        </el-timeline>
+        <el-empty v-else description="暂无审批记录" :image-size="60" />
+      </div>
+      <template #footer>
+        <el-button @click="timelineDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -190,7 +228,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Search, Timer, CircleCheck, Operation } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus'
-import { workflowAPI, dashboardAPI } from '../../common/api'
+import { workflowAPI } from '../../common/api'
 
 const router = useRouter()
 
@@ -223,6 +261,7 @@ const loadingHistory = ref(false)
 // 对话框
 const createDialogVisible = ref(false)
 const detailDialogVisible = ref(false)
+const timelineDialogVisible = ref(false)
 const creating = ref(false)
 
 // 表单
@@ -233,6 +272,8 @@ const newWorkflowForm = ref({
   description: ''
 })
 const currentWorkflow = ref<any>({})
+const timelineInstance = ref<any>(null)
+const timelineData = ref<any>({})
 
 const wfRules: FormRules = {
   name: [{ required: true, message: '请输入流程名称', trigger: 'blur' }],
@@ -255,6 +296,7 @@ function getStatusType(status?: string) {
     running: 'warning',
     approved: 'success',
     rejected: 'danger',
+    cancelled: 'info',
     draft: 'info',
     pending: 'warning',
     completed: 'success',
@@ -269,6 +311,7 @@ function getStatusText(status?: string) {
     running: '进行中',
     approved: '已批准',
     rejected: '已拒绝',
+    cancelled: '已撤回',
     draft: '草稿',
     pending: '待审批',
     completed: '已完成',
@@ -283,11 +326,10 @@ function formatDate(dateStr: string | null | undefined) {
   return new Date(dateStr).toLocaleString('zh-CN')
 }
 
-function handleSearch() {
-  // 通过计算属性实现
-}
+function handleSearch() {}
 
-// 加载流程定义
+// ========== 加载数据 ==========
+
 async function loadWorkflows() {
   try {
     const res: any = await workflowAPI.list({ limit: 100 })
@@ -303,44 +345,54 @@ async function loadWorkflows() {
   }
 }
 
-// 加载待我审批
 async function loadPendingTasks() {
   loadingPending.value = true
   try {
-    const res: any = await dashboardAPI.getPendingTasks()
+    // 使用 workflowAPI 获取真实待办数据
+    const res: any = await workflowAPI.getPendingInstances()
     if (res && res.success !== false) {
-      pendingList.value = res.data?.tasks || []
+      const items = Array.isArray(res) ? res : (res.data || res.items || [])
+      pendingList.value = items
+    } else {
+      pendingList.value = []
     }
   } catch (e) {
     console.warn('Failed to load pending tasks')
+    pendingList.value = []
   } finally {
     loadingPending.value = false
   }
 }
 
-// 加载我发起的
 async function loadMyList() {
   loadingMy.value = true
   try {
-    myList.value = []
+    const res: any = await workflowAPI.getMyInstances()
+    if (res && res.success !== false) {
+      myList.value = Array.isArray(res) ? res : (res.data || [])
+    }
   } catch (e) {
-    console.warn('Failed to load my list')
+    myList.value = []
   } finally {
     loadingMy.value = false
   }
 }
 
-// 加载执行记录
 async function loadHistory() {
   loadingHistory.value = true
   try {
-    historyList.value = []
+    const res: any = await workflowAPI.getAllInstances()
+    if (res && res.success !== false) {
+      historyList.value = Array.isArray(res) ? res : (res.data || [])
+    }
   } catch (e) {
-    console.warn('Failed to load history')
+    historyList.value = []
   } finally {
     loadingHistory.value = false
   }
 }
+
+// ========== 操作 ==========
 
 function openCreateDialog() {
   newWorkflowForm.value = { name: '', code: '', description: '' }
@@ -356,9 +408,15 @@ async function handleCreateSubmit() {
     try {
       const res: any = await workflowAPI.create(newWorkflowForm.value)
       if (res && res.success !== false) {
-        ElMessage.success('流程创建成功')
+        ElMessage.success('流程创建成功，正在跳转到设计器...')
         createDialogVisible.value = false
-        loadWorkflows()
+        const wf = res.data || res
+        const wfId = wf.id
+        if (wfId) {
+          router.push(`/workflows/design/${wfId}`)
+        } else {
+          loadWorkflows()
+        }
       } else {
         ElMessage.error(res?.message || '创建失败')
       }
@@ -375,18 +433,55 @@ function handleEdit(wf: any) {
   detailDialogVisible.value = true
 }
 
-function handleViewDetail(wf: any) {
-  currentWorkflow.value = wf
-  detailDialogVisible.value = true
+async function handleViewDetail(row: any) {
+  const instanceId = row.instance_id || row.id
+  if (!instanceId) { ElMessage.warning('无法获取实例ID'); return }
+  timelineDialogVisible.value = true
+  try {
+    const res: any = await workflowAPI.getInstanceDetail(instanceId)
+    timelineData.value = res.data || res || {}
+    timelineInstance.value = row
+  } catch (e: any) {
+    ElMessage.error('获取实例详情失败: ' + (e.message || '未知错误'))
+    timelineDialogVisible.value = false
+  }
 }
 
 function handleDesign(wf: any) {
-  // 使用 router 而不是 window.location.href，这样不会刷新页面
   router.push(`/workflows/design/${wf.id}`)
 }
 
 function handleExecute(wf: any) {
-  ElMessage.info('流程执行功能开发中...')
+  // 发起审批 - 创建实例
+  ElMessageBox.prompt('请输入审批标题', '发起审批', {
+    confirmButtonText: '发起',
+    inputPlaceholder: '例如：请假申请-张三'
+  }).then(async ({ value }) => {
+    if (!value) return
+    try {
+      // 使用新引擎启动实例
+      const startData = {
+        title: value,
+        variables: {},
+        form_data_id: null
+      }
+      await workflowAPI.executeStart(wf.id, startData)
+      ElMessage.success('审批流程已发起')
+      // 刷新列表
+      loadMyList()
+      loadHistory()
+    } catch (e: any) {
+      // 如果 executeStart 不可用，尝试 execute
+      try {
+        await workflowAPI.execute(wf.id, value, {})
+        ElMessage.success('审批流程已发起')
+        loadMyList()
+        loadHistory()
+      } catch (e2: any) {
+        ElMessage.error(e2.message || '发起失败')
+      }
+    }
+  }).catch(() => {})
 }
 
 async function handleDelete(wf: any) {
@@ -408,31 +503,41 @@ async function handleDelete(wf: any) {
   }
 }
 
-function handleApprove(row: any) {
-  ElMessageBox.confirm(`确定批准 "${row.title}" 吗？`, '确认批准', {
-    type: 'success'
-  }).then(() => {
+// ========== 审批操作（调用真实API） ==========
+
+async function handleApprove(row: any) {
+  try {
+    await ElMessageBox.confirm(`确定批准 "${row.title || row.node_name}" 吗？`, '确认批准', { type: 'success' })
+    const taskId = row.id
+    await workflowAPI.submitTaskAction(taskId, { action: 'approve', opinion: '同意' })
     ElMessage.success('已批准')
-    pendingList.value = pendingList.value.filter(w => w.id !== row.id)
-  }).catch(() => {})
+    await Promise.all([loadPendingTasks(), loadMyList(), loadHistory()])
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('审批失败: ' + (e?.response?.data?.detail || e.message || ''))
+  }
 }
 
-function handleReject(row: any) {
-  ElMessageBox.confirm(`确定拒绝 "${row.title}" 吗？`, '确认拒绝', {
-    type: 'warning'
-  }).then(() => {
+async function handleReject(row: any) {
+  try {
+    await ElMessageBox.confirm(`确定拒绝 "${row.title || row.node_name}" 吗？`, '确认拒绝', { type: 'warning' })
+    await workflowAPI.submitTaskAction(row.id, { action: 'reject', opinion: '不同意' })
     ElMessage.warning('已拒绝')
-    pendingList.value = pendingList.value.filter(w => w.id !== row.id)
-  }).catch(() => {})
+    await Promise.all([loadPendingTasks(), loadMyList(), loadHistory()])
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('操作失败: ' + (e?.response?.data?.detail || e.message || ''))
+  }
 }
 
-function handleWithdraw(row: any) {
-  ElMessageBox.confirm(`确定撤回 "${row.title}" 吗？`, '确认撤回', {
-    type: 'warning'
-  }).then(() => {
+async function handleWithdraw(row: any) {
+  try {
+    await ElMessageBox.confirm(`确定撤回 "${row.title}" 吗？`, '确认撤回', { type: 'warning' })
+    const instanceId = row.instance_id || row.id
+    await workflowAPI.withdrawInstance(instanceId)
     ElMessage.info('已撤回')
-    myList.value = myList.value.filter(w => w.id !== row.id)
-  }).catch(() => {})
+    await Promise.all([loadMyList(), loadPendingTasks(), loadHistory()])
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('撤回失败: ' + (e?.response?.data?.detail || e.message || ''))
+  }
 }
 
 onMounted(() => {

@@ -12,6 +12,9 @@ build/
 *.local
 .packaging
 packaging
+packaging_lite
+android
+
 
 # Environment
 .env
@@ -24,6 +27,8 @@ packaging
 *.swp
 *.swo
 *~
+.codebuddy
+.workbuddy
 
 # OS
 .DS_Store

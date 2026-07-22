@@ -15,107 +15,66 @@
       >
         <el-menu-item index="/home">
           <el-icon><HomeFilled /></el-icon>
-          <template #title>首页</template>
+          <template #title>工作台</template>
         </el-menu-item>
         
         <el-menu-item index="/templates">
           <el-icon><Document /></el-icon>
-          <template #title>模板设计</template>
+          <template #title>模板管理</template>
         </el-menu-item>
         
         <el-menu-item index="/workflows">
           <el-icon><Connection /></el-icon>
-          <template #title>流程审批</template>
+          <template #title>流程中心</template>
         </el-menu-item>
         
         <el-menu-item index="/analytics">
           <el-icon><DataAnalysis /></el-icon>
-          <template #title>决策分析</template>
+          <template #title>数据分析</template>
         </el-menu-item>
         
         <el-menu-item index="/knowledge">
           <el-icon><Files /></el-icon>
           <template #title>知识库</template>
         </el-menu-item>
-        
-        <el-menu-item index="/ai-digital-base">
-          <el-icon><Cpu /></el-icon>
-          <template #title>AI数字底座</template>
-        </el-menu-item>
-        
-        <el-menu-item index="/ai-agent-engine">
-          <el-icon><User /></el-icon>
-          <template #title>AI智能体引擎</template>
-        </el-menu-item>
-        
-        <el-menu-item index="/ai-gateway">
-          <el-icon><Connection /></el-icon>
-          <template #title>AI网关</template>
-        </el-menu-item>
-        
-        <el-menu-item index="/ai-tools">
-          <el-icon><Tools /></el-icon>
-          <template #title>工具集</template>
-        </el-menu-item>
-        
-        <el-menu-item index="/agent-orchestrator">
-          <el-icon><SetUp /></el-icon>
-          <template #title>智能体编排器</template>
-        </el-menu-item>
-        
-        <el-menu-item index="/memory-management">
-          <el-icon><Collection /></el-icon>
-          <template #title>记忆管理</template>
-        </el-menu-item>
-        
-        <el-menu-item index="/data-integration">
-          <el-icon><DataBoard /></el-icon>
-          <template #title>数据集成</template>
-        </el-menu-item>
-        
-        <el-menu-item index="/migration">
-          <el-icon><Upload /></el-icon>
-          <template #title>数据库迁移</template>
-        </el-menu-item>
-        
-        <el-menu-item index="/my-workspace">
-          <el-icon><Folder /></el-icon>
-          <template #title>我的工作区</template>
-        </el-menu-item>
-        
+
         <el-menu-item index="/my-apps">
           <el-icon><FolderOpened /></el-icon>
-          <template #title>我的应用</template>
+          <template #title>应用搭建</template>
         </el-menu-item>
-        
-        <el-menu-item index="/app-data-view">
-          <el-icon><DataBoard /></el-icon>
-          <template #title>应用数据视图</template>
+
+        <!-- AI 能力中心 — 统一入口 -->
+        <el-menu-item index="/ai-center">
+          <el-icon><Cpu /></el-icon>
+          <template #title>AI 能力中心</template>
         </el-menu-item>
-        
+
+        <!-- 插件生态 -->
+        <el-sub-menu v-if="userStore.isAdmin" index="/plugins-group">
+          <template #title>
+            <el-icon><Box /></el-icon>
+            <span>插件生态</span>
+          </template>
+          <el-menu-item index="/plugins">插件管理</el-menu-item>
+          <el-menu-item index="/plugin-market">插件市场</el-menu-item>
+        </el-sub-menu>
+
+        <!-- 系统管理 -->
+        <el-sub-menu v-if="userStore.isAdmin" index="/system-group">
+          <template #title>
+            <el-icon><Setting /></el-icon>
+            <span>系统管理</span>
+          </template>
+          <el-menu-item index="/data-modeling">数据建模</el-menu-item>
+          <el-menu-item index="/migration">数据迁移</el-menu-item>
+          <el-menu-item index="/doc-converter">文档转换</el-menu-item>
+          <el-menu-item index="/users">用户管理</el-menu-item>
+          <el-menu-item index="/settings">系统设置</el-menu-item>
+        </el-sub-menu>
+
         <el-menu-item index="/profile">
           <el-icon><User /></el-icon>
           <template #title>个人信息</template>
-        </el-menu-item>
-
-        <el-menu-item v-if="userStore.isAdmin" index="/users">
-          <el-icon><UserFilled /></el-icon>
-          <template #title>用户管理</template>
-        </el-menu-item>
-
-        <el-menu-item v-if="userStore.isAdmin" index="/plugins">
-          <el-icon><Box /></el-icon>
-          <template #title>插件管理</template>
-        </el-menu-item>
-
-        <el-menu-item index="/plugin-market">
-          <el-icon><ShoppingBag /></el-icon>
-          <template #title>插件市场</template>
-        </el-menu-item>
-
-        <el-menu-item v-if="userStore.isAdmin" index="/settings">
-          <el-icon><Setting /></el-icon>
-          <template #title>系统设置</template>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -208,9 +167,11 @@ function handleUserCommand(command: string) {
   height: 100vh;
 }
 
+/* ===== 侧边栏深色主题 ===== */
 .el-aside {
-  background: #304156;
+  background-color: #1d1e2c;
   transition: width 0.3s;
+  overflow: hidden;
 }
 
 .logo {
@@ -218,35 +179,68 @@ function handleUserCommand(command: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--el-color-white);
+  gap: 8px;
+  color: #ffffff;
   font-size: 20px;
   font-weight: bold;
-  border-bottom: 1px solid #3d4a5c;
+  border-bottom: 1px solid #2a2b3d;
+  background-color: #1d1e2c;
 }
 
+/* --- 菜单容器 --- */
 .sidebar-menu {
-  border-right: none;
-  background: #304156;
+  border-right: none !important;
+  background-color: #1d1e2c !important;
 }
 
-.sidebar-menu .el-menu-item {
-  color: #bfcbd9;
+/* --- 一级菜单项 --- */
+.sidebar-menu :deep(.el-menu-item) {
+  color: #b0b3c1 !important;
+  background-color: #1d1e2c !important;
+  border-bottom: 1px solid transparent;
+}
+.sidebar-menu :deep(.el-menu-item:hover) {
+  color: #ffffff !important;
+  background-color: #2a2b3d !important;
+}
+.sidebar-menu :deep(.el-menu-item.is-active) {
+  color: #5b9cf5 !important;
+  background-color: #252636 !important;
+  border-left: 3px solid #5b9cf5;
 }
 
-.sidebar-menu .el-menu-item:hover {
-  color: var(--el-color-white);
-  background-color: #263445;
+/* --- 子菜单标题 --- */
+.sidebar-menu :deep(.el-sub-menu__title) {
+  color: #b0b3c1 !important;
+  background-color: #1d1e2c !important;
+}
+.sidebar-menu :deep(.el-sub-menu__title:hover) {
+  color: #ffffff !important;
+  background-color: #2a2b3d !important;
 }
 
-.sidebar-menu .el-menu-item.is-active {
-  color: #409eff;
-  background-color: #263445;
+/* --- 子菜单展开后的子项 --- */
+.sidebar-menu :deep(.el-menu--inline) {
+  background-color: #151622 !important;
+}
+.sidebar-menu :deep(.el-menu--inline .el-menu-item) {
+  background-color: #151622 !important;
+  padding-left: 56px !important;
+}
+.sidebar-menu :deep(.el-menu--inline .el-menu-item:hover) {
+  background-color: #2a2b3d !important;
+}
+
+/* --- 折叠状态 --- */
+.sidebar-menu.el-menu--collapse :deep(.el-sub-menu__title) {
+  text-align: center;
 }
 
 .sidebar-menu:not(.el-menu--collapse) {
   width: 200px;
 }
 
+/* --- 顶部栏 --- */
 .el-header {
   background: var(--el-bg-color);
   display: flex;
@@ -271,6 +265,7 @@ function handleUserCommand(command: string) {
   color: var(--el-text-color-primary);
 }
 
+/* --- 主内容区 --- */
 .el-main {
   background: #f5f7fa;
   padding: 16px;

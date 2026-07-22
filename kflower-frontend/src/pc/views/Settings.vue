@@ -938,6 +938,10 @@ async function testOcr() {
     canvas.width = 200
     canvas.height = 50
     const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      ElMessage.error('无法创建画布上下文')
+      return
+    }
     ctx.fillStyle = 'white'
     ctx.fillRect(0, 0, 200, 50)
     ctx.fillStyle = 'black'

@@ -1,6 +1,6 @@
 <template>
-  <div class="app-layout" :class="{ 'hide-tabbar': isFullscreenPage }">
-    <!-- 顶部导航 -->
+  <div class="app-layout" :class="{ 'hide-tabbar': hideTabbar, 'fullscreen-mode': isFullscreenPage }">
+    <!-- 顶部导航（全屏时隐藏，其他时候保留） -->
     <div class="app-header" v-if="!isFullscreenPage">
       <div class="header-left" @click="$router.push('/app/home')">
         <el-icon :size="22"><MagicStick /></el-icon>
@@ -36,8 +36,8 @@
       </div>
     </div>
 
-    <!-- 底部导航 -->
-    <div class="app-tabbar" v-if="!isFullscreenPage">
+    <!-- 底部导航（子页面或全屏时隐藏） -->
+    <div class="app-tabbar" v-if="!hideTabbar && !isFullscreenPage">
       <div
         v-for="tab in tabs"
         :key="tab.path"
@@ -84,7 +84,9 @@ const isDesignerPage = computed(() => {
   return path.includes('designer') || path.includes('template-designer') || path.includes('workflow-designer')
 })
 
-// 是否应该隐藏tabbar
+// 是否应该隐藏tabbar（子页面有独立导航栏时隐藏底部tab）
+const hideTabbar = computed(() => !!route.meta.hideInTabbar)
+// 是否完全全屏（设计器等场景）
 const isFullscreenPage = computed(() => isFullscreen.value && isDesignerPage.value)
 
 // 底部导航配置 - 5个核心模块

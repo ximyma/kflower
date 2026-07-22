@@ -295,7 +295,7 @@ function handleRemoveColumn(colIdx: number) {
 
 // 将矩阵数据转换为一维格式
 function getData() {
-  const result = []
+  const result: any[] = []
   if (!cellData.value || cellData.value.length === 0) return result
 
   for (let i = 0; i < rowHeaders.value.length; i++) {

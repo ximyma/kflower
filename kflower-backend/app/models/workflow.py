@@ -169,6 +169,7 @@ class WorkflowTask(Base):
     
     node_id = Column(String(100), nullable=False)
     node_name = Column(String(200), nullable=False)
+    node_type = Column(String(50), nullable=True, comment="节点类型: approval/task/cc/data_fill等")
     
     # 升级扩展字段（按照 dd4chat.txt 方案）
     node_config = Column(JSON, default=dict, comment="节点配置快照")

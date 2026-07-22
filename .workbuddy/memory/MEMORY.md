@@ -112,6 +112,14 @@ onMounted(() => { nextTick(() => initData()) })
 
 ## 近期重要修改
 
+### 2026-07-22 - 全阶段优化（Phase 1-4 全部执行完成）
+- **Phase 1 清理**：删除 9 后端 mock 端点 + 15 前端死代码 + Provider 配置统一
+- **Phase 2 Agent 重构**：删除 4 伪 Agent → 统一 UnifiedReactAgent（agent_service ReAct）；AgentType 精简；chat 首次加载缓存
+- **Phase 3 前端重整**：菜单 20+→10+2 子菜单；AI 6 入口→1「AI 能力中心」；创建 AICenter.vue
+- **Phase 4 安全加固**：路径穿越防护（_resolve_safe_path）、bash 白名单、SQL 列名验证
+- **未涉及数据库变更**
+- **后端路由总数**：288 → 279
+
 ### 2026-05-04 - 矩阵模板操作流程优化
 - **问题**：矩阵模板数据列表的操作按钮和普通模板混淆，"填表"按钮没有反应
 - **修改**：
@@ -127,6 +135,25 @@ onMounted(() => { nextTick(() => initData()) })
   - 矩阵数据存储在 `__matrix_data` 字段中（一维数组格式）
   - `getMatrixInfo()` 函数解析并显示矩阵数据概要（行×列、数据点数量）
   - MatrixView 用于查看，MatrixInput 用于编辑
+
+### 2026-06-23 - 工作流与智能体全面升级
+- **扫描**：发现 18 个问题（2 致命 + 4 高危 + 8 中等 + 4 低危）
+- **后端修复 13 项**：
+  - engine.py：添加 SLAManager 导入、实现真实通知发送、并行网关 asyncio.gather 并发、TASK/CC/DATA_FILL 节点区分
+  - executor.py：_execute_workflow 改用 WorkflowEngine.start_instance
+  - orchestrator.py：新增 is_running()/get_task_statistics()/get_tasks() 方法
+  - agent_service.py：新增 list_agents() 方法
+  - ai_agent_engine.py：修复 /v1/chat/completions 拼写、移除所有模拟数据回退
+  - schemas.py + agent.py：统一 ChatRequest Schema
+  - sla_manager.py：实现真实催办通知 + 升级通知
+  - condition_evaluator.py：LOOKUP 函数实现真实数据库查询
+  - **新增** notifications 表（`app/models/notification.py` + 迁移脚本）
+- **前端修复 3 项**：
+  - api/index.ts：workflowAPI 新增 enable/disable/getPendingInstances/approveTask/rejectTask
+  - pc/views/Workflows.vue：替换原生 fetch 为统一 API 调用
+  - 删除 dead code：common/pc/views/{Workflows,WorkflowDesigner}.vue
+  - 删除备份文件：engine.py.backup, WorkflowDesigner.vue.backup
+- **验证**：所有模块导入通过、FastAPI 286 路由正常加载、数据库迁移成功
 
 ### 2026-05-03 - Excel 导入功能
 - **前端**：`FormListPage.vue` 添加 Excel 导入对话框（3 步向导）
@@ -159,6 +186,6 @@ onMounted(() => { nextTick(() => initData()) })
 - 必要时手动执行 SQL 修复
 
 ---
-**最后更新**：2026-05-04
+**最后更新**：2026-07-22
 **更新人**：AI Assistant
-**更新原因**：矩阵模板操作流程优化
+**更新原因**：全阶段优化完成（Phase 1-4）

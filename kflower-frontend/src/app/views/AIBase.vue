@@ -24,30 +24,6 @@
       </div>
     </div>
     
-    <!-- AI网关 -->
-    <div class="section-card">
-      <div class="section-header">
-        <div class="section-title">
-          <el-icon :size="20" color="#667eea"><Connection /></el-icon>
-          <span>AI网关</span>
-        </div>
-      </div>
-      <div class="gateway-info" v-if="gatewayStats">
-        <div class="info-row">
-          <span>总请求</span>
-          <span class="value">{{ gatewayStats.total_requests || 0 }}</span>
-        </div>
-        <div class="info-row">
-          <span>成功率</span>
-          <span class="value success">{{ gatewayStats.success_rate || '100%' }}</span>
-        </div>
-        <div class="info-row">
-          <span>平均响应</span>
-          <span class="value">{{ gatewayStats.avg_response_time || '0ms' }}</span>
-        </div>
-      </div>
-    </div>
-    
     <!-- 模型管理 -->
     <div class="section-card">
       <div class="section-header">
@@ -73,29 +49,8 @@
       </div>
     </div>
     
-    <!-- 使用统计 -->
-    <div class="section-card">
-      <div class="section-header">
-        <div class="section-title">
-          <el-icon :size="20" color="#E6A23C"><DataAnalysis /></el-icon>
-          <span>使用统计</span>
-        </div>
-      </div>
-      <div class="usage-stats" v-if="usageStats">
-        <div class="usage-item">
-          <span class="usage-label">今日请求</span>
-          <span class="usage-value">{{ usageStats.today_requests || 0 }}</span>
-        </div>
-        <div class="usage-item">
-          <span class="usage-label">今日Token</span>
-          <span class="usage-value">{{ formatToken(usageStats.today_tokens || 0) }}</span>
-        </div>
-        <div class="usage-item">
-          <span class="usage-label">总成本</span>
-          <span class="usage-value">¥{{ usageStats.total_cost || '0.00' }}</span>
-        </div>
-      </div>
-    </div>
+    <!-- Phase 1: 网关统计和使用统计 mock 端点已移除，
+         后续 Phase 3 将基于真实数据重新实现 -->
     
     <!-- 配置入口 -->
     <div class="config-tip" @click="openConfig">
@@ -109,7 +64,7 @@
 <script setup lang="ts">
 // @ts-nocheck
 import { ref, onMounted } from 'vue'
-import { Refresh, Connection, Box, Cpu, DataAnalysis, Setting, ArrowRight, Monitor, Cloudy } from '@element-plus/icons-vue'
+import { Refresh, Connection, Box, Cpu, Setting, ArrowRight, Monitor, Cloudy } from '@element-plus/icons-vue'
 import { aiAPI } from '../../common/api'
 import { ElMessage } from 'element-plus'
 
@@ -122,53 +77,39 @@ const statusItems = ref([
   { key: 'monitor', name: '监控服务', status: 'online', icon: 'Monitor', value: '正常' }
 ])
 
-const gatewayStats = ref<any>(null)
+const gatewayStats = ref<any>(null)  // mock 端点已移除
 const models = ref<any[]>([])
-const usageStats = ref<any>(null)
-
-function formatToken(num: number) {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
-  return num.toString()
-}
+const usageStats = ref<any>(null)  // mock 端点已移除
 
 async function loadStatus() {
   loading.value = true
   try {
-    const [statusRes, gatewayRes, modelRes, usageRes] = await Promise.allSettled([
+    const [statusRes, modelRes] = await Promise.allSettled([
       aiAPI.getDigitalBaseStatus(),
-      aiAPI.getGatewayStats(),
-      aiAPI.getDigitalBaseModels(),
-      aiAPI.getDigitalBaseUsageStats(7)
+      aiAPI.getDigitalBaseModels()
     ])
     
     if (statusRes.status === 'fulfilled') {
-      const data = statusRes.value
-      if (data.gateway) statusItems.value[0].status = 'online'
-      if (data.models) statusItems.value[1].status = 'online'
-      if (data.vector) statusItems.value[2].status = 'online'
-    }
-    
-    if (gatewayRes.status === 'fulfilled') {
-      gatewayStats.value = gatewayRes.value
+      const data = statusRes.value?.data || statusRes.value || {}
+      if (data.health?.ai_gateway) statusItems.value[0].status = 'online'
+      else statusItems.value[0].status = 'offline'
+      if (data.model_manager?.total_models > 0) statusItems.value[1].status = 'online'
+      else statusItems.value[1].status = 'offline'
     }
     
     if (modelRes.status === 'fulfilled') {
-      models.value = modelRes.value.models || modelRes.value || []
+      const data = modelRes.value?.data || modelRes.value || {}
+      models.value = Object.entries(data).flatMap(([provider, modelList]: [string, any]) =>
+        Array.isArray(modelList) ? modelList.map((m: any) => ({ ...m, provider })) : []
+      )
     }
     
-    if (usageRes.status === 'fulfilled') {
-      usageStats.value = usageRes.value
-    }
-  } catch (error) {
-    console.error('加载状态失败:', error)
-    // 使用默认数据
-    gatewayStats.value = { total_requests: 1234, success_rate: '99.5%', avg_response_time: '120ms' }
-    models.value = [
-      { name: 'gpt-3.5-turbo', provider: 'OpenAI', enabled: true },
-      { name: 'ERNIE-4', provider: '百度文心', enabled: true }
-    ]
-    usageStats.value = { today_requests: 56, today_tokens: 125000, total_cost: '12.50' }
+    // mock 端点已移除，不再拉取 gateway-stats 和 usage-stats
+    gatewayStats.value = null
+    usageStats.value = null
+  } catch {
+    statusItems.value.forEach(item => item.status = 'offline')
+    models.value = []
   } finally {
     loading.value = false
   }

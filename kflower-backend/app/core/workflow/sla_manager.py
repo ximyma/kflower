@@ -130,19 +130,24 @@ class SLAManager:
         """发送催办提醒"""
         logger.info(f"发送催办提醒: 任务 {task.id}, 剩余 {remaining_hours:.1f} 小时")
         
-        # 实际实现：调用通知服务
-        # 这里简化处理，仅记录日志
-        # 可以发送：站内信、邮件、短信、企业微信等
-        
         # 构建提醒消息
-        message = f"催办提醒：您有一个待办任务即将超时（剩余 {remaining_hours:.1f} 小时）"
+        message = f"催办提醒：您有一个待办任务「{task.node_name}」即将超时（剩余 {remaining_hours:.1f} 小时）"
         
-        # TODO: 调用通知服务
-        # await notification_service.send(
-        #     user_id=task.assignee_id,
-        #     message=message,
-        #     channel="in_app"
-        # )
+        # 发送站内通知
+        try:
+            from app.models.notification import Notification
+            notification = Notification(
+                user_id=task.assignee_id,
+                title="工作流催办提醒",
+                content=message,
+                type="reminder",
+                channel="system",
+                source_type="workflow",
+                source_id=task.instance_id
+            )
+            self.db.add(notification)
+        except Exception as e:
+            logger.error(f"催办通知发送失败: {e}")
     
     async def process_escalations(self):
         """处理超时升级"""
@@ -167,6 +172,7 @@ class SLAManager:
         """升级任务"""
         sla_config = task.sla_config or {}
         escalate_to = sla_config.get("escalate_to", "manager")
+        escalate_user_id = sla_config.get("escalate_user_id")
         
         logger.info(f"任务 {task.id} 已超时，升级到: {escalate_to}")
         
@@ -174,16 +180,37 @@ class SLAManager:
         task.sla_status = "escalated"
         await self.db.commit()
         
-        # 实际实现：
-        # 1. 通知升级对象
-        # 2. 可能重新分配任务
-        # 3. 记录升级日志
-        
-        # TODO: 实现升级逻辑
-        # if escalate_to == "manager":
-        #     # 获取申请人的上级
-        #     manager_id = await get_manager_id(task.assignee_id)
-        #     await self._reassign_task(task, manager_id)
+        # 发送升级通知
+        try:
+            from app.models.notification import Notification
+            
+            # 通知升级对象
+            if escalate_user_id:
+                notification = Notification(
+                    user_id=escalate_user_id,
+                    title="工作流任务升级",
+                    content=f"任务「{task.node_name}」已超时升级，请及时处理。",
+                    type="escalation",
+                    channel="system",
+                    source_type="workflow",
+                    source_id=task.instance_id
+                )
+                self.db.add(notification)
+            
+            # 同时通知原处理人
+            if task.assignee_id and task.assignee_id != escalate_user_id:
+                notification2 = Notification(
+                    user_id=task.assignee_id,
+                    title="工作流任务已升级",
+                    content=f"您的任务「{task.node_name}」因超时已被升级处理。",
+                    type="escalation",
+                    channel="system",
+                    source_type="workflow",
+                    source_id=task.instance_id
+                )
+                self.db.add(notification2)
+        except Exception as e:
+            logger.error(f"升级通知发送失败: {e}")
     
     async def extend_sla(self, task_id: int, extend_hours: int, reason: str = None):
         """延长 SLA 截止时间"""

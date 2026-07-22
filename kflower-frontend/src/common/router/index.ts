@@ -21,17 +21,17 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: false }
   },
 
-  // 公共路由（移动端）
+  // 公共路由（移动端）—— 复用 common views 中的登录注册页
   {
     path: '/app/login',
     name: 'AppLogin',
-    component: () => import('../mobile/views/Login.vue'),
+    component: () => import('../views/Login.vue'),
     meta: { requiresAuth: false, layout: 'mobile' }
   },
   {
     path: '/app/register',
     name: 'AppRegister',
-    component: () => import('../mobile/views/Register.vue'),
+    component: () => import('../views/Register.vue'),
     meta: { requiresAuth: false, layout: 'mobile' }
   },
 
@@ -119,46 +119,53 @@ const routes: RouteRecordRaw[] = [
       },
       
       {
+        path: 'ai-center',
+        name: 'AICenter',
+        component: () => import('../../pc/views/AICenter.vue'),
+        meta: { title: 'AI 能力中心' }
+      },
+      // Phase 3: 旧 AI 路由标记为 hideInMenu（保留向后兼容，由 AI 能力中心统一入口）
+      {
         path: 'ai-digital-base',
         name: 'AIDigitalBase',
         component: () => import('../../pc/views/AIDigitalBase.vue'),
-        meta: { title: 'AI数字底座' }
+        meta: { title: 'AI数字底座', hideInMenu: true }
       },
       {
         path: 'ai-agent-engine',
         name: 'AIAgentEngine',
         component: () => import('../../pc/views/AIAgentEngine.vue'),
-        meta: { title: 'AI智能体引擎' }
+        meta: { title: 'AI智能体引擎', hideInMenu: true }
       },
       {
         path: 'ai-gateway',
         name: 'AIGateway',
         component: () => import('../../pc/views/AIGateway.vue'),
-        meta: { title: 'AI网关' }
+        meta: { title: 'AI网关', hideInMenu: true }
       },
       {
         path: 'ai-tools',
         name: 'AITools',
         component: () => import('../../pc/views/AITools.vue'),
-        meta: { title: '工具集' }
+        meta: { title: '工具集', hideInMenu: true }
       },
       {
         path: 'agent-orchestrator',
         name: 'AgentOrchestrator',
         component: () => import('../../pc/views/AgentOrchestrator.vue'),
-        meta: { title: '智能体编排器' }
+        meta: { title: '智能体编排器', hideInMenu: true }
       },
       {
         path: 'memory-management',
         name: 'MemoryManagement',
         component: () => import('../../pc/views/MemoryManagement.vue'),
-        meta: { title: '记忆管理' }
+        meta: { title: '记忆管理', hideInMenu: true }
       },
       {
         path: 'data-integration',
         name: 'DataIntegration',
         component: () => import('../../pc/views/DataIntegration.vue'),
-        meta: { title: '数据集成' }
+        meta: { title: '数据集成', hideInMenu: true }
       },
       {
         path: 'my-apps',

@@ -32,22 +32,23 @@ class TaskPlanner:
         """
         system_prompt = """你是一个任务分解专家。用户描述一个复杂请求，你需要将其分解为可执行的子任务。
 
-考虑以下智能体类型：
-- template_agent: 模板设计相关
-- workflow_agent: 流程审批相关
-- analytics_agent: 决策分析相关
-- query_agent: 数据查询相关
-- permission_agent: 权限管理相关
-- general_agent: 通用任务
+所有任务由统一的 ReAct 智能体执行，支持以下能力：
+- chat: 通用对话和问答
+- query: 数据查询和分析
+- generate_template: 生成表单模板
+- generate_workflow: 生成工作流
+- analyze: 意图分析和数据洞察
+- search: 知识库检索
 
 输出JSON数组格式：
 [
     {
         "task_id": "task_1",
         "description": "子任务描述",
-        "agent_type": "智能体类型",
+        "agent_type": "general_agent",
         "priority": 1,
-        "dependencies": []
+        "dependencies": [],
+        "action": "执行的动作类型"
     }
 ]"""
 

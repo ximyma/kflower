@@ -122,8 +122,45 @@ class ConditionEvaluator:
             field = match.group(2)
             condition = match.group(3)
             
-            # 这里简化处理，实际应该查询数据库
-            # 返回占位符值
+            # 解析条件：如 "id={{user_id}}" 或 "status='active' AND type='internal'"
+            try:
+                # 先渲染条件中的变量引用
+                rendered_condition = await self._render_variables(condition, variables)
+                # 解析条件：WHERE field = value
+                conditions_dict = {}
+                parts = rendered_condition.split(" AND ")
+                for part in parts:
+                    if "=" in part:
+                        key_val = part.split("=", 1)
+                        key = key_val[0].strip()
+                        val = key_val[1].strip().strip("'\"")
+                        conditions_dict[key] = val
+                
+                # 查询数据库
+                from app.core.database import get_db
+                async with get_db() as db:
+                    from sqlalchemy import text
+                    # 根据模板查询数据
+                    if template.endswith("data"):
+                        table_name = f"form_data_{template.replace('data', '').strip()}"
+                    else:
+                        table_name = template
+                    
+                    query = f"SELECT {field} FROM {table_name} WHERE 1=1"
+                    params = {}
+                    for k, v in conditions_dict.items():
+                        query += f" AND {k}=:param_{k}"
+                        params[f"param_{k}"] = v
+                    query += " LIMIT 1"
+                    
+                    result = await db.execute(text(query), params)
+                    row = result.fetchone()
+                    if row:
+                        return str(row[0])
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"LOOKUP 查询失败: template={template}, field={field}, error={e}")
+            
             return "None"
         
         return re.sub(pattern, replace, text, flags=re.IGNORECASE)

@@ -2,29 +2,21 @@
 API路由 - 智能体服务
 """
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
+import uuid
 from app.core.security import get_current_user
 from app.core.agent_engine.agent_service import agent_service
 from app.core.agent_engine.orchestrator import agent_orchestrator
-from app.core.agent_engine.tools import tool_registry
+from app.core.agent_engine.tools import tool_registry, tool_executor
+from app.core.ai_digital_base.rag import rag_retriever
+from app.schemas.schemas import ChatRequest, BaseResponse
 from app.models.user import User
 from app.core.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/agent", tags=["智能体"])
-
-
-class ChatRequest(BaseModel):
-    """对话请求"""
-    message: str
-    conversation_id: Optional[str] = None
-    use_rag: bool = True
-    enable_tools: bool = True
-    model: Optional[str] = None  # 可选：指定模型
-    provider: Optional[str] = None  # 可选：指定提供商
-    ai_type: Optional[str] = None  # 可选：AI类型，用于模块AI设置 (chatGeneral, chatTemplate, chatWorkflow等)
-    app_id: Optional[int] = None  # 可选：应用ID，用于应用上下文感知
 
 
 class TemplateGenerateRequest(BaseModel):
@@ -91,6 +83,158 @@ async def chat(
         logger = logging.getLogger(__name__)
         logger.error(f"Agent chat error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent service error: {str(e)}")
+
+
+@router.post("/chat/stream")
+async def chat_stream(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    智能体流式对话（SSE）
+    
+    支持 Server-Sent Events 流式输出 AI 回复和工具调用过程
+    """
+    from fastapi.responses import StreamingResponse
+    from app.core.ai_digital_base.gateway import ai_gateway
+    
+    context = {
+        "user_id": current_user.id,
+        "user_name": current_user.full_name or current_user.username,
+        "tenant_id": getattr(current_user, 'tenant_id', None),
+        "ai_type": request.ai_type,
+    }
+    
+    effective_model = request.model
+    if request.ai_type and not request.model:
+        await ai_gateway.load_config_from_db()
+        effective_model = ai_gateway.get_module_model(request.ai_type)
+    
+    if request.app_id:
+        try:
+            from app.core.app_context import build_app_context
+            app_context = await build_app_context(
+                app_id=request.app_id,
+                user_id=current_user.id,
+                db=db
+            )
+            context["app_context"] = app_context
+        except Exception:
+            pass
+    
+    import json as _json
+    
+    async def event_generator():
+        """SSE 事件生成器"""
+        try:
+            # 构建消息
+            conversation_id = request.conversation_id or str(uuid.uuid4())
+            messages = []
+            system_prompt = agent_service._build_system_prompt(context)
+            messages.append({"role": "system", "content": system_prompt})
+            
+            # 加载历史
+            if conversation_id in agent_service.conversation_history:
+                history = agent_service.conversation_history[conversation_id]
+                messages.extend(history[-10:])
+            
+            messages.append({"role": "user", "content": request.message})
+            
+            # RAG
+            if request.use_rag:
+                try:
+                    relevant_docs = await rag_retriever.search(
+                        collection_name="knowledge",
+                        query=request.message,
+                        top_k=3
+                    )
+                    if relevant_docs:
+                        rag_context = "\n\n相关上下文：\n" + "\n".join([f"- {doc['text']}" for doc in relevant_docs])
+                        messages[-1]["content"] += rag_context
+                except Exception:
+                    pass
+            
+            yield f"data: {_json.dumps({'type': 'start', 'conversation_id': conversation_id})}\n\n"
+            
+            tools = tool_registry.get_tools_as_openai_format() if request.enable_tools else None
+            
+            # 调用流式 AI
+            stream_response = await ai_gateway.chat(
+                messages=messages,
+                tools=tools,
+                tool_choice="auto" if tools else None,
+                model=effective_model,
+                provider=request.provider,
+                stream=True
+            )
+            
+            if "error" in stream_response:
+                yield f"data: {_json.dumps({'type': 'error', 'content': stream_response['error']})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
+            stream_obj = stream_response.get("stream")
+            if not stream_obj:
+                yield f"data: {_json.dumps({'type': 'error', 'content': '无法获取流式响应'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
+            # 流式输出
+            full_content = ""
+            tool_calls_data = {}
+            
+            for chunk in stream_obj:
+                if hasattr(chunk, 'choices') and chunk.choices:
+                    delta = chunk.choices[0].delta if hasattr(chunk.choices[0], 'delta') else None
+                    if delta:
+                        if hasattr(delta, 'content') and delta.content:
+                            full_content += delta.content
+                            yield f"data: {_json.dumps({'type': 'text', 'content': delta.content})}\n\n"
+                        
+                        if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                            for tc in delta.tool_calls:
+                                idx = tc.index if hasattr(tc, 'index') else 0
+                                if idx not in tool_calls_data:
+                                    tool_calls_data[idx] = {"id": "", "name": "", "arguments": ""}
+                                if hasattr(tc, 'id') and tc.id:
+                                    tool_calls_data[idx]["id"] = tc.id
+                                if hasattr(tc, 'function'):
+                                    if hasattr(tc.function, 'name') and tc.function.name:
+                                        tool_calls_data[idx]["name"] = tc.function.name
+                                    if hasattr(tc.function, 'arguments') and tc.function.arguments:
+                                        tool_calls_data[idx]["arguments"] += tc.function.arguments
+            
+            # 如果有工具调用
+            if tool_calls_data:
+                yield f"data: {_json.dumps({'type': 'tool_start', 'tools': list(tool_calls_data.values())})}\n\n"
+                
+                for idx, tc in tool_calls_data.items():
+                    try:
+                        args = _json.loads(tc["arguments"]) if tc["arguments"] else {}
+                    except:
+                        args = {}
+                    result = await tool_executor.execute(tc["name"], args, context)
+                    yield f"data: {_json.dumps({'type': 'tool_result', 'name': tc['name'], 'result': result})}\n\n"
+            
+            yield f"data: {_json.dumps({'type': 'complete', 'content': full_content})}\n\n"
+            yield "data: [DONE]\n\n"
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            yield f"data: {_json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 @router.post("/generate-template")

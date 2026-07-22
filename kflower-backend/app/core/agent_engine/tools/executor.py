@@ -7,7 +7,10 @@ from app.core.agent_engine.tools.registry import tool_registry, ToolType
 from app.core.database import get_db
 from sqlalchemy import text
 import json
+import os
+import sys
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,14 @@ class ToolExecutor:
             "convert_document": self._convert_document,
             "extract_excel_json": self._extract_excel_json,
             "auto_convert_upload": self._auto_convert_upload,
+            # 系统工具
+            "read_file": self._read_file,
+            "write_file": self._write_file,
+            "list_files": self._list_files,
+            "search_content": self._search_content,
+            "bash": self._bash,
+            "get_env_info": self._get_env_info,
+            "read_workflow_logs": self._read_workflow_logs,
         }
     
     async def execute(
@@ -172,36 +183,58 @@ class ToolExecutor:
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """执行工作流"""
-        from app.core.workflow_executor import workflow_executor
+        from app.core.workflow.engine import WorkflowEngine
         
         workflow_id = args.get("workflow_id")
+        title = args.get("title", "Agent触发的工作流")
         data = args.get("data", {})
+        user_id = context.get("user_id", 1)
         
-        result = await workflow_executor.execute(
-            workflow_id=workflow_id,
-            input_data=data,
-            user_id=context.get("user_id")
-        )
-        
-        return result
+        async with get_db() as db:
+            engine = WorkflowEngine(db)
+            instance = await engine.start_instance(
+                workflow_id=workflow_id,
+                title=title,
+                starter_id=user_id,
+                variables=data
+            )
+            
+            return {
+                "instance_id": instance.id,
+                "status": instance.status,
+                "title": instance.title,
+                "message": f"工作流实例 {instance.id} 已启动"
+            }
     
     async def _query_data(
         self, 
         args: Dict[str, Any], 
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """查询数据"""
-        table = args.get("table")
+        """查询数据（安全版：白名单验证表名）"""
+        table = args.get("table", "")
         conditions = args.get("conditions", {})
         
+        # 白名单验证表名
+        allowed_tables = {"templates", "workflows", "workflow_instances", "workflow_tasks", 
+                         "users", "organizations", "plugins", "notifications", "knowledge_bases"}
+        # 也允许 form_data_ 前缀的动态表
+        if table not in allowed_tables and not table.startswith("form_data_"):
+            return {"error": f"不允许查询表: {table}"}
+        
         async with get_db() as db:
-            # 构建查询
-            query = f"SELECT * FROM {table} WHERE 1=1"
+            # 表名已通过白名单验证（安全）
+            query = f'SELECT * FROM "{table}" WHERE 1=1'
             params = {}
             
             for key, value in conditions.items():
-                query += f" AND {key} = :{key}"
-                params[key] = value
+                # 列名验证：仅允许字母数字和下划线
+                safe_key = "".join(c for c in key if c.isalnum() or c == "_")
+                if safe_key != key:
+                    return {"error": f"不允许的列名: {key}"}
+                param_name = f"p_{safe_key}_{len(params)}"
+                query += f' AND "{safe_key}" = :{param_name}'
+                params[param_name] = value
             
             query += " LIMIT 100"
             
@@ -316,6 +349,261 @@ class ToolExecutor:
         if not input_path:
             return {"error": "input_path 为必填参数"}
         return auto_convert_for_upload(input_path, args.get("output_dir"))
+
+    # ===== 系统工具处理 =====
+    
+    def _resolve_safe_path(self, path: str) -> str:
+        """安全路径解析：限制在工作区范围内，防止路径穿越"""
+        workspace = os.path.abspath(os.environ.get("PROJECT_ROOT", "D:/kkflower"))
+        
+        # 如果传入绝对路径，必须限制在工作区范围内
+        if os.path.isabs(path):
+            full_path = os.path.abspath(path)
+        else:
+            full_path = os.path.abspath(os.path.join(workspace, path))
+        
+        # 路径穿越检测：规范化后的路径必须在工作区内
+        if not full_path.startswith(workspace):
+            raise ValueError(f"路径不在允许范围内: {path}")
+        
+        # 额外检测 .. 穿越
+        if ".." in path.split(os.sep):
+            raise ValueError(f"路径包含非法字符: {path}")
+        
+        return full_path
+    
+    async def _read_file(self, args: Dict, context: Dict) -> Dict[str, Any]:
+        """读取文件"""
+        path = args.get("path", "")
+        offset = args.get("offset", 0)
+        limit = args.get("limit", 100)
+        
+        if not path:
+            return {"error": "path 为必填参数"}
+        
+        # 安全检查：不允许读取敏感文件
+        forbidden = ["/etc/passwd", "/etc/shadow", ".env", "credentials", "secrets"]
+        if any(f in path for f in forbidden):
+            return {"error": "不允许读取敏感文件"}
+        
+        try:
+            # 使用安全路径解析器
+            full_path = self._resolve_safe_path(path)
+            
+            if not os.path.exists(full_path):
+                return {"error": f"文件不存在: {path}"}
+            
+            if os.path.isdir(full_path):
+                return {"error": f"目标是一个目录: {path}"}
+            
+            with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+            
+            total = len(lines)
+            selected = lines[offset:offset + limit]
+            content = "".join(selected)
+            
+            return {
+                "content": content,
+                "path": path,
+                "total_lines": total,
+                "offset": offset,
+                "limit": limit,
+                "shown_lines": len(selected)
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    async def _write_file(self, args: Dict, context: Dict) -> Dict[str, Any]:
+        """写入文件"""
+        path = args.get("path", "")
+        content = args.get("content", "")
+        
+        if not path:
+            return {"error": "path 为必填参数"}
+        
+        try:
+            full_path = self._resolve_safe_path(path)
+            
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            
+            return {
+                "success": True,
+                "path": path,
+                "size": len(content),
+                "message": f"文件已写入: {path}"
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    async def _list_files(self, args: Dict, context: Dict) -> Dict[str, Any]:
+        """列出文件"""
+        path = args.get("path", ".")
+        pattern = args.get("pattern", "*")
+        
+        try:
+            full_path = self._resolve_safe_path(path)
+            
+            import glob
+            files = glob.glob(os.path.join(full_path, pattern))
+            # 限制数量
+            files = files[:200]
+            
+            result = []
+            for f in files:
+                stat = os.stat(f)
+                result.append({
+                    "name": os.path.basename(f),
+                    "path": f,
+                    "size": stat.st_size,
+                    "is_dir": os.path.isdir(f),
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                })
+            
+            return {"files": result, "count": len(result)}
+        except Exception as e:
+            return {"error": str(e)}
+    
+    async def _search_content(self, args: Dict, context: Dict) -> Dict[str, Any]:
+        """搜索文件内容"""
+        pattern = args.get("pattern", "")
+        path = args.get("path", ".")
+        
+        if not pattern:
+            return {"error": "pattern 为必填参数"}
+        
+        try:
+            full_path = self._resolve_safe_path(path)
+            
+            import subprocess
+            # 使用 grep 搜索
+            cmd = ["grep", "-rn", "--include=*.py", "--include=*.ts", "--include=*.vue", 
+                   "--include=*.md", "--include=*.json", "-m", "50", pattern, full_path]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, 
+                                   cwd=workspace)
+            
+            output = result.stdout.strip()
+            if not output:
+                return {"matches": [], "count": 0, "message": "未找到匹配结果"}
+            
+            lines = output.split("\n")[:50]
+            return {"matches": lines, "count": len(lines)}
+        except subprocess.TimeoutExpired:
+            return {"error": "搜索超时"}
+        except Exception as e:
+            return {"error": str(e)}
+    
+    async def _bash(self, args: Dict, context: Dict) -> Dict[str, Any]:
+        """执行 Shell 命令（Phase 4 安全加固：白名单模式）"""
+        command = args.get("command", "")
+        timeout = args.get("timeout", 30)
+        
+        if not command:
+            return {"error": "command 为必填参数"}
+        
+        # 白名单：仅允许安全的只读/信息类命令
+        allowed_commands = ["ls", "dir", "cat", "head", "tail", "wc", "find", "grep",
+                           "echo", "date", "whoami", "pwd", "uname", "hostname",
+                           "python --version", "node --version", "npm --version", "pip list",
+                           "git status", "git log", "git branch", "git diff", "git stash list",
+                           "df", "du", "free", "uptime", "ps"]
+        
+        # 提取命令基础部分进行白名单检查
+        cmd_base = command.strip().split()[0] if command.strip() else ""
+        if cmd_base not in [c.split()[0] for c in allowed_commands]:
+            return {"error": f"不允许执行命令: {cmd_base}。仅支持安全的只读命令。",
+                    "allowed_commands": allowed_commands}
+        
+        # 黑名单：即使基础命令在白名单中，也禁止危险参数组合
+        dangerous_patterns = ["|", ";", "&&", "||", "$(", "`", ">", ">>", "<", "rm -", 
+                             "mkfs", "dd ", "shutdown", "reboot", "chmod", "chown", 
+                             "wget", "curl", "nc ", "telnet", "/dev/", "/etc/", "/proc/"]
+        if any(p in command for p in dangerous_patterns):
+            return {"error": "命令包含禁止的模式"}
+        
+        try:
+            workspace = os.environ.get("PROJECT_ROOT", "D:/kkflower")
+            import subprocess
+            result = subprocess.run(
+                command, shell=True, capture_output=True, text=True,
+                timeout=min(timeout, 30), cwd=workspace
+            )
+            
+            output = result.stdout.strip()
+            error = result.stderr.strip()
+            
+            return {
+                "stdout": output[:2000] if output else "",
+                "stderr": error[:500] if error else "",
+                "returncode": result.returncode,
+                "success": result.returncode == 0
+            }
+        except subprocess.TimeoutExpired:
+            return {"error": f"命令执行超时（{timeout}s）"}
+        except Exception as e:
+            return {"error": str(e)}
+    
+    async def _get_env_info(self, args: Dict, context: Dict) -> Dict[str, Any]:
+        """获取系统环境信息"""
+        from app.core.database import engine
+        from sqlalchemy import text
+        
+        try:
+            python_version = sys.version
+            
+            # 数据库状态
+            db_status = "unknown"
+            try:
+                async with get_db() as db:
+                    result = await db.execute(text("SELECT 1"))
+                    db_status = "connected"
+            except:
+                db_status = "disconnected"
+            
+            # 项目路径
+            project_root = os.environ.get("PROJECT_ROOT", os.getcwd())
+            
+            return {
+                "python_version": python_version,
+                "database_status": db_status,
+                "project_root": project_root,
+                "platform": sys.platform,
+                "current_time": datetime.now().isoformat()
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    async def _read_workflow_logs(self, args: Dict, context: Dict) -> Dict[str, Any]:
+        """读取工作流审批日志"""
+        instance_id = args.get("instance_id")
+        if not instance_id:
+            return {"error": "instance_id 为必填参数"}
+        
+        async with get_db() as db:
+            from sqlalchemy import select
+            from app.models.workflow import WorkflowLog, WorkflowInstance
+            result = await db.execute(
+                select(WorkflowLog).where(
+                    WorkflowLog.instance_id == instance_id
+                ).order_by(WorkflowLog.created_at.asc())
+            )
+            logs = result.scalars().all()
+            
+            return {
+                "instance_id": instance_id,
+                "logs": [
+                    {
+                        "action": l.action,
+                        "operator_id": l.operator_id,
+                        "comment": l.comment,
+                        "created_at": l.created_at.isoformat() if l.created_at else None
+                    }
+                    for l in logs
+                ],
+                "count": len(logs)
+            }
 
 
 # 全局工具执行器实例

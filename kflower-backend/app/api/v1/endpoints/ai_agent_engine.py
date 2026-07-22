@@ -3,6 +3,8 @@ AI 智能体引擎 API
 """
 from fastapi import APIRouter, Depends
 from typing import Dict, Any, List
+from datetime import datetime
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -20,11 +22,11 @@ async def get_agent_engine_status(
     current_user: User = Depends(get_current_user)
 ):
     """获取智能体引擎状态"""
+    from app.core.agent_engine.agent_service import agent_service
+    from app.core.agent_engine.orchestrator import agent_orchestrator
+    from app.core.agent_engine.tools import tool_registry
+    
     try:
-        from app.core.agent_engine.agent_service import agent_service
-        from app.core.agent_engine.orchestrator import agent_orchestrator
-        from app.core.agent_engine.tools import tool_registry
-        
         agents = agent_service.list_agents()
         tasks = agent_orchestrator.get_task_statistics()
         tools = tool_registry.list_tools()
@@ -38,21 +40,25 @@ async def get_agent_engine_status(
             "tools_count": len(tools),
             "memory_entries": 0,
             "orchestrator_status": "运行中" if agent_orchestrator.is_running() else "已停止",
-            "last_updated": "2026-04-20 15:30:00"
+            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
     except Exception as e:
-        # 模拟数据
-        return BaseResponse(data={
-            "agents_count": 12,
-            "tasks_total": 156,
-            "tasks_pending": 8,
-            "tasks_running": 3,
-            "tasks_completed": 145,
-            "tools_count": 8,
-            "memory_entries": 2400,
-            "orchestrator_status": "运行中",
-            "last_updated": "2026-04-20 15:30:00"
-        })
+        import traceback
+        logging.getLogger(__name__).error(f"获取智能体引擎状态失败: {traceback.format_exc()}")
+        return BaseResponse(
+            success=False,
+            message=f"获取状态失败: {str(e)}",
+            data={
+                "agents_count": 0,
+                "tasks_total": 0,
+                "tasks_pending": 0,
+                "tasks_running": 0,
+                "tasks_completed": 0,
+                "tools_count": 0,
+                "memory_entries": 0,
+                "orchestrator_status": "错误"
+            }
+        )
 
 
 @router.get("/agents")
@@ -105,14 +111,9 @@ async def list_agents(
 
         return BaseResponse(data=agent_list)
     except Exception as e:
-        # 模拟数据回退
-        agents = [
-            {"id": 1, "name": "客服助手", "type": "客服", "status": "在线", "tasks": 12, "description": "处理客户咨询", "created_at": "2026-04-01", "template_ids": [], "workflow_ids": [], "knowledge_base_ids": [], "plugin_ids": [], "scope": "global"},
-            {"id": 2, "name": "数据分析师", "type": "分析", "status": "在线", "tasks": 8, "description": "生成数据报表", "created_at": "2026-04-05", "template_ids": [], "workflow_ids": [], "knowledge_base_ids": [], "plugin_ids": [], "scope": "global"},
-            {"id": 3, "name": "文档助手", "type": "文档", "status": "离线", "tasks": 0, "description": "自动生成文档", "created_at": "2026-04-10", "template_ids": [], "workflow_ids": [], "knowledge_base_ids": [], "plugin_ids": [], "scope": "global"},
-            {"id": 4, "name": "代码生成器", "type": "开发", "status": "在线", "tasks": 5, "description": "生成代码片段", "created_at": "2026-04-12", "template_ids": [], "workflow_ids": [], "knowledge_base_ids": [], "plugin_ids": [], "scope": "global"},
-        ]
-        return BaseResponse(data=agents)
+        import traceback
+        logging.getLogger(__name__).error(f"获取智能体列表失败: {traceback.format_exc()}")
+        return BaseResponse(success=False, message=f"获取智能体列表失败: {str(e)}", data=[])
 
 
 @router.post("/agents")
@@ -356,16 +357,8 @@ async def list_tools(
             })
         return BaseResponse(data=tool_list)
     except Exception as e:
-        # 模拟数据
-        tools = [
-            {"name": "网页搜索", "description": "在互联网上搜索信息", "enabled": True, "category": "网络", "call_count": 120},
-            {"name": "计算器", "description": "执行数学计算", "enabled": True, "category": "工具", "call_count": 85},
-            {"name": "天气查询", "description": "查询城市天气", "enabled": True, "category": "生活", "call_count": 42},
-            {"name": "翻译", "description": "多语言翻译", "enabled": True, "category": "语言", "call_count": 67},
-            {"name": "数据库查询", "description": "查询数据库数据", "enabled": True, "category": "数据", "call_count": 33},
-            {"name": "图表生成", "description": "生成数据图表", "enabled": True, "category": "可视化", "call_count": 18},
-        ]
-        return BaseResponse(data=tools)
+        logging.getLogger(__name__).error(f"获取工具列表失败: {e}")
+        return BaseResponse(success=False, message=f"获取工具列表失败: {str(e)}", data=[])
 
 
 @router.get("/tasks")
@@ -381,55 +374,13 @@ async def list_tasks(
         tasks = agent_orchestrator.get_tasks(status_filter=status, limit=limit)
         return BaseResponse(data=tasks)
     except Exception as e:
-        # 模拟数据
-        tasks = [
-            {"id": 1, "name": "生成月度报告", "status": "completed", "agent": "数据分析师", "created_at": "2026-04-19 09:30", "duration": "2分30秒"},
-            {"id": 2, "name": "回答客户咨询", "status": "running", "agent": "客服助手", "created_at": "2026-04-20 14:15", "duration": "1分45秒"},
-            {"id": 3, "name": "翻译文档", "status": "pending", "agent": "翻译助手", "created_at": "2026-04-20 13:00", "duration": ""},
-        ]
-        return BaseResponse(data=tasks)
+        logging.getLogger(__name__).error(f"获取任务列表失败: {e}")
+        return BaseResponse(success=False, message=f"获取任务列表失败: {str(e)}", data=[])
 
 
-@router.get("/memory/stats")
-async def get_memory_stats(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """获取记忆统计信息"""
-    # 模拟数据
-    return BaseResponse(data={
-        "total_memories": 2400,
-        "active_memories": 1850,
-        "memory_types": {
-            "conversation": 1200,
-            "knowledge": 650,
-            "experience": 400,
-            "other": 150
-        },
-        "last_updated": "2026-04-20 15:30:00"
-    })
-
-
-@router.get("/memory/list")
-async def list_memories(
-    limit: int = 10,
-    offset: int = 0,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """获取记忆列表"""
-    # 模拟数据
-    memories = []
-    for i in range(offset, min(offset + limit, 10)):
-        memories.append({
-            "id": i + 1,
-            "content": f"记忆内容示例 {i + 1}",
-            "type": ["conversation", "knowledge", "experience"][i % 3],
-            "importance": i % 5 + 1,
-            "created_at": f"2026-04-{20 - i % 10:02d} {10 + i % 10:02d}:{30 + i % 30:02d}:00",
-            "last_accessed": f"2026-04-{20 - i % 5:02d} {14 + i % 10:02d}:{15 + i % 45:02d}:00"
-        })
-    return BaseResponse(data=memories)
+# ===== Phase 1 清理：memory/stats 和 memory/list 已移除 =====
+# 原因：返回硬编码空数据，无实际价值
+# 记忆管理功能将在 Phase 2 Agent 重构时重新实现
 
 
 async def _create_sample_agents(db: AsyncSession, current_user: User):
@@ -439,20 +390,9 @@ async def _create_sample_agents(db: AsyncSession, current_user: User):
     
     sample_agents = [
         {
-            "name": "客服助手",
-            "agent_type": "customer_service_agent",
-            "description": "处理客户咨询",
-            "status": "online",
-            "task_count": 12,
-            "config": {},
-            "tools": [],
-            "organization_id": current_user.organization_id,
-            "created_by": current_user.id
-        },
-        {
-            "name": "数据分析师",
-            "agent_type": "analytics_agent",
-            "description": "生成数据报表",
+            "name": "通用助手",
+            "agent_type": "general_agent",
+            "description": "基于 ReAct 循环的通用智能体，支持工具调用和自主决策",
             "status": "online",
             "task_count": 8,
             "config": {},
@@ -461,22 +401,22 @@ async def _create_sample_agents(db: AsyncSession, current_user: User):
             "created_by": current_user.id
         },
         {
-            "name": "文档助手",
-            "agent_type": "document_agent",
-            "description": "自动生成文档",
-            "status": "offline",
-            "task_count": 0,
+            "name": "数据分析",
+            "agent_type": "general_agent",
+            "description": "数据分析和报表生成",
+            "status": "online",
+            "task_count": 5,
             "config": {},
             "tools": [],
             "organization_id": current_user.organization_id,
             "created_by": current_user.id
         },
         {
-            "name": "代码生成器",
-            "agent_type": "development_agent",
-            "description": "生成代码片段",
-            "status": "online",
-            "task_count": 5,
+            "name": "模板设计",
+            "agent_type": "general_agent",
+            "description": "智能表单模板设计",
+            "status": "offline",
+            "task_count": 0,
             "config": {},
             "tools": [],
             "organization_id": current_user.organization_id,
@@ -519,139 +459,8 @@ async def _create_sample_agents(db: AsyncSession, current_user: User):
     return BaseResponse(data=agent_list)
 
 
-@router.post("/chat")
-async def chat_with_agent(
-    request: Dict[str, Any],
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    与智能体对话（调用 AI 大模型）
-    """
-    # 解析请求参数
-    agent_id = request.get("agent_id")
-    message = request.get("message", "")
-    model = request.get("model")  # 模型ID
-    history = request.get("history", [])  # 对话历史
-    
-    if not message:
-        return BaseResponse(success=False, message="消息内容不能为空")
-    
-    try:
-        # 获取 AI 数字底座的模型管理器
-        from app.api.v1.endpoints.ai_digital_base import model_manager
-        
-        # 如果没有指定模型，使用默认模型
-        if not model:
-            # 从配置获取默认模型
-            available_models = model_manager.get_all_available_models()
-            for provider_models in available_models.values():
-                if provider_models:
-                    model = provider_models[0].get("id") or provider_models[0].get("model")
-                    break
-        
-        if not model:
-            return BaseResponse(
-                success=False, 
-                message="AI 模型未配置，请在 AI 数字底座 配置大模型 API"
-            )
-        
-        # 构建消息列表
-        messages = []
-        
-        # 如果有智能体ID，获取系统提示词
-        system_prompt = "你是一个智能助手，请根据用户的问题给出准确、专业的回答。"
-        if agent_id:
-            from sqlalchemy import select
-            stmt = select(Agent).where(Agent.id == agent_id)
-            result = await db.execute(stmt)
-            agent = result.scalar_one_or_none()
-            if agent and agent.system_prompt:
-                system_prompt = agent.system_prompt
-        
-        messages.append({
-            "role": "system",
-            "content": system_prompt
-        })
-        
-        # 添加历史消息
-        for hist in history:
-            messages.append({
-                "role": hist.get("role", "user"),
-                "content": hist.get("content", "")
-            })
-        
-        # 添加当前用户消息
-        messages.append({
-            "role": "user",
-            "content": message
-        })
-        
-        # 调用模型
-        # 使用 model_manager 调用配置好的模型
-        try:
-            # 使用 AI 网关或直接调用模型 API
-            from app.core.config import settings
-            import httpx
-            
-            # 尝试调用 AI 数字底座的模型调用端点
-            gateway_url = getattr(settings, 'AI_GATEWAY_URL', 'http://localhost:8000')
-            
-            # 准备请求数据
-            chat_request = {
-                "model": model,
-                "messages": messages,
-                "temperature": 0.7,
-                "max_tokens": 2000
-            }
-            
-            # 调用 AI 网关
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                try:
-                    # 尝试调用本地网关
-                    response = await client.post(
-                        f"{gateway_url}/v1/chat/comletions",
-                        json=chat_request,
-                        headers={"Content-Type": "application/json"}
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        if result.get("choices") and len(result["choices"]) > 0:
-                            response_text = result["choices"][0]["message"]["content"]
-                        else:
-                            response_text = "AI 模型返回空响应"
-                    else:
-                        raise Exception(f"AI 网关返回错误：{response.status_code}")
-                        
-                except Exception as e:
-                    # 如果网关不可用，返回友好提示
-                    response_text = f"AI 网关暂时不可用。请检查 AI 数字底座配置。\n\n您的问题：「{message}」\n\n提示：请先在 AI 数字底座 配置大模型 API 密钥（如 OpenAI、Anthropic、通义千问等）。"
-                    
-        except Exception as e:
-            response_text = f"调用 AI 模型失败：{str(e)}"
-        
-        if response_text:
-            return BaseResponse(
-                success=True,
-                response=response_text,
-                data={
-                    "model": model,
-                    "agent_id": agent_id,
-                    "message": message
-                }
-            )
-        else:
-            return BaseResponse(
-                success=False,
-                message="AI 模型响应为空，请检查模型配置"
-            )
-            
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return BaseResponse(
-            success=False,
-            message=f"AI 对话失败：{str(e)}"
-        )
+# ===== Phase 1 清理：POST /chat 端点已移除 =====
+# 原因：使用 httpx 向自身发 HTTP 请求（循环调用），已损坏
+# AI 对话请统一使用 /api/v1/ai/chat 或 /api/v1/agent/chat
+# ===== 文件结束 =====
 

@@ -15,10 +15,30 @@ from app.models.user import User
 
 
 class WorkflowExecutor:
-    """工作流执行器"""
+    """工作流执行器（兼容性包装，内部委托给 WorkflowEngine）"""
     
     def __init__(self, db: AsyncSession):
         self.db = db
+    
+    async def execute(self, workflow_id: int, input_data: Dict[str, Any] = None, 
+                      user_id: int = None) -> Dict[str, Any]:
+        """执行工作流（兼容性包装，委托给 WorkflowEngine）"""
+        from app.core.workflow.engine import WorkflowEngine
+        
+        input_data = input_data or {}
+        engine = WorkflowEngine(self.db)
+        instance = await engine.start_instance(
+            workflow_id=workflow_id,
+            title=input_data.get("title", "自动触发的工作流"),
+            starter_id=user_id or input_data.get("created_by", 1),
+            variables=input_data,
+            form_data_id=input_data.get("form_data_id")
+        )
+        return {
+            "instance_id": instance.id,
+            "status": instance.status,
+            "title": instance.title
+        }
     
     async def create_instance(
         self,
